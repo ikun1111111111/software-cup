@@ -1,0 +1,202 @@
+version: "3.9"
+
+services:
+  # ==================== Database Services ====================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: tourism-postgres
+    environment:
+      POSTGRES_USER: tourism
+      POSTGRES_PASSWORD: tourism123
+      POSTGRES_DB: smart_tourism
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tourism -d smart_tourism"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tourism-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: tourism-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tourism-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: tourism-minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # Console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tourism-net
+
+  milvus:
+    image: milvusdb/milvus:v2.5.0-beta
+    container_name: tourism-milvus
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY_ID: minioadmin
+      MINIO_SECRET_ACCESS_KEY: minioadmin
+      COMMON_SECURITY_AUTHORIZATION_ENABLED: "false"
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    command: milvus run standalone
+    volumes:
+      - milvus_data:/var/lib/milvus
+    depends_on:
+      - etcd
+      - minio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+    networks:
+      - tourism-net
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: tourism-etcd
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: etcd -listen-peer-urls=http://127.0.0.1:2380 -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls=http://0.0.0.0:2379
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    volumes:
+      - etcd_data:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tourism-net
+
+  # ==================== Application Services ====================
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tourism-backend
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      MILVUS_HOST: milvus
+      MINIO_ENDPOINT: minio:9000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - tourism-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: tourism-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    command: npm run dev -- --host 0.0.0.0
+    networks:
+      - tourism-net
+
+  # ==================== Async Worker ====================
+
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tourism-celery
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      MILVUS_HOST: milvus
+      MINIO_ENDPOINT: minio:9000
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ./backend:/app
+      - uploads_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tourism-net
+
+  # ==================== Optional: CosyVoice TTS Server ====================
+  # cosyvoice:
+  #   image: cosyvoice:latest
+  #   container_name: tourism-cosyvoice
+  #   ports:
+  #     - "5001:5001"
+  #   networks:
+  #     - tourism-net
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  milvus_data:
+  etcd_data:
+  uploads_data:
+
+networks:
+  tourism-net:
+    driver: bridge
