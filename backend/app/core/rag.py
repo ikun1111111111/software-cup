@@ -1,145 +1,127 @@
-"""RAG pipeline: hybrid retrieval + reranking."""
+"""RAG pipeline: hybrid retrieval + reranking.
+
+Orchestrates embedding, vector search, BM25 keyword search, RRF fusion,
+and reranking into a single retrieve() call.
+"""
 import logging
-from pymilvus import MilvusClient, DataType
+
 from app.core.config import get_settings
+from app.core.embedding import get_embedding_engine
+from app.core.vector_store import get_vector_store
+from app.core.bm25_search import get_bm25_index
+from app.core.reranker import get_reranker
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-_milvus: MilvusClient | None = None
-_bm25_corpus: list[str] = []
-_bm25_tokenized: list[list[str]] = []
-
-
-def get_milvus() -> MilvusClient:
-    global _milvus
-    if _milvus is None:
-        _milvus = MilvusClient(uri=f"http://{settings.milvus_host}:{settings.milvus_port}")
-    return _milvus
-
 
 def init_collection():
     """Create Milvus collection if not exists."""
-    client = get_milvus()
-    if client.has_collection(settings.milvus_collection):
-        return
-
-    schema = client.create_schema(auto_id=False, enable_dynamic_field=False)
-    schema.add_field("id", DataType.VARCHAR, max_length=200, is_primary=True)
-    schema.add_field("doc_id", DataType.INT64)
-    schema.add_field("chunk_index", DataType.INT32)
-    schema.add_field("text", DataType.VARCHAR, max_length=65535)
-    schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=1024)  # BGE-M3 dim
-
-    index_params = client.prepare_index_params()
-    index_params.add_index("embedding", index_type="IVF_FLAT", metric_type="COSINE", params={"nlist": 128})
-
-    client.create_collection(
-        collection_name=settings.milvus_collection,
-        schema=schema,
-        index_params=index_params,
-    )
+    store = get_vector_store()
+    store.ensure_collection(dim=settings.chunk_size)
 
 
-async def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Generate embeddings via BGE-M3."""
-    from FlagEmbedding import BGEM3FlagModel
-    model = BGEM3FlagModel("BAAI/bge-m3", use_fp16=True)
-    embeddings = model.encode(texts, batch_size=32, max_length=512)["dense_vecs"]
-    return embeddings.tolist()
+def _rrf_fusion(
+    vector_results: list[dict],
+    bm25_results: list[dict],
+    k: int = 60,
+) -> list[dict]:
+    """Reciprocal Rank Fusion of vector and BM25 results."""
+    scores: dict[str, dict] = {}
 
+    # Vector scores
+    for rank, r in enumerate(vector_results, 1):
+        rid = r["id"]
+        if rid not in scores:
+            entity = r.get("entity", {})
+            scores[rid] = {
+                "id": rid,
+                "text": entity.get("text", ""),
+                "doc_id": entity.get("doc_id"),
+                "chunk_index": entity.get("chunk_index"),
+                "score": 0.0,
+                "sources": [],
+            }
+        scores[rid]["score"] += 1.0 / (k + rank)
+        scores[rid]["sources"].append("vector")
 
-async def embed_query(query: str) -> list[float]:
-    """Generate single query embedding."""
-    embeddings = await embed_texts([query])
-    return embeddings[0]
+    # BM25 scores
+    for rank, r in enumerate(bm25_results, 1):
+        # Build a composite ID for BM25 results
+        rid = f"bm25_{r.get('doc_id')}_{r.get('chunk_index')}"
+        if rid not in scores:
+            scores[rid] = {
+                "id": rid,
+                "text": r["text"],
+                "doc_id": r.get("doc_id"),
+                "chunk_index": r.get("chunk_index"),
+                "score": 0.0,
+                "sources": [],
+            }
+        scores[rid]["score"] += 1.0 / (k + rank)
+        scores[rid]["sources"].append("bm25")
 
-
-def _build_bm25_index(chunks: list[dict]):
-    """Build in-memory BM25 index from chunks."""
-    import jieba
-    from rank_bm25 import BM25Okapi
-
-    global _bm25_corpus, _bm25_tokenized
-    _bm25_corpus = [c["text"] for c in chunks]
-    _bm25_tokenized = [list(jieba.cut(t)) for t in _bm25_corpus]
-    return BM25Okapi(_bm25_tokenized)
+    # Sort by fused score descending
+    fused = sorted(scores.values(), key=lambda x: x["score"], reverse=True)
+    return fused
 
 
 async def hybrid_search(query: str, top_k: int | None = None) -> list[dict]:
-    """Hybrid search: vector + BM25 with RRF fusion."""
+    """Hybrid search: vector + BM25 with RRF fusion.
+
+    Returns:
+        Fused results sorted by RRF score.
+    """
     if top_k is None:
         top_k = settings.retrieval_top_k
 
-    client = get_milvus()
-    query_embedding = await embed_query(query)
-
     # Vector search
-    vector_results = client.search(
-        collection_name=settings.milvus_collection,
-        data=[query_embedding],
-        limit=top_k * 2,
-        output_fields=["id", "doc_id", "chunk_index", "text"],
-    )[0]
+    engine = get_embedding_engine()
+    store = get_vector_store()
+    query_embedding = engine.encode_query(query)
 
-    # BM25 keyword search
-    import jieba
-    from rank_bm25 import BM25Okapi
+    try:
+        vector_results = store.search(
+            query_embedding=query_embedding,
+            top_k=top_k * 2,
+            output_fields=["id", "doc_id", "chunk_index", "text"],
+        )
+    except Exception as e:
+        logger.warning("Vector search failed: %s", e)
+        vector_results = []
 
-    bm25 = BM25Okapi(_bm25_tokenized) if _bm25_tokenized else None
-    bm25_results = []
-    if bm25:
-        tokenized_query = list(jieba.cut(query))
-        scores = bm25.get_scores(tokenized_query)
-        ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)[:top_k * 2]
-        bm25_results = [{"text": _bm25_corpus[i], "score": float(s), "index": i} for i, s in ranked]
+    # BM25 search
+    bm25 = get_bm25_index()
+    bm25_results = bm25.search(query, top_k=top_k * 2) if bm25.is_ready else []
 
     # RRF fusion
     fused = _rrf_fusion(vector_results, bm25_results, k=60)
     return fused[:top_k]
 
 
-def _rrf_fusion(vector_results: list, bm25_results: list, k: int = 60) -> list[dict]:
-    """Reciprocal Rank Fusion."""
-    scores: dict[str, dict] = {}
-
-    for rank, r in enumerate(vector_results, 1):
-        rid = r["id"]
-        if rid not in scores:
-            scores[rid] = {"id": rid, "text": r["entity"]["text"], "score": 0.0}
-        scores[rid]["score"] += 1.0 / (k + rank)
-
-    for rank, r in enumerate(bm25_results, 1):
-        rid = f"bm25_{r['index']}"
-        if rid not in scores:
-            scores[rid] = {"id": rid, "text": r["text"], "score": 0.0}
-        scores[rid]["score"] += 1.0 / (k + rank)
-
-    return sorted(scores.values(), key=lambda x: x["score"], reverse=True)
-
-
-async def rerank(query: str, chunks: list[dict], top_k: int | None = None) -> list[dict]:
+async def rerank(
+    query: str,
+    chunks: list[dict],
+    top_k: int | None = None,
+) -> list[dict]:
     """Re-rank chunks via BGE-Reranker."""
     if top_k is None:
         top_k = settings.rerank_top_k
-    if len(chunks) <= top_k:
-        return chunks
 
-    from FlagEmbedding import FlagReranker
-
-    reranker = FlagReranker("BAAI/bge-reranker-v2-m3", use_fp16=True)
-    pairs = [[query, c["text"]] for c in chunks]
-    scores = reranker.compute_score(pairs)
-
-    for i, s in enumerate(scores):
-        chunks[i]["rerank_score"] = float(s)
-
-    chunks.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
-    return chunks[:top_k]
+    reranker = get_reranker()
+    return reranker.rerank(query, chunks, top_k=top_k)
 
 
 async def retrieve(query: str, rerank_top_k: int | None = None) -> list[dict]:
-    """Full retrieval pipeline: hybrid search + rerank."""
+    """Full retrieval pipeline: hybrid search + rerank.
+
+    Returns:
+        List of chunk dicts with keys:
+            - id, text, doc_id, chunk_index
+            - score (RRF fused score)
+            - rerank_score (from reranker)
+            - sources (list of "vector" | "bm25")
+    """
     hybrid_results = await hybrid_search(query)
     reranked = await rerank(query, hybrid_results, rerank_top_k)
     return reranked

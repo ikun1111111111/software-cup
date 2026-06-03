@@ -41,8 +41,12 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "tourism"
 
-    # LLM API Keys
+    # LLM API Keys (multiple for rotation / fallback)
     deepseek_api_key: str = ""
+    deepseek_api_key_1: str = ""
+    deepseek_api_key_2: str = ""
+    deepseek_api_key_3: str = ""
+    deepseek_api_key_4: str = ""
     deepseek_base_url: str = "https://api.deepseek.com/v1"
 
     qwen_api_key: str = ""  # dashscope API key
