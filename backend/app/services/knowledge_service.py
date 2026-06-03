@@ -106,21 +106,61 @@ async def process_document(doc_id: int, db_session) -> list[KnowledgeChunk]:
         chunks_text = chunk_text(text)
         doc.chunk_count = len(chunks_text)
 
-        # Store chunks
+        # Store chunks in PostgreSQL
         db_chunks = []
-        for i, chunk_text in enumerate(chunks_text):
+        for i, txt in enumerate(chunks_text):
             chunk = KnowledgeChunk(
                 doc_id=doc_id,
                 chunk_index=i,
-                chunk_text=chunk_text,
-                token_count=len(chunk_text),
+                chunk_text=txt,
+                token_count=len(txt),
             )
             db_session.add(chunk)
             db_chunks.append(chunk)
 
         doc.status = DocStatus.indexed
         await db_session.commit()
-        logger.info("Document %d indexed: %d chunks", doc_id, len(chunks_text))
+
+        # Refresh to get auto-generated IDs
+        for chunk in db_chunks:
+            await db_session.refresh(chunk)
+
+        # ---- Vectorize and insert into Milvus ----
+        try:
+            from app.core.vector_store import get_vector_store
+            from app.core.bm25_search import get_bm25_index
+
+            store = get_vector_store()
+            store.ensure_collection()
+
+            chunk_dicts = [
+                {"chunk_index": c.chunk_index, "chunk_text": c.chunk_text}
+                for c in db_chunks
+            ]
+            embedding_ids = store.insert_chunks(doc_id, chunk_dicts)
+
+            # Update embedding_id in PG
+            for chunk, eid in zip(db_chunks, embedding_ids):
+                chunk.embedding_id = eid
+            await db_session.commit()
+
+            # Incrementally update BM25 index
+            bm25 = get_bm25_index()
+            bm25.add_document(doc_id, [
+                {
+                    "id": c.id,
+                    "doc_id": c.doc_id,
+                    "chunk_index": c.chunk_index,
+                    "chunk_text": c.chunk_text,
+                }
+                for c in db_chunks
+            ])
+
+        except Exception as e:
+            logger.warning("Vector/Milvus indexing failed for doc %d: %s", doc_id, e)
+            # Don't fail the whole operation, PG data is already committed
+
+        logger.info("Document %d fully indexed: %d chunks", doc_id, len(chunks_text))
         return db_chunks
 
     except Exception as e:

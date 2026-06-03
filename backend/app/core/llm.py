@@ -41,25 +41,20 @@ def _get_doubao() -> AsyncOpenAI:
     return _doubao_client
 
 
-async def chat_deepseek(messages: list[dict], stream: bool = True) -> str:
-    """General Q&A via DeepSeek-V3."""
+async def chat_deepseek_stream(messages: list[dict]):
+    """Streaming DeepSeek-V3 (async generator). Yields tokens."""
     client = _get_deepseek()
     response = await client.chat.completions.create(
         model=settings.llm_default_model,
         messages=messages,
-        stream=stream,
+        stream=True,
         temperature=0.7,
         max_tokens=2048,
     )
-    if stream:
-        collected = []
-        async for chunk in response:
-            delta = chunk.choices[0].delta.content if chunk.choices else ""
-            if delta:
-                collected.append(delta)
-                yield delta
-        return
-    return response.choices[0].message.content
+    async for chunk in response:
+        delta = chunk.choices[0].delta.content if chunk.choices else ""
+        if delta:
+            yield delta
 
 
 async def chat_deepseek_sync(messages: list[dict]) -> str:
@@ -126,6 +121,19 @@ async def analyze_sentiment(text: str) -> tuple[float, str]:
         return data["score"], data["label"]
     except Exception:
         return 0.5, "neutral"
+
+
+async def chat_qwen_long(messages: list[dict]) -> str:
+    """Long context summary via Qwen-Long."""
+    client = _get_doubao()  # Qwen-Long via OpenAI-compatible endpoint
+    response = await client.chat.completions.create(
+        model=settings.llm_summary_model,
+        messages=messages,
+        stream=False,
+        temperature=0.5,
+        max_tokens=4096,
+    )
+    return response.choices[0].message.content
 
 
 async def verify_facts(question: str, answer: str, context: str) -> bool:
