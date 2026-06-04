@@ -37,7 +37,8 @@
       "Bash(curl *)",
       "Bash(node -e ' *)",
       "Bash(xxd)",
-      "Bash(xxd \"E:/03_Projects/software-cup/frontend/public/models/haru/haru_greeter_t03.2048/texture_00.png\")"
+      "Bash(xxd \"E:/03_Projects/software-cup/frontend/public/models/haru/haru_greeter_t03.2048/texture_00.png\")",
+      "Bash(git config *)"
     ]
   }
 }
