@@ -288,7 +288,7 @@ const ChatPage: React.FC = () => {
           phonemes={phonemes}
           width={isMobile ? 180 : 320}
           height={isMobile ? 240 : 500}
-          onReady={() => console.log('[ChatPage] Digital human ready')}
+          onReady={() => {}}
         />
       </div>
 

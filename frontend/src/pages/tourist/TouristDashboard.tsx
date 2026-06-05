@@ -145,7 +145,7 @@ const TouristDashboard: React.FC = () => {
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
             <PhotoCapture
               onResult={handleVisionResult}
-              onError={(err) => console.error('[TouristDashboard]', err)}
+              onError={() => {}}
             />
           </div>
         </div>
