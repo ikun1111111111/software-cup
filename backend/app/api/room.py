@@ -5,6 +5,7 @@ import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
+from app.core.database import async_session
 
 from app.services.room_service import (
     create_room,
@@ -14,6 +15,7 @@ from app.services.room_service import (
     update_itinerary,
     delete_room,
     refresh_room_ttl,
+    add_spot_to_itinerary,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,6 +33,20 @@ class JoinRoomRequest(BaseModel):
 
 
 class ItineraryUpdateRequest(BaseModel):
+    itinerary: list[dict]
+
+
+class AddSpotRequest(BaseModel):
+    spot_name: str
+    source: str = "manual"
+    confidence: float = 1.0
+    note: str = ""
+
+
+class AddSpotResponse(BaseModel):
+    status: str
+    spot_name: str
+    itinerary_count: int
     itinerary: list[dict]
 
 
@@ -96,6 +112,47 @@ async def sync_itinerary(room_id: str, request: ItineraryUpdateRequest):
     except Exception as e:
         logger.error("Itinerary update failed: %s", e)
         raise HTTPException(status_code=500, detail="行程更新失败")
+
+
+@router.post("/{room_id}/itinerary/add-spot", response_model=AddSpotResponse)
+async def add_spot_to_room_itinerary(room_id: str, request: AddSpotRequest):
+    """Add a single scenic spot to the room's shared itinerary.
+
+    Automatically broadcasts `spot_added` to all room members via WebSocket.
+    Sources: "vision" (photo recognition), "recommend" (AI recommendation), "manual".
+    """
+    try:
+        room = await add_spot_to_itinerary(
+            room_id=room_id,
+            spot_name=request.spot_name,
+            source=request.source,
+            confidence=request.confidence,
+            note=request.note,
+        )
+        itinerary = room.get("itinerary", [])
+
+        # Broadcast to all room members
+        await _broadcast_to_room(room_id, {
+            "type": "spot_added",
+            "spot_name": request.spot_name,
+            "source": request.source,
+            "confidence": request.confidence,
+            "note": request.note,
+            "itinerary": itinerary,
+            "timestamp": int(time.time()),
+        })
+
+        return AddSpotResponse(
+            status="ok",
+            spot_name=request.spot_name,
+            itinerary_count=len(itinerary),
+            itinerary=itinerary,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Add spot to itinerary failed: %s", e)
+        raise HTTPException(status_code=500, detail="添加景点失败")
 
 
 @router.delete("/{room_id}")
@@ -174,12 +231,43 @@ async def room_websocket(websocket: WebSocket, room_id: str):
             elif msg_type == "chat":
                 question = data.get("question", "").strip()
                 if question:
+                    # Broadcast the question to all members
                     await _broadcast_to_room(room_id, {
                         "type": "chat_broadcast",
                         "from": member_name,
                         "question": question,
                         "timestamp": int(time.time()),
                     })
+                    # Process through LLM + RAG and broadcast answer
+                    try:
+                        from app.services.chat_service import process_chat
+                        from app.core.database import async_session
+                        async with async_session() as db_session:
+                            chat_result = await process_chat(
+                                question=question,
+                                session_id=f"room_{room_id}",
+                                db_session=db_session,
+                                stream=False,
+                            )
+                        answer = chat_result.get("answer", "抱歉，暂时无法回答")
+                        await _broadcast_to_room(room_id, {
+                            "type": "chat_answer",
+                            "from": "AI导游",
+                            "question": question,
+                            "answer": answer,
+                            "source": chat_result.get("source", "rag"),
+                            "timestamp": int(time.time()),
+                        })
+                    except Exception as e:
+                        logger.error("Room LLM chat failed: %s", e)
+                        await _broadcast_to_room(room_id, {
+                            "type": "chat_answer",
+                            "from": "AI导游",
+                            "question": question,
+                            "answer": "抱歉，暂时无法回答。请稍后重试。",
+                            "source": "fallback",
+                            "timestamp": int(time.time()),
+                        })
 
             elif msg_type == "itinerary_update":
                 itinerary = data.get("itinerary", [])

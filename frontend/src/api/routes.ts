@@ -22,3 +22,32 @@ export const listRoutes = (routeType?: string) => {
 export const getRouteById = (id: string) => {
   return request.get<TourRouteDetail>(`/routes/${id}`);
 };
+
+export interface RecommendationResult {
+  route_id: string;
+  route_name: string;
+  score: number;
+  reason: string;
+  matched_interests: string[];
+}
+
+export interface RecommendRequest {
+  interests?: string[];
+  session_id?: string;
+  lat?: number;
+  lng?: number;
+}
+
+/**
+ * Get AI-powered personalized route recommendations.
+ */
+export const getRecommendations = (params?: RecommendRequest) => {
+  return request.post<RecommendationResult[]>('/recommend/routes', params || {});
+};
+
+/**
+ * Submit recommendation feedback for model improvement.
+ */
+export const submitRecommendFeedback = (routeId: string, rating: number) => {
+  return request.post('/recommend/feedback', { route_id: routeId, rating });
+};

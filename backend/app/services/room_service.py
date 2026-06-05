@@ -115,6 +115,81 @@ async def delete_room(room_id: str) -> bool:
     return deleted > 0
 
 
+async def add_spot_to_itinerary(
+    room_id: str,
+    spot_name: str,
+    source: str = "manual",
+    confidence: float = 1.0,
+    note: str = "",
+) -> dict:
+    """Add a single scenic spot to the room's shared itinerary.
+
+    Args:
+        room_id: The room identifier.
+        spot_name: Name of the scenic spot to add.
+        source: Source of the addition — "vision", "recommend", or "manual".
+        confidence: Confidence score (0-1) for vision-based additions.
+        note: Optional note for the spot entry.
+
+    Returns:
+        Updated room data dict.
+
+    Raises:
+        ValueError: If room doesn't exist, confidence too low, or spot unknown.
+    """
+    from datetime import datetime
+
+    redis = await get_redis()
+    room_data = await redis.get(_room_key(room_id))
+    if not room_data:
+        raise ValueError("房间不存在或已过期")
+
+    if confidence < 0.3:
+        raise ValueError(f"可信度过低 ({confidence:.0%})，无法同步该景点")
+
+    if not spot_name or not spot_name.strip():
+        raise ValueError("景点名称不能为空")
+
+    if spot_name in ("未知景点", "识别失败", "未知"):
+        raise ValueError("无法识别该景点，请重新拍照")
+
+    room = json.loads(room_data)
+    itinerary: list = room.get("itinerary", [])
+
+    # Deduplicate: skip if same spot already in itinerary
+    if any(
+        item.get("spot_name", "").strip() == spot_name.strip()
+        for item in itinerary
+    ):
+        logger.info(
+            "Spot '%s' already in room %s itinerary, skipping", spot_name, room_id
+        )
+        return room
+
+    # Create spot entry
+    now = datetime.now()
+    spot_entry = {
+        "spot_name": spot_name.strip(),
+        "time": now.strftime("%H:%M"),
+        "source": source,
+        "confidence": confidence,
+        "note": note,
+        "added_at": int(time.time()),
+    }
+    itinerary.append(spot_entry)
+    room["itinerary"] = itinerary
+
+    await redis.set(
+        _room_key(room_id), json.dumps(room, ensure_ascii=False), ex=ROOM_TTL
+    )
+
+    logger.info(
+        "Spot '%s' added to room %s itinerary (source=%s, confidence=%.2f)",
+        spot_name, room_id, source, confidence,
+    )
+    return room
+
+
 async def refresh_room_ttl(room_id: str) -> None:
     """Refresh room TTL on activity."""
     redis = await get_redis()

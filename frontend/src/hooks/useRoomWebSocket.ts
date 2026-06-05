@@ -12,6 +12,25 @@ interface UseRoomWebSocketOptions {
   onMemberJoined?: (member: { name: string; joined_at: number }) => void;
   onMemberLeft?: (memberName: string) => void;
   onItineraryUpdate?: (itinerary: any[], from: string) => void;
+  onSpotAdded?: (spot: {
+    spot_name: string;
+    source: string;
+    confidence: number;
+    note: string;
+    itinerary: any[];
+    timestamp: number;
+  }) => void;
+  onChatAnswer?: (answer: {
+    from: string;
+    question: string;
+    answer: string;
+    timestamp: number;
+  }) => void;
+  onChatBroadcast?: (chat: {
+    from: string;
+    question: string;
+    timestamp: number;
+  }) => void;
   onRoomState?: (state: { members: any[]; itinerary: any[] }) => void;
   onError?: (error: string) => void;
 }
@@ -24,6 +43,9 @@ export function useRoomWebSocket(options: UseRoomWebSocketOptions) {
     onMemberJoined,
     onMemberLeft,
     onItineraryUpdate,
+    onSpotAdded,
+    onChatAnswer,
+    onChatBroadcast,
     onRoomState,
     onError,
   } = options;
@@ -75,6 +97,32 @@ export function useRoomWebSocket(options: UseRoomWebSocketOptions) {
           case 'itinerary_update':
             setItinerary(msg.itinerary || []);
             onItineraryUpdate?.(msg.itinerary, msg.from);
+            break;
+          case 'spot_added':
+            setItinerary(msg.itinerary || []);
+            onSpotAdded?.({
+              spot_name: msg.spot_name,
+              source: msg.source,
+              confidence: msg.confidence,
+              note: msg.note,
+              itinerary: msg.itinerary,
+              timestamp: msg.timestamp,
+            });
+            break;
+          case 'chat_answer':
+            onChatAnswer?.({
+              from: msg.from,
+              question: msg.question,
+              answer: msg.answer,
+              timestamp: msg.timestamp,
+            });
+            break;
+          case 'chat_broadcast':
+            onChatBroadcast?.({
+              from: msg.from,
+              question: msg.question,
+              timestamp: msg.timestamp,
+            });
             break;
           case 'error':
             onError?.(msg.message);

@@ -1,18 +1,48 @@
 import React, { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from 'antd';
-import { MessageOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { MessageOutlined, ArrowLeftOutlined, TeamOutlined } from '@ant-design/icons';
 import PhotoCapture from '../../components/Vision/PhotoCapture';
+import VisionSyncButton from '../../components/Room/VisionSyncButton';
+import { useVisionRoomSync } from '../../hooks/useVisionRoomSync';
 import type { VisionResult } from '../../api/vision';
 
 const VisionPage: React.FC = () => {
   const navigate = useNavigate();
   const [isMobile] = useState(window.innerWidth < 768);
   const [lastResult, setLastResult] = useState<VisionResult | null>(null);
+  const [roomId, setRoomId] = useState<string | null>(
+    () => sessionStorage.getItem('active_room_id'),
+  );
+
+  // Listen for room changes from other tabs/components
+  React.useEffect(() => {
+    const handler = () => {
+      setRoomId(sessionStorage.getItem('active_room_id'));
+    };
+    window.addEventListener('room_changed', handler);
+    window.addEventListener('storage', handler);
+    return () => {
+      window.removeEventListener('room_changed', handler);
+      window.removeEventListener('storage', handler);
+    };
+  }, []);
+
+  const { syncing, syncToRoom } = useVisionRoomSync({
+    roomId,
+    onSuccess: (result) => {
+      console.log('[VisionPage] Synced to room:', result);
+    },
+  });
 
   const handleResult = useCallback((result: VisionResult) => {
     setLastResult(result);
   }, []);
+
+  const handleSyncToRoom = useCallback(() => {
+    if (!lastResult) return;
+    syncToRoom(lastResult.spot_name, lastResult.confidence);
+  }, [lastResult, syncToRoom]);
 
   const handleGoToChat = useCallback(() => {
     if (lastResult) {
@@ -25,6 +55,10 @@ const VisionPage: React.FC = () => {
       });
     }
   }, [lastResult, navigate]);
+
+  const handleGoToRoom = useCallback(() => {
+    navigate('/room');
+  }, [navigate]);
 
   return (
     <div data-testid="vision-page" className="celadon-mountain-bg" style={{
@@ -54,9 +88,32 @@ const VisionPage: React.FC = () => {
           fontSize: isMobile ? '15px' : '16px',
           fontWeight: 600,
           color: 'var(--text-primary)',
+          flex: 1,
         }}>
           拍照识景点
         </div>
+        {!roomId && (
+          <Button
+            type="text"
+            icon={<TeamOutlined />}
+            onClick={handleGoToRoom}
+            style={{
+              fontSize: '13px',
+              color: 'var(--text-tertiary)',
+            }}
+          >
+            加入房间
+          </Button>
+        )}
+        {roomId && (
+          <span style={{
+            fontSize: '13px',
+            color: 'var(--color-primary)',
+            fontWeight: 500,
+          }}>
+            房间 {roomId}
+          </span>
+        )}
       </div>
 
       <div style={{
@@ -90,7 +147,9 @@ const VisionPage: React.FC = () => {
           backgroundColor: 'var(--surface-card)',
           display: 'flex',
           justifyContent: 'center',
+          gap: '12px',
           flexShrink: 0,
+          flexWrap: 'wrap',
         }}>
           <Button
             type="primary"
@@ -108,6 +167,13 @@ const VisionPage: React.FC = () => {
           >
             去对话页听数字人讲解
           </Button>
+          <VisionSyncButton
+            spotName={lastResult.spot_name}
+            confidence={lastResult.confidence}
+            onSync={handleSyncToRoom}
+            syncing={syncing}
+            roomId={roomId}
+          />
         </div>
       )}
     </div>

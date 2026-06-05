@@ -46,3 +46,31 @@ export async function identifySpotOnly(imageFile: File): Promise<IdentifyOnlyRes
 
   return (response as any).data;
 }
+
+export interface SyncToRoomParams {
+  room_id: string;
+  spot_name: string;
+  confidence: number;
+  note?: string;
+}
+
+export interface SyncToRoomResult {
+  status: string;
+  room_id: string;
+  spot_name: string;
+  confidence: number;
+  itinerary_count: number;
+}
+
+/**
+ * Sync a vision-identified scenic spot to a collaborative room.
+ */
+export async function syncSpotToRoom(params: SyncToRoomParams): Promise<SyncToRoomResult> {
+  const response = await request.post<SyncToRoomResult>('/vision/sync-to-room', {
+    room_id: params.room_id,
+    spot_name: params.spot_name,
+    confidence: params.confidence,
+    note: params.note || '',
+  });
+  return (response as any).data;
+}

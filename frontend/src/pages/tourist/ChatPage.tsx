@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Input, Button } from 'antd';
-import { SendOutlined, BookOutlined } from '@ant-design/icons';
+import { useLocation } from 'react-router-dom';
+import { Input, Button, Tag } from 'antd';
+import { SendOutlined, BookOutlined, TeamOutlined } from '@ant-design/icons';
 import ChatBubble from '../../components/DigitalHuman/ChatBubble';
 import VoiceInput from '../../components/DigitalHuman/VoiceInput';
 import DigitalHuman from '../../components/DigitalHuman/DigitalHuman';
@@ -28,13 +29,31 @@ const QUICK_QUESTIONS = [
 ];
 
 const ChatPage: React.FC = () => {
+  const location = useLocation();
   const [inputText, setInputText] = useState('');
   const [emotion, setEmotion] = useState<Emotion>('neutral');
   const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(false);
   const [audioChunks, setAudioChunks] = useState<string[]>([]);
   const [phonemes, setPhonemes] = useState<PhonemeTimestamp[] | null>(null);
   const [storyLoading, setStoryLoading] = useState(false);
+  const [roomId, setRoomId] = useState<string | null>(
+    () => sessionStorage.getItem('active_room_id'),
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Handle vision → chat navigation
+  const fromVision = (location.state as any)?.fromVision;
+  const visionSpotName = (location.state as any)?.spotName;
+  const visionExplanation = (location.state as any)?.explanation;
+
+  // Listen for room changes
+  useEffect(() => {
+    const handler = () => {
+      setRoomId(sessionStorage.getItem('active_room_id'));
+    };
+    window.addEventListener('room_changed', handler);
+    return () => window.removeEventListener('room_changed', handler);
+  }, []);
   const {
     messages,
     currentSessionId,
@@ -122,6 +141,17 @@ const ChatPage: React.FC = () => {
       setCurrentSession(`session_${Date.now()}`);
     }
   }, [currentSessionId, setCurrentSession]);
+
+  // Auto-trigger question when arriving from VisionPage
+  useEffect(() => {
+    if (fromVision && visionSpotName) {
+      const question = `介绍一下${visionSpotName}`;
+      doSend(question);
+      // Clear location state to avoid re-triggering
+      window.history.replaceState({}, document.title);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const doSend = useCallback((text: string) => {
     if (!text.trim() || isStreaming) return;
@@ -394,6 +424,20 @@ const ChatPage: React.FC = () => {
                 }}>
                   可以为你介绍景点、推荐路线、解答问题
                 </div>
+                {roomId && (
+                  <Tag
+                    icon={<TeamOutlined />}
+                    color="orange"
+                    style={{
+                      marginTop: '10px',
+                      borderRadius: 'var(--radius-pill)',
+                      fontSize: '13px',
+                      padding: '4px 12px',
+                    }}
+                  >
+                    协同房间 {roomId}
+                  </Tag>
+                )}
               </div>
 
               <div className="scroll-tags" style={{ justifyContent: 'center', flexWrap: 'wrap' }}>
