@@ -1,241 +1,332 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScanOutlined, CheckCircleOutlined, EnvironmentOutlined } from '@ant-design/icons';
+import { Html5Qrcode } from 'html5-qrcode';
+import { listSpots, type Spot } from '../../api/spots';
 
 export interface QRScanProps {
-  onScan?: (data: string) => void;
+  onScan?: (spot: Spot) => void;
   onError?: (error: string) => void;
 }
 
-const LOCATIONS = [
-  { id: '1', name: '灵山大佛', desc: '核心景点 · 高88米青铜佛像' },
-  { id: '2', name: '梵宫', desc: '标志性建筑 · 佛教文化精髓' },
-  { id: '3', name: '九龙灌浴', desc: '音乐喷泉 · 定时表演' },
-  { id: '4', name: '五印坛城', desc: '藏传佛教 · 曼陀罗建筑' },
-  { id: '5', name: '太湖观景台', desc: '自然风光 · 太湖全景' },
-];
-
-const QRScan: React.FC<QRScanProps> = ({
-  onScan,
-  onError,
-}) => {
+const QRScanCard: React.FC<QRScanProps> = ({ onScan, onError }) => {
   const [scanning, setScanning] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [result, setResult] = useState<Spot | null>(null);
+  const [spots, setSpots] = useState<Spot[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
+  // Load spots from API
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    setLoading(true);
+    listSpots()
+      .then((data) => setSpots(data))
+      .catch(() => setSpots([]))
+      .finally(() => setLoading(false));
   }, []);
 
-  const handleStartScan = useCallback(() => {
+  // Cleanup scanner on unmount
+  useEffect(() => {
+    return () => {
+      scannerRef.current?.stop().catch(() => {});
+    };
+  }, []);
+
+  const handleStartScan = useCallback(async () => {
+    if (!containerRef.current) return;
     setScanning(true);
+    setScanError(null);
     setResult(null);
 
-    setTimeout(() => {
-      const mockResult = 'https://scenic.example.com/location/灵山大佛';
-      setResult(mockResult);
+    const scanner = new Html5Qrcode('qr-reader');
+    scannerRef.current = scanner;
+
+    try {
+      await scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 200, height: 200 } },
+        (decodedText) => {
+          scanner.stop().catch(() => {});
+          setScanning(false);
+
+          let matchedSpot: Spot | undefined;
+          for (const spot of spots) {
+            if (decodedText.includes(spot.id) || decodedText.includes(spot.qr_code || '')) {
+              matchedSpot = spot;
+              break;
+            }
+            if (decodedText.includes(spot.name)) {
+              matchedSpot = spot;
+              break;
+            }
+          }
+          if (matchedSpot) {
+            setResult(matchedSpot);
+            onScan?.(matchedSpot);
+          } else {
+            const msg = `未识别的二维码: ${decodedText}`;
+            setScanError(msg);
+          }
+        },
+        () => {},
+      );
+    } catch (err: any) {
       setScanning(false);
-      onScan?.(mockResult);
-    }, 2000);
+      const msg = err?.message || '无法启动摄像头';
+      setScanError(msg);
+      onError?.(msg);
+    }
+  }, [spots, onScan, onError]);
+
+  const handleStopScan = useCallback(() => {
+    scannerRef.current?.stop().catch(() => {});
+    setScanning(false);
+  }, []);
+
+  const handleLocationSelect = useCallback((spot: Spot) => {
+    setResult(spot);
+    onScan?.(spot);
   }, [onScan]);
 
-  const handleLocationSelect = useCallback((name: string) => {
-    const mockResult = `https://scenic.example.com/location/${encodeURIComponent(name)}`;
-    setResult(mockResult);
-    onScan?.(mockResult);
-  }, [onScan]);
+  const handleReset = useCallback(() => {
+    handleStopScan();
+    setResult(null);
+    setScanError(null);
+  }, [handleStopScan]);
 
   return (
-    <div data-testid="qr-scan" style={{
-      padding: isMobile ? '24px 16px' : '40px 24px',
-      textAlign: 'center',
-      maxWidth: '500px',
-      margin: '0 auto',
-      paddingBottom: isMobile ? '80px' : undefined,
+    <div data-testid="qr-scan-card" style={{
+      padding: '20px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '16px',
+      height: '100%',
     }}>
-      <h2 style={{
-        margin: '0 0 8px 0',
-        fontSize: isMobile ? '18px' : '20px',
-        fontWeight: 700,
-        color: 'var(--text-primary)',
-      }}>
-        扫码定位
-      </h2>
-      <p style={{
-        color: 'var(--text-tertiary)',
-        fontSize: '14px',
-        marginBottom: '28px',
-      }}>
-        扫描景区二维码，获取当前位置讲解
-      </p>
-
-      {/* Scan area with corner decorations */}
-      <div
-        data-testid="scan-area"
-        style={{
-          width: isMobile ? '240px' : '280px',
-          height: isMobile ? '240px' : '280px',
-          margin: '0 auto 28px',
-          border: `2px dashed ${scanning ? 'var(--color-primary)' : 'var(--border-default)'}`,
-          borderRadius: '20px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: scanning
-            ? 'var(--color-primary-bg)'
-            : result
-              ? 'var(--color-success-bg)'
-              : 'var(--surface-card)',
-          transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
-          position: 'relative',
-        }}
-      >
-        {/* Corner decorations */}
-        {!scanning && !result && (
-          <>
-            <div style={{ position: 'absolute', top: -1, left: -1, width: 24, height: 24, borderTop: '3px solid var(--color-primary)', borderLeft: '3px solid var(--color-primary)', borderRadius: '20px 0 0 0' }} />
-            <div style={{ position: 'absolute', top: -1, right: -1, width: 24, height: 24, borderTop: '3px solid var(--color-primary)', borderRight: '3px solid var(--color-primary)', borderRadius: '0 20px 0 0' }} />
-            <div style={{ position: 'absolute', bottom: -1, left: -1, width: 24, height: 24, borderBottom: '3px solid var(--color-primary)', borderLeft: '3px solid var(--color-primary)', borderRadius: '0 0 0 20px' }} />
-            <div style={{ position: 'absolute', bottom: -1, right: -1, width: 24, height: 24, borderBottom: '3px solid var(--color-primary)', borderRight: '3px solid var(--color-primary)', borderRadius: '0 0 20px 0' }} />
-          </>
-        )}
-
-        {scanning ? (
-          <div data-testid="scanning-indicator">
-            <ScanOutlined style={{
-              fontSize: '52px',
-              color: 'var(--color-primary)',
-              marginBottom: '16px',
-            }} spin />
-            <div style={{
-              color: 'var(--color-primary)',
-              fontWeight: 500,
-              fontSize: '15px',
-            }}>
-              扫描中...
-            </div>
-          </div>
-        ) : result ? (
-          <div data-testid="scan-result">
-            <CheckCircleOutlined style={{
-              fontSize: '52px',
-              color: 'var(--color-success)',
-              marginBottom: '16px',
-            }} />
-            <div style={{
-              color: 'var(--color-success)',
-              fontWeight: 600,
-              fontSize: '15px',
-            }}>
-              扫描成功
-            </div>
-            <div style={{
-              fontSize: '12px',
-              color: 'var(--text-tertiary)',
-              marginTop: '8px',
-            }}>
-              {result}
-            </div>
-          </div>
-        ) : (
-          <div data-testid="scan-placeholder">
-            <ScanOutlined style={{
-              fontSize: '52px',
-              color: 'var(--gray-300)',
-              marginBottom: '16px',
-            }} />
-            <div style={{
-              color: 'var(--text-tertiary)',
-              fontSize: '14px',
-            }}>
-              点击下方按钮开始扫描
-            </div>
-          </div>
-        )}
-      </div>
-
-      <button
-        data-testid="scan-btn"
-        onClick={handleStartScan}
-        disabled={scanning}
-        style={{
-          padding: '12px 48px',
-          backgroundColor: scanning ? 'var(--gray-300)' : 'var(--color-primary)',
-          color: '#fff',
-          border: 'none',
-          borderRadius: 'var(--radius-pill)',
-          cursor: scanning ? 'not-allowed' : 'pointer',
-          fontSize: '15px',
-          fontWeight: 600,
-          transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
-          boxShadow: scanning ? 'none' : '0 4px 12px rgba(26, 95, 180, 0.3)',
-          minHeight: 48,
-          marginBottom: '32px',
-        }}
-      >
-        {scanning ? '扫描中...' : '开始扫描'}
-      </button>
-
-      {/* Manual location selection */}
-      {!result && (
-        <div className="animate-fade-in-up" style={{ textAlign: 'left' }}>
-          <p style={{
-            fontSize: '14px',
-            color: 'var(--text-secondary)',
-            marginBottom: '12px',
-            textAlign: 'center',
-          }}>
-            或手动选择位置:
-          </p>
-          <div style={{
+      <div style={{ display: 'flex', gap: '18px', alignItems: 'flex-start' }}>
+        <div
+          ref={containerRef}
+          data-testid="scan-area"
+          style={{
+            width: 140,
+            height: 140,
+            minWidth: 140,
+            borderRadius: 'var(--radius-lg)',
+            border: `2.5px solid ${scanning ? 'var(--color-primary)' : result ? 'var(--color-success)' : 'var(--border-default)'}`,
             display: 'flex',
             flexDirection: 'column',
-            gap: '8px',
-          }}>
-            {LOCATIONS.map((loc) => (
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: scanning
+              ? 'var(--color-primary-bg)'
+              : result
+                ? 'var(--color-success-bg)'
+                : 'var(--surface-card)',
+            transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+            position: 'relative',
+            overflow: 'hidden',
+            cursor: !scanning && !result ? 'pointer' : 'default',
+          }}
+          onClick={!scanning && !result ? handleStartScan : undefined}
+        >
+          {scanning && <div id="qr-reader" style={{ width: '100%', height: '100%' }} />}
+
+          {!scanning && !result && (
+            <>
+              <div style={{ position: 'absolute', top: -1, left: -1, width: 20, height: 20, borderTop: '3px solid var(--color-primary)', borderLeft: '3px solid var(--color-primary)', borderRadius: '12px 0 0 0' }} />
+              <div style={{ position: 'absolute', top: -1, right: -1, width: 20, height: 20, borderTop: '3px solid var(--color-primary)', borderRight: '3px solid var(--color-primary)', borderRadius: '0 12px 0 0' }} />
+              <div style={{ position: 'absolute', bottom: -1, left: -1, width: 20, height: 20, borderBottom: '3px solid var(--color-primary)', borderLeft: '3px solid var(--color-primary)', borderRadius: '0 0 0 12px' }} />
+              <div style={{ position: 'absolute', bottom: -1, right: -1, width: 20, height: 20, borderBottom: '3px solid var(--color-primary)', borderRight: '3px solid var(--color-primary)', borderRadius: '0 0 12px 0' }} />
+            </>
+          )}
+
+          {!scanning && !result && (
+            <ScanOutlined style={{ fontSize: '36px', color: 'var(--gray-300)' }} />
+          )}
+          {result && (
+            <div className="animate-pulse-success">
+              <CheckCircleOutlined style={{ fontSize: '36px', color: 'var(--color-success)' }} />
+            </div>
+          )}
+        </div>
+
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {scanning ? (
+            <div>
+              <div style={{ fontSize: '16px', color: 'var(--color-primary)', fontWeight: 500, marginBottom: '8px' }}>
+                正在扫描...
+              </div>
               <button
-                key={loc.id}
-                onClick={() => handleLocationSelect(loc.name)}
-                className="card-hover"
+                data-testid="scan-cancel-btn"
+                onClick={handleStopScan}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '14px 16px',
+                  padding: '6px 14px',
+                  fontSize: '13px',
                   border: '1px solid var(--border-light)',
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: 'var(--surface-card)',
+                  borderRadius: 'var(--radius-pill)',
+                  background: 'var(--surface-card)',
+                  color: 'var(--text-secondary)',
                   cursor: 'pointer',
-                  textAlign: 'left',
-                  width: '100%',
-                  minHeight: 48,
                 }}
               >
-                <EnvironmentOutlined style={{
-                  color: 'var(--color-primary)',
-                  fontSize: '18px',
-                  flexShrink: 0,
-                }} />
-                <div>
-                  <div style={{
-                    fontWeight: 600,
-                    fontSize: '14px',
-                    color: 'var(--text-primary)',
-                  }}>
-                    {loc.name}
-                  </div>
-                  <div style={{
-                    fontSize: '12px',
-                    color: 'var(--text-tertiary)',
-                    marginTop: '2px',
-                  }}>
-                    {loc.desc}
-                  </div>
-                </div>
+                取消
               </button>
-            ))}
+            </div>
+          ) : scanError ? (
+            <div>
+              <div style={{ fontSize: '14px', color: 'var(--color-error)', marginBottom: '8px' }}>
+                {scanError}
+              </div>
+              <button
+                onClick={handleStartScan}
+                style={{
+                  padding: '6px 14px',
+                  fontSize: '13px',
+                  border: '1px solid var(--color-error)',
+                  borderRadius: 'var(--radius-pill)',
+                  background: 'transparent',
+                  color: 'var(--color-error)',
+                  cursor: 'pointer',
+                }}
+              >
+                重试
+              </button>
+            </div>
+          ) : result ? (
+            <div style={{ animation: 'fadeInUp 250ms ease-out both' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <CheckCircleOutlined style={{ color: 'var(--color-success)', fontSize: '20px' }} />
+                <span style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {result.name}
+                </span>
+              </div>
+              <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                {result.overview}
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={handleReset}
+                  style={{
+                    padding: '8px 18px',
+                    fontSize: '14px',
+                    border: '1px solid var(--border-light)',
+                    borderRadius: 'var(--radius-pill)',
+                    background: 'var(--surface-card)',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  重新扫描
+                </button>
+                <button
+                  onClick={() => onScan?.(result)}
+                  style={{
+                    padding: '8px 18px',
+                    fontSize: '14px',
+                    border: 'none',
+                    borderRadius: 'var(--radius-pill)',
+                    background: 'linear-gradient(135deg, #2D8B57, #4ADE80)',
+                    color: '#fff',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  开始讲解
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: '15px', color: 'var(--text-tertiary)', lineHeight: 1.7 }}>
+              点击扫描框，对准景点二维码
+            </div>
+          )}
+        </div>
+      </div>
+
+      {!result && (
+        <div>
+          <div style={{
+            fontSize: '15px',
+            fontWeight: 600,
+            color: 'var(--text-secondary)',
+            marginBottom: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}>
+            <EnvironmentOutlined style={{ fontSize: '15px' }} />
+            {loading ? '加载景点中...' : '所有景点'}
+          </div>
+          <div style={{
+            display: 'flex',
+            gap: '10px',
+            overflowX: 'auto',
+            paddingBottom: '6px',
+            scrollbarWidth: 'none',
+          }}>
+            {loading
+              ? Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} style={{
+                    minWidth: 100, padding: '14px 16px',
+                    border: '1px solid var(--border-light)', borderRadius: 'var(--radius-lg)',
+                    background: 'var(--surface-card)', textAlign: 'center',
+                    opacity: 0.5,
+                  }}>
+                    <div style={{ fontSize: '14px', fontWeight: 600 }}>加载中...</div>
+                  </div>
+                ))
+              : spots.map((loc, i) => (
+                  <button
+                    key={loc.id}
+                    onClick={() => handleLocationSelect(loc)}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '14px 16px',
+                      minWidth: 100,
+                      border: '1px solid var(--border-light)',
+                      borderRadius: 'var(--radius-lg)',
+                      background: 'var(--surface-card)',
+                      cursor: 'pointer',
+                      transition: 'all 200ms ease',
+                      animation: `fadeInUp 250ms ease-out ${i * 50}ms both`,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--color-primary)';
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--border-light)';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <div style={{
+                      width: 36, height: 36, borderRadius: '50%',
+                      backgroundColor: 'var(--color-primary-bg)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'var(--color-primary)', fontSize: '16px',
+                    }}>
+                      <EnvironmentOutlined />
+                    </div>
+                    <div style={{
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {loc.name}
+                    </div>
+                    <div style={{
+                      fontSize: '12px',
+                      color: 'var(--text-tertiary)',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {loc.category}
+                    </div>
+                  </button>
+                ))}
           </div>
         </div>
       )}
@@ -243,4 +334,4 @@ const QRScan: React.FC<QRScanProps> = ({
   );
 };
 
-export default QRScan;
+export default QRScanCard;
