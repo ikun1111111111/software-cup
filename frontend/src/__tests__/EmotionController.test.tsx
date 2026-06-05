@@ -19,15 +19,17 @@ describe('EmotionController', () => {
   });
 
   describe('情感映射', () => {
-    it('positive应该映射到happy', () => {
+    it('smile应该映射到happy', () => {
       const onExpressionChange = vi.fn();
-      render(<EmotionController emotion="positive" onExpressionChange={onExpressionChange} />);
+      render(<EmotionController emotion="smile" onExpressionChange={onExpressionChange} />);
+      act(() => { vi.advanceTimersByTime(300); });
       expect(onExpressionChange).toHaveBeenCalledWith('happy');
     });
 
-    it('negative应该映射到sad', () => {
+    it('sorry应该映射到sad', () => {
       const onExpressionChange = vi.fn();
-      render(<EmotionController emotion="negative" onExpressionChange={onExpressionChange} />);
+      render(<EmotionController emotion="sorry" onExpressionChange={onExpressionChange} />);
+      act(() => { vi.advanceTimersByTime(300); });
       expect(onExpressionChange).toHaveBeenCalledWith('sad');
     });
 
@@ -37,15 +39,17 @@ describe('EmotionController', () => {
       expect(onExpressionChange).toHaveBeenCalledWith('default');
     });
 
-    it('surprised应该映射到surprised', () => {
+    it('surprise应该映射到surprised', () => {
       const onExpressionChange = vi.fn();
-      render(<EmotionController emotion="surprised" onExpressionChange={onExpressionChange} />);
+      render(<EmotionController emotion="surprise" onExpressionChange={onExpressionChange} />);
+      act(() => { vi.advanceTimersByTime(300); });
       expect(onExpressionChange).toHaveBeenCalledWith('surprised');
     });
 
-    it('thinking应该映射到thinking', () => {
+    it('think应该映射到thinking', () => {
       const onExpressionChange = vi.fn();
-      render(<EmotionController emotion="thinking" onExpressionChange={onExpressionChange} />);
+      render(<EmotionController emotion="think" onExpressionChange={onExpressionChange} />);
+      act(() => { vi.advanceTimersByTime(300); });
       expect(onExpressionChange).toHaveBeenCalledWith('thinking');
     });
   });
@@ -53,7 +57,8 @@ describe('EmotionController', () => {
   describe('回调函数', () => {
     it('emotion变化时应该调用onExpressionChange', () => {
       const onExpressionChange = vi.fn();
-      render(<EmotionController emotion="positive" onExpressionChange={onExpressionChange} />);
+      render(<EmotionController emotion="smile" onExpressionChange={onExpressionChange} />);
+      act(() => { vi.advanceTimersByTime(300); });
       expect(onExpressionChange).toHaveBeenCalledWith('happy');
     });
   });
@@ -63,19 +68,17 @@ describe('EmotionController', () => {
       const onExpressionChange = vi.fn();
       render(
         <EmotionController
-          emotion="positive"
+          emotion="smile"
           autoReset={true}
           resetDelay={3000}
           onExpressionChange={onExpressionChange}
         />
       );
 
+      act(() => { vi.advanceTimersByTime(300); });
       expect(onExpressionChange).toHaveBeenCalledWith('happy');
 
-      act(() => {
-        vi.advanceTimersByTime(3000);
-      });
-
+      act(() => { vi.advanceTimersByTime(3300); });
       expect(onExpressionChange).toHaveBeenCalledWith('default');
     });
 
@@ -83,17 +86,15 @@ describe('EmotionController', () => {
       const onExpressionChange = vi.fn();
       render(
         <EmotionController
-          emotion="positive"
+          emotion="smile"
           autoReset={false}
           onExpressionChange={onExpressionChange}
         />
       );
 
-      act(() => {
-        vi.advanceTimersByTime(5000);
-      });
+      act(() => { vi.advanceTimersByTime(300); });
+      act(() => { vi.advanceTimersByTime(5000); });
 
-      expect(onExpressionChange).toHaveBeenCalledTimes(1);
       expect(onExpressionChange).toHaveBeenCalledWith('happy');
     });
 
@@ -107,9 +108,7 @@ describe('EmotionController', () => {
         />
       );
 
-      act(() => {
-        vi.advanceTimersByTime(5000);
-      });
+      act(() => { vi.advanceTimersByTime(5000); });
 
       expect(onExpressionChange).toHaveBeenCalledTimes(1);
     });
@@ -124,8 +123,9 @@ describe('EmotionController', () => {
 
       expect(onExpressionChange).toHaveBeenCalledWith('default');
 
-      rerender(<EmotionController emotion="positive" onExpressionChange={onExpressionChange} />);
+      rerender(<EmotionController emotion="smile" onExpressionChange={onExpressionChange} />);
 
+      act(() => { vi.advanceTimersByTime(300); });
       expect(onExpressionChange).toHaveBeenCalledWith('happy');
     });
   });

@@ -66,6 +66,16 @@ class Settings(BaseSettings):
 
     # CosyVoice
     cosyvoice_endpoint: str = "http://localhost:5001"
+    tts_stream_chunk_size: int = 4096  # bytes per SSE chunk
+
+    # TTS Voice presets: voice_id -> edge-tts voice mapping
+    tts_voices: dict = {
+        "mandarin": {"speaker_id": "zh-CN-XiaoxiaoNeural", "description": "普通话"},
+        "nanjinghua": {"speaker_id": "zh-CN-XiaoxiaoNeural", "description": "南京话"},
+        "sichuanhua": {"speaker_id": "zh-CN-XiaoxiaoNeural", "description": "四川话"},
+        "male": {"speaker_id": "zh-CN-YunxiNeural", "description": "普通话男声"},
+        "female": {"speaker_id": "zh-CN-XiaoyiNeural", "description": "普通话年轻女声"},
+    }
 
     # RAG
     chunk_size: int = 512

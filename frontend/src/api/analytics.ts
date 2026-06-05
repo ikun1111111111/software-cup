@@ -30,19 +30,19 @@ export interface Report {
 }
 
 export const getSentimentData = (params?: { startDate?: string; endDate?: string }): Promise<SentimentData[]> => {
-  return request.get('/api/analytics/sentiment', params);
+  return request.get('/analytics/sentiment', params);
 };
 
 export const getReport = (): Promise<Report> => {
-  return request.get('/api/analytics/report');
+  return request.get('/analytics/report');
 };
 
 export const getDashboardMetrics = (): Promise<DashboardMetrics> => {
-  return request.get('/api/analytics/metrics');
+  return request.get('/analytics/metrics');
 };
 
 export const getHotQuestions = (): Promise<HotQuestion[]> => {
-  return request.get('/api/analytics/hot-questions');
+  return request.get('/analytics/hot-questions');
 };
 
 export const subscribeRealtime = (callback: (data: DashboardMetrics) => void): (() => void) => {

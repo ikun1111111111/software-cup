@@ -1,26 +1,27 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
-import { ConfigProvider, Drawer } from 'antd';
+import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import {
   MessageOutlined,
   CompassOutlined,
-  QrcodeOutlined,
   DatabaseOutlined,
   RobotOutlined,
   LineChartOutlined,
   DashboardOutlined,
-  MenuOutlined,
-  CloseOutlined,
 } from '@ant-design/icons';
 
 import ChatPage from './pages/tourist/ChatPage';
 import RecommendPage from './pages/tourist/RecommendPage';
-import QRScan from './pages/tourist/QRScan';
+import TouristDashboard from './pages/tourist/TouristDashboard';
 import KnowledgePage from './pages/admin/KnowledgePage';
 import AvatarPage from './pages/admin/AvatarPage';
 import ReportPage from './pages/admin/ReportPage';
 import DashboardPage from './pages/admin/DashboardPage';
+import FloatingAssistant from './components/DigitalHuman/FloatingAssistant';
+import InkEntryOverlay from './components/DigitalHuman/InkEntryOverlay';
+import PushCard from './components/Notification/PushCard';
+import { usePushNotification } from './hooks/usePushNotification';
 
 const theme = {
   token: {
@@ -41,18 +42,6 @@ const theme = {
 function NavBar() {
   const location = useLocation();
   const isAdmin = location.pathname.startsWith('/admin');
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  useEffect(() => {
-    setDrawerOpen(false);
-  }, [location.pathname]);
 
   const navLinks = [
     { to: '/', label: '游客端', icon: <MessageOutlined /> },
@@ -60,12 +49,14 @@ function NavBar() {
   ];
 
   return (
-    <nav style={{
+    <nav className="glass-surface" style={{
       display: 'flex',
       gap: '16px',
-      padding: isMobile ? '0 16px' : '0 24px',
+      padding: '0 24px',
       height: 56,
-      backgroundColor: 'var(--surface-card)',
+      backgroundColor: 'rgba(255, 255, 255, 0.55)',
+      backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)',
       borderBottom: '1px solid var(--border-light)',
       alignItems: 'center',
       boxShadow: '0 1px 4px rgba(26, 22, 20, 0.05)',
@@ -75,7 +66,7 @@ function NavBar() {
     }}>
       <Link to="/" style={{
         fontWeight: 700,
-        fontSize: isMobile ? '15px' : '17px',
+        fontSize: '17px',
         color: 'var(--color-primary)',
         textDecoration: 'none',
         display: 'flex',
@@ -100,8 +91,7 @@ function NavBar() {
         智慧灵山胜境
       </Link>
 
-      {/* Desktop nav */}
-      <div className="hide-mobile" style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
+      <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
         {navLinks.map((link) => {
           const active = link.to === '/'
             ? !isAdmin
@@ -126,68 +116,6 @@ function NavBar() {
           );
         })}
       </div>
-
-      {/* Mobile hamburger */}
-      <button
-        className="hide-desktop"
-        onClick={() => setDrawerOpen(!drawerOpen)}
-        aria-label="菜单"
-        style={{
-          marginLeft: 'auto',
-          width: 44,
-          height: 44,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          color: 'var(--text-primary)',
-          fontSize: '20px',
-          borderRadius: 'var(--radius-md)',
-        }}
-      >
-        {drawerOpen ? <CloseOutlined /> : <MenuOutlined />}
-      </button>
-
-      {/* Mobile drawer */}
-      <Drawer
-        placement="right"
-        open={drawerOpen && isMobile}
-        onClose={() => setDrawerOpen(false)}
-        width={260}
-        styles={{ body: { padding: 0 } }}
-        closable={false}
-      >
-        <div style={{ padding: '16px 0' }}>
-          {navLinks.map((link) => {
-            const active = link.to === '/'
-              ? !isAdmin
-              : location.pathname.startsWith(link.to);
-            return (
-              <Link
-                key={link.to}
-                to={link.to}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                  padding: '14px 24px',
-                  textDecoration: 'none',
-                  color: active ? 'var(--color-primary)' : 'var(--text-primary)',
-                  backgroundColor: active ? 'var(--color-primary-bg)' : 'transparent',
-                  fontWeight: active ? 600 : 400,
-                  fontSize: '15px',
-                  transition: 'all 200ms',
-                }}
-              >
-                {link.icon}
-                {link.label}
-              </Link>
-            );
-          })}
-        </div>
-      </Drawer>
     </nav>
   );
 }
@@ -197,16 +125,18 @@ function TouristNav() {
 
   const links = [
     { to: '/', label: '对话', icon: <MessageOutlined /> },
+    { to: '/explore', label: '探索导览', icon: <CompassOutlined /> },
     { to: '/recommend', label: '推荐路线', icon: <CompassOutlined /> },
-    { to: '/qr-scan', label: '扫码定位', icon: <QrcodeOutlined /> },
   ];
 
   return (
-    <div className="hide-mobile" style={{
+    <div className="glass-surface" style={{
       display: 'flex',
       gap: '6px',
       padding: '10px 24px',
-      backgroundColor: 'var(--surface-card)',
+      backgroundColor: 'rgba(255, 255, 255, 0.55)',
+      backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)',
       borderBottom: '1px solid var(--border-light)',
     }}>
       {links.map((link) => {
@@ -239,58 +169,6 @@ function TouristNav() {
   );
 }
 
-function TouristBottomNav() {
-  const location = useLocation();
-
-  const links = [
-    { to: '/', label: '对话', icon: <MessageOutlined /> },
-    { to: '/recommend', label: '推荐', icon: <CompassOutlined /> },
-    { to: '/qr-scan', label: '扫码', icon: <QrcodeOutlined /> },
-  ];
-
-  return (
-    <nav className="hide-desktop safe-area-bottom" style={{
-      position: 'fixed',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      display: 'flex',
-      backgroundColor: 'var(--surface-card)',
-      borderTop: '1px solid var(--border-light)',
-      zIndex: 'var(--z-sticky)' as any,
-      paddingBottom: 'env(safe-area-inset-bottom)',
-    }}>
-      {links.map((link) => {
-        const active = location.pathname === link.to;
-        return (
-          <Link
-            key={link.to}
-            to={link.to}
-            style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '2px',
-              padding: '8px 0',
-              textDecoration: 'none',
-              color: active ? 'var(--color-primary)' : 'var(--text-tertiary)',
-              fontSize: '11px',
-              fontWeight: active ? 600 : 400,
-              transition: 'color 200ms',
-              minHeight: 48,
-            }}
-          >
-            <span style={{ fontSize: '20px' }}>{link.icon}</span>
-            {link.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
-
 function AdminNav() {
   const location = useLocation();
 
@@ -302,11 +180,13 @@ function AdminNav() {
   ];
 
   return (
-    <div style={{
+    <div className="glass-surface" style={{
       display: 'flex',
       gap: '6px',
       padding: '10px var(--container-padding)',
-      backgroundColor: 'var(--surface-card)',
+      backgroundColor: 'rgba(255, 255, 255, 0.55)',
+      backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)',
       borderBottom: '1px solid var(--border-light)',
       overflowX: 'auto',
       scrollbarWidth: 'none',
@@ -348,6 +228,12 @@ function AdminNav() {
 function App() {
   const location = useLocation();
   const isDashboard = location.pathname === '/admin/dashboard';
+  const isAdmin = location.pathname.startsWith('/admin');
+
+  const { notification: pushNotification, handleListen, handleNavigate, dismiss: dismissPush } = usePushNotification({
+    userId: 'guest',
+    enabled: !isAdmin && !isDashboard,
+  });
 
   useEffect(() => {
     document.documentElement.setAttribute(
@@ -363,37 +249,32 @@ function App() {
     <ConfigProvider locale={zhCN} theme={theme}>
       <div style={{
         minHeight: '100vh',
-        backgroundColor: 'var(--surface-bg)',
+        backgroundColor: 'transparent',
         color: 'var(--text-primary)',
         transition: 'background-color 300ms',
       }}>
         <NavBar />
 
         <Routes>
-          {/* Tourist routes */}
           <Route path="/" element={
             <>
               <TouristNav />
               <ChatPage />
-              <TouristBottomNav />
             </>
           } />
           <Route path="/recommend" element={
             <>
               <TouristNav />
               <RecommendPage />
-              <TouristBottomNav />
             </>
           } />
-          <Route path="/qr-scan" element={
+          <Route path="/explore" element={
             <>
               <TouristNav />
-              <QRScan />
-              <TouristBottomNav />
+              <TouristDashboard />
             </>
           } />
 
-          {/* Admin routes */}
           <Route path="/admin" element={<><AdminNav /><KnowledgePage /></>} />
           <Route path="/admin/avatar" element={<><AdminNav /><AvatarPage /></>} />
           <Route path="/admin/report" element={<><AdminNav /><ReportPage /></>} />
@@ -401,6 +282,36 @@ function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundImage: "url('/image/AigcAssets(3).png')",
+            backgroundSize: 'cover',
+            backgroundPosition: 'center 75%',
+            backgroundRepeat: 'no-repeat',
+            pointerEvents: 'none',
+            zIndex: -1,
+            opacity: 0.45,
+          }}
+        />
+
+        <FloatingAssistant />
+
+        {!isAdmin && <InkEntryOverlay />}
+
+        {pushNotification && (
+          <PushCard
+            notification={pushNotification}
+            onListen={handleListen}
+            onNavigate={handleNavigate}
+            onDismiss={dismissPush}
+          />
+        )}
       </div>
     </ConfigProvider>
   );
