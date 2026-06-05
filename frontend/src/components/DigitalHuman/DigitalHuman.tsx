@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import Live2DStage, { Live2DModelActions } from './Live2DStage';
 import EmotionController, { Emotion } from './EmotionController';
-import LipSync from './LipSync';
+import LipSync, { type Phoneme } from './LipSync';
 import AudioSync from './AudioSync';
 import { useIdleAnimation } from '../../hooks/useIdleAnimation';
 
@@ -10,7 +10,13 @@ export interface DigitalHumanProps {
   width?: number;
   height?: number;
   emotion?: Emotion;
+  /** Direct Live2D expression name (e.g. 'f00', 'f01'). Takes precedence over emotion when set. */
+  expression?: string | null;
   audioUrl?: string;
+  /** Streaming audio chunks as base64 (from TTS SSE). */
+  audioChunks?: string[];
+  /** Phoneme timestamps for lip-sync. */
+  phonemes?: Phoneme[] | null;
   isSpeaking?: boolean;
   onReady?: () => void;
 }
@@ -22,14 +28,17 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
   width = 280,
   height = 380,
   emotion = 'neutral',
+  expression,
   audioUrl,
+  audioChunks,
+  phonemes,
   isSpeaking = false,
   onReady,
 }) => {
   const actionsRef = useRef<Live2DModelActions | null>(null);
-  const [audioAnalyser, setAudioAnalyser] = useState<AnalyserNode | null>(null);
   const [audioData, setAudioData] = useState<Float32Array | null>(null);
-  const rafRef = useRef<number>();
+  const [currentTimeMs, setCurrentTimeMs] = useState(0);
+  const [mouthValue, setMouthValue] = useState(0);
 
   // Idle animations (blinking + breathing)
   const setParam = useCallback((id: string, value: number) => {
@@ -40,7 +49,6 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
 
   // Handle model loaded
   const handleModelLoaded = useCallback((model: any) => {
-    console.log('[DigitalHuman] Model loaded');
     onReady?.();
   }, [onReady]);
 
@@ -49,40 +57,46 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
     actionsRef.current = actions;
   }, []);
 
+  // Direct expression control
+  React.useEffect(() => {
+    if (expression && actionsRef.current) {
+      actionsRef.current.setExpression(expression);
+    }
+  }, [expression]);
+
   // Expression change from EmotionController
   const handleExpressionChange = useCallback((expression: string) => {
     actionsRef.current?.setExpression(expression);
   }, []);
 
-  // Lip sync parameter change
+  // Lip sync parameter change — also track mouth value for debugging
   const handleLipParamChange = useCallback((paramId: string, value: number) => {
     actionsRef.current?.setParameter(paramId, value);
+    if (paramId === 'ParamMouthOpenY') {
+      setMouthValue(value);
+    }
   }, []);
 
-  // Audio playback - extract waveform for lip sync
-  const handleAudioTimeUpdate = useCallback(() => {
-    // When audio plays, generate simulated audio data for lip sync
-    // In production, use Web Audio API AnalyserNode for real waveform
-    if (isSpeaking) {
-      const simulated = new Float32Array(128);
-      for (let i = 0; i < 128; i++) {
-        simulated[i] = (Math.random() * 0.5 + 0.2) * Math.sin(Date.now() / 100);
-      }
-      setAudioData(simulated);
-    } else {
-      setAudioData(null);
-    }
-  }, [isSpeaking]);
+  // Update current time in ms for phoneme matching
+  const handleTimeUpdateMs = useCallback((ms: number) => {
+    setCurrentTimeMs(ms);
+  }, []);
 
-  // Drive lip sync during speech
+  // Fallback audio data generation when no phonemes available
   React.useEffect(() => {
-    if (isSpeaking) {
-      const interval = setInterval(handleAudioTimeUpdate, 50);
+    if (isSpeaking && !phonemes?.length) {
+      const interval = setInterval(() => {
+        const simulated = new Float32Array(128);
+        for (let i = 0; i < 128; i++) {
+          simulated[i] = (Math.random() * 0.5 + 0.2) * Math.sin(Date.now() / 100);
+        }
+        setAudioData(simulated);
+      }, 50);
       return () => clearInterval(interval);
     } else {
       setAudioData(null);
     }
-  }, [isSpeaking, handleAudioTimeUpdate]);
+  }, [isSpeaking, phonemes]);
 
   return (
     <div
@@ -103,23 +117,49 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
         scale={0.18}
         onModelLoaded={handleModelLoaded}
         onModelRef={handleModelRef}
-        onError={(err) => console.error('[DigitalHuman]', err)}
       />
 
-      {/* Emotion Controller (logic only) */}
+      {/* Emotion Controller */}
       <EmotionController
-        emotion={emotion}
-        onExpressionChange={handleExpressionChange}
-        autoReset={true}
+        emotion={expression ? 'neutral' : emotion}
+        onExpressionChange={expression ? undefined : handleExpressionChange}
+        autoReset={!expression}
         resetDelay={5000}
       />
 
-      {/* Lip Sync (logic only) */}
+      {/* Lip Sync */}
       <LipSync
         audioData={audioData}
+        phonemes={phonemes}
+        currentTimeMs={currentTimeMs}
         onParameterChange={handleLipParamChange}
         enabled={isSpeaking}
       />
+
+      {/* Audio Sync */}
+      <AudioSync
+        audioUrl={audioUrl}
+        audioChunks={audioChunks}
+        autoPlay={isSpeaking}
+        onTimeUpdateMs={handleTimeUpdateMs}
+      />
+
+      {/* Debug: mouth value indicator */}
+      <div style={{
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        padding: '3px 8px',
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        borderRadius: 6,
+        fontSize: 11,
+        fontFamily: 'monospace',
+        color: mouthValue > 0.3 ? '#4ade80' : '#f87171',
+        zIndex: 10,
+        pointerEvents: 'none',
+      }}>
+        mouth: {mouthValue.toFixed(2)}
+      </div>
 
       {/* Speaking indicator */}
       {isSpeaking && (

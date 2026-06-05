@@ -43,7 +43,7 @@ const QRScanCard: React.FC<QRScanProps> = ({ onScan, onError }) => {
   useEffect(() => {
     setLoading(true);
     listSpots()
-      .then((res) => setSpots(res.data.data))
+      .then((res) => setSpots(res.data.data ?? []))
       .catch(() => setSpots([]))
       .finally(() => setLoading(false));
   }, []);

@@ -77,14 +77,23 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') {
+        let currentEvent = '';
+      for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            const rawData = line.slice(6);
+            if (rawData === '[DONE]') {
               disconnect();
               return;
             }
-            onMessage?.(data);
+            try {
+              const parsed = JSON.parse(rawData);
+              onMessage?.({ ...parsed, _event: currentEvent });
+            } catch {
+              onMessage?.({ token: rawData, _event: currentEvent });
+            }
+            currentEvent = '';
           }
         }
       }

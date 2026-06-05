@@ -45,45 +45,45 @@ export interface FAQListParams {
 
 // 文档相关API
 export const getDocs = (params?: DocumentListParams) => {
-  return request.get<{ data: Document[]; total: number }>('/api/knowledge/docs', params);
+  return request.get<{ data: Document[]; total: number }>('/knowledge/docs', params);
 };
 
 export const getDocById = (id: string) => {
-  return request.get<Document>(`/api/knowledge/docs/${id}`);
+  return request.get<Document>(`/knowledge/docs/${id}`);
 };
 
 export const uploadDoc = (file: File) => {
   const formData = new FormData();
   formData.append('file', file);
-  return request.post<Document>('/api/knowledge/docs/upload', formData);
+  return request.post<Document>('/knowledge/docs/upload', formData);
 };
 
 export const deleteDoc = (id: string) => {
-  return request.del(`/api/knowledge/docs/${id}`);
+  return request.del(`/knowledge/docs/${id}`);
 };
 
 export const reindexDoc = (id: string) => {
-  return request.post(`/api/knowledge/docs/${id}/reindex`);
+  return request.post(`/knowledge/docs/${id}/reindex`);
 };
 
 // 分块相关API
 export const getChunks = (docId: string) => {
-  return request.get<Chunk[]>(`/api/knowledge/docs/${docId}/chunks`);
+  return request.get<Chunk[]>(`/knowledge/docs/${docId}/chunks`);
 };
 
 // FAQ相关API
 export const getFAQs = (params?: FAQListParams) => {
-  return request.get<{ data: FAQ[]; total: number }>('/api/knowledge/faqs', params);
+  return request.get<{ data: FAQ[]; total: number }>('/knowledge/faqs', params);
 };
 
 export const createFAQ = (data: Omit<FAQ, 'id' | 'createdAt' | 'updatedAt'>) => {
-  return request.post<FAQ>('/api/knowledge/faqs', data);
+  return request.post<FAQ>('/knowledge/faqs', data);
 };
 
 export const updateFAQ = (id: string, data: Partial<FAQ>) => {
-  return request.put<FAQ>(`/api/knowledge/faqs/${id}`, data);
+  return request.put<FAQ>(`/knowledge/faqs/${id}`, data);
 };
 
 export const deleteFAQ = (id: string) => {
-  return request.del(`/api/knowledge/faqs/${id}`);
+  return request.del(`/knowledge/faqs/${id}`);
 };

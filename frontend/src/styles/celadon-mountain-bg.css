@@ -1,0 +1,150 @@
+/* ============================================
+   智慧灵山胜境 · 青绿山水太湖风
+   灵感：太湖碧波、菩提大道、小灵山风水格局
+   ============================================ */
+
+/* ── 青绿山水背景类（页面级根容器使用）── */
+.celadon-mountain-bg {
+  position: relative;
+  overflow: hidden;
+  background:
+    /* 顶部天青色 */
+    linear-gradient(180deg,
+      rgba(180, 210, 228, 0.15) 0%,
+      rgba(180, 210, 228, 0.05) 18%,
+      transparent 38%
+    ),
+    /* 底部青绿山水 */
+    linear-gradient(0deg,
+      rgba(107, 162, 146, 0.08) 0%,
+      rgba(74, 139, 122, 0.04) 22%,
+      transparent 48%
+    ),
+    var(--surface-bg);
+}
+
+/* 远山层 — 天青+茶绿的多层山影 + 呼吸流动 */
+.celadon-mountain-bg::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  pointer-events: none;
+  background:
+    /* 远山1 — 太湖对岸薄雾 */
+    radial-gradient(ellipse 80% 45% at 15% 100%, rgba(184, 212, 227, 0.12) 0%, transparent 70%),
+    /* 远山2 — 青龙山 */
+    radial-gradient(ellipse 60% 50% at 75% 100%, rgba(107, 162, 146, 0.10) 0%, transparent 65%),
+    /* 近山 — 小灵山主峰 */
+    radial-gradient(ellipse 40% 35% at 45% 100%, rgba(74, 139, 122, 0.08) 0%, transparent 60%),
+    /* 梵宫佛塔尖 — 极淡金色暗示 */
+    radial-gradient(ellipse 8% 25% at 48% 100%, rgba(200, 136, 46, 0.04) 0%, transparent 80%);
+  animation: cloudFloat 20s ease-in-out infinite;
+}
+
+/* 太湖水波纹层 */
+.celadon-mountain-bg::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 12%;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='40' viewBox='0 0 300 40'%3E%3Cpath d='M0,20 Q37,16 75,20 Q112,24 150,20 Q187,16 225,20 Q262,24 300,20' stroke='%236BA292' stroke-width='0.6' fill='none' opacity='0.06'/%3E%3Cpath d='M0,28 Q37,25 75,28 Q112,31 150,28 Q187,25 225,28 Q262,31 300,28' stroke='%23B8D4E3' stroke-width='0.4' fill='none' opacity='0.04'/%3E%3Cpath d='M0,35 Q50,33 100,35 Q150,37 200,35 Q250,33 300,35' stroke='%236BA292' stroke-width='0.3' fill='none' opacity='0.03'/%3E%3C/svg%3E");
+  background-size: 300px 40px;
+  background-repeat: repeat-x;
+  animation: waveDrift 15s linear infinite;
+}
+
+/* ── 云海流动动画 ── */
+@keyframes cloudFloat {
+  0%, 100% {
+    opacity: 0.8;
+    transform: translateX(0) scale(1);
+  }
+  25% {
+    opacity: 1;
+    transform: translateX(8px) scale(1.005);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translateX(0) scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: translateX(-8px) scale(1.005);
+  }
+}
+
+/* ── 太湖水波漂移 ── */
+@keyframes waveDrift {
+  0% { background-position: 0 0; }
+  100% { background-position: 300px 0; }
+}
+
+/* ── 金色微光扫过 ── */
+@keyframes goldenSweep {
+  0% { transform: translateX(-100%); opacity: 0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.6; }
+  100% { transform: translateX(200%); opacity: 0; }
+}
+
+.golden-sweep-line {
+  position: relative;
+  overflow: hidden;
+}
+
+.golden-sweep-line::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(200, 136, 46, 0.08),
+    rgba(232, 168, 56, 0.12),
+    rgba(200, 136, 46, 0.08),
+    transparent
+  );
+  animation: goldenSweep 8s ease-in-out infinite;
+  animation-delay: var(--sweep-delay, 0s);
+  pointer-events: none;
+}
+
+/* ── 莲瓣纹装饰边框 ── */
+.lotus-border {
+  position: relative;
+  border-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20'%3E%3Cpath d='M10,0 Q12,8 20,10 Q12,12 10,20 Q8,12 0,10 Q8,8 10,0Z' fill='%23C8882E' opacity='0.15'/%3E%3C/svg%3E") 10 round;
+}
+
+/* ── 深色主题适配 ── */
+[data-theme="dark"] .celadon-mountain-bg {
+  background:
+    linear-gradient(180deg,
+      rgba(26, 35, 50, 0.5) 0%,
+      rgba(15, 20, 25, 0.3) 25%,
+      transparent 45%
+    ),
+    linear-gradient(0deg,
+      rgba(42, 80, 70, 0.12) 0%,
+      rgba(15, 20, 25, 0.8) 35%
+    ),
+    var(--surface-bg);
+}
+
+[data-theme="dark"] .celadon-mountain-bg::before {
+  background:
+    radial-gradient(ellipse 80% 45% at 15% 100%, rgba(42, 80, 70, 0.20) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 50% at 75% 100%, rgba(30, 60, 50, 0.15) 0%, transparent 65%),
+    radial-gradient(ellipse 40% 35% at 45% 100%, rgba(20, 45, 38, 0.12) 0%, transparent 60%);
+}
+
+[data-theme="dark"] .celadon-mountain-bg::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='40' viewBox='0 0 300 40'%3E%3Cpath d='M0,20 Q37,16 75,20 Q112,24 150,20 Q187,16 225,20 Q262,24 300,20' stroke='%236BA292' stroke-width='0.6' fill='none' opacity='0.08'/%3E%3Cpath d='M0,28 Q37,25 75,28 Q112,31 150,28 Q187,25 225,28 Q262,31 300,28' stroke='%23B8D4E3' stroke-width='0.4' fill='none' opacity='0.05'/%3E%3C/svg%3E");
+}

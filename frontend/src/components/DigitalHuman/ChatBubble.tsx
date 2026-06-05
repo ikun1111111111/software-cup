@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Message } from '../../stores/chatStore';
+import { useBrushWrite } from '../../hooks/useBrushWrite';
 
 export interface ChatBubbleProps {
   message: Message;
@@ -25,6 +26,12 @@ const renderContent = (content: string): React.ReactNode => {
 const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isUser }) => {
   const [visible, setVisible] = useState(false);
 
+  // 数字人消息启用毛笔书写效果
+  const brushContent = useBrushWrite(
+    message.content,
+    !isUser && message.status === 'sending'
+  );
+
   useEffect(() => {
     const timer = requestAnimationFrame(() => setVisible(true));
     return () => cancelAnimationFrame(timer);
@@ -45,32 +52,58 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isUser }) => {
   const avatarStyle: React.CSSProperties = {
     width: 36,
     height: 36,
-    borderRadius: 'var(--radius-md)',
+    borderRadius: '50%',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: '14px',
     fontWeight: 700,
     flexShrink: 0,
-    background: isUser
-      ? 'var(--color-primary-bg)'
-      : 'linear-gradient(135deg, #1A5FB4 0%, #3584E4 100%)',
-    color: isUser ? 'var(--color-primary)' : '#fff',
+    ...(isUser
+      ? {
+          background: 'linear-gradient(135deg, #C84B31 0%, #E85D3A 100%)',
+          color: '#fff',
+          boxShadow: '0 2px 8px rgba(200, 75, 49, 0.25)',
+        }
+      : {
+          background: 'linear-gradient(135deg, #1A5FB4 0%, #3584E4 100%)',
+          color: '#fff',
+          boxShadow: '0 2px 8px rgba(26, 95, 180, 0.25)',
+        }),
   };
 
   const contentStyle: React.CSSProperties = {
     maxWidth: '75%',
-    padding: '12px 16px',
-    borderRadius: isUser ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-    backgroundColor: isUser ? 'var(--color-primary)' : 'var(--surface-card)',
-    color: isUser ? '#fff' : 'var(--text-primary)',
+    padding: '12px 18px',
     fontSize: '14px',
     lineHeight: '1.6',
     wordBreak: 'break-word',
-    boxShadow: isUser
-      ? '0 2px 8px rgba(26, 95, 180, 0.2)'
-      : '0 1px 4px rgba(26, 22, 20, 0.06)',
-    border: isUser ? 'none' : '1px solid var(--border-light)',
+    position: 'relative',
+    ...(isUser
+      ? {
+          borderRadius: '20px 20px 4px 20px',
+          background: 'linear-gradient(135deg, #C84B31 0%, #E85D3A 100%)',
+          color: '#fff',
+          boxShadow: '0 2px 8px rgba(200, 75, 49, 0.2)',
+        }
+      : {
+          borderRadius: '20px 20px 20px 4px',
+          background: 'linear-gradient(135deg, #FDFBF7 0%, #F5F3EF 100%)',
+          color: '#2A2520',
+          border: '1px solid #E8E5DF',
+          boxShadow: '0 1px 4px rgba(26, 22, 20, 0.05)',
+        }),
+  };
+
+  /* 数字人消息左侧金色装饰线 */
+  const accentLineStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: -3,
+    top: 12,
+    bottom: 12,
+    width: 3,
+    background: 'linear-gradient(180deg, #C8882E, #E8A838)',
+    borderRadius: 2,
   };
 
   const timeStyle: React.CSSProperties = {
@@ -93,7 +126,8 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isUser }) => {
       </div>
       <div style={{ minWidth: 0 }}>
         <div style={contentStyle}>
-          {renderContent(message.content)}
+          {!isUser && <span style={accentLineStyle} />}
+          {isUser ? renderContent(message.content) : brushContent}
         </div>
         <div style={timeStyle}>{formatTime(message.timestamp)}</div>
         {message.status && message.status !== 'sent' && (

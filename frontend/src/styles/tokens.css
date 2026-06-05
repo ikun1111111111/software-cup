@@ -18,6 +18,14 @@
   --color-accent-light: #E8A838;
   --color-accent-bg: #FDF6E3;
 
+  /* ── Cultural Colors (新中式) ── */
+  --color-vermilion: #C84B31;
+  --color-vermilion-light: #E85D3A;
+  --color-ink: #2A2520;
+  --color-celadon: #6BA292;
+  --color-paper: #F8F6F2;
+  --color-paper-warm: #FDFBF7;
+
   --color-success: #2D8B57;
   --color-success-bg: #E6F7ED;
   --color-warning: #E8A838;
@@ -198,6 +206,24 @@
   }
 }
 
+@keyframes scanLine {
+  0% { top: 0; }
+  50% { top: calc(100% - 2px); }
+  100% { top: 0; }
+}
+
+@keyframes pulseSuccess {
+  0% { transform: scale(0.8); opacity: 0; }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
 @keyframes countUp {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -222,7 +248,7 @@ html, body, #root {
 }
 
 body {
-  background-color: var(--surface-bg);
+  background: transparent;
   color: var(--text-primary);
   line-height: var(--line-height-normal);
 }
@@ -320,8 +346,9 @@ body {
 }
 
 /* ── Visual ── */
+/* ── Glass Surface (毛玻璃) — 用于导航栏、输入区等需要透底的面板 ─ */
 .glass-surface {
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.55) !important;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -366,6 +393,19 @@ body {
 
 .animate-spin {
   animation: spin 1s linear infinite;
+}
+
+.animate-scan-line {
+  animation: scanLine 2.5s ease-in-out infinite;
+}
+
+.animate-pulse-success {
+  animation: pulseSuccess 400ms ease-out both;
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradientShift 6s ease infinite;
 }
 
 /* ── Stagger Delays (for list animations) ── */
@@ -468,6 +508,103 @@ body {
   border-color: var(--color-primary);
   color: var(--color-primary);
   font-weight: 600;
+}
+
+/* ── Seal Button (印章风格) ── */
+.btn-seal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 1.5px solid var(--color-vermilion);
+  background: transparent;
+  color: var(--color-vermilion);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-seal:hover {
+  background: rgba(200, 75, 49, 0.08);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(200, 75, 49, 0.15);
+}
+
+.btn-seal:active {
+  transform: translateY(0);
+}
+
+.btn-seal--filled {
+  background: linear-gradient(135deg, var(--color-vermilion) 0%, var(--color-vermilion-light) 100%);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 2px 8px rgba(200, 75, 49, 0.3);
+}
+
+.btn-seal--filled:hover {
+  box-shadow: 0 4px 16px rgba(200, 75, 49, 0.4);
+}
+
+/* ── Paper Texture (宣纸纹理 → 半透明毛玻璃) ─ */
+.paper-texture {
+  background: rgba(248, 246, 242, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background-image:
+    url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23n)' opacity='0.02'/%3E%3C/svg%3E");
+}
+
+.paper-texture-card {
+  background: linear-gradient(135deg, var(--color-paper-warm) 0%, var(--color-paper) 100%);
+  background-image:
+    url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+}
+
+/* ── Ink Entry Animation ── */
+@keyframes inkReveal {
+  0% { clip-path: inset(0 100% 0 0); opacity: 0; }
+  30% { opacity: 1; }
+  100% { clip-path: inset(0 0% 0 0); opacity: 1; }
+}
+
+@keyframes inkDrop {
+  0% { transform: scale(0); opacity: 0; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes scrollUnfold {
+  0% { transform: scaleY(0); transform-origin: top; opacity: 0; }
+  60% { transform: scaleY(1.02); opacity: 1; }
+  100% { transform: scaleY(1); opacity: 1; }
+}
+
+.animate-ink-reveal {
+  animation: inkReveal 800ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.animate-ink-drop {
+  animation: inkDrop 500ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.animate-scroll-unfold {
+  animation: scrollUnfold 600ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* ── Brush Write Effect ── */
+@keyframes brushGlow {
+  0% { text-shadow: 0 0 8px rgba(42, 37, 32, 0.4); opacity: 0.7; }
+  50% { text-shadow: 0 0 4px rgba(200, 136, 46, 0.3); }
+  100% { text-shadow: none; opacity: 1; }
+}
+
+@keyframes inkCursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 /* ── Section Card ── */

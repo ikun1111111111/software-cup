@@ -17,12 +17,9 @@ const RecommendPage: React.FC = () => {
   const [routeDetail, setRouteDetail] = useState<TourRouteDetail | null>(null);
   const [spotCache, setSpotCache] = useState<Record<string, SpotDetail>>({});
   const [loading, setLoading] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const isMobile = false; // web-only
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Fetch routes from backend

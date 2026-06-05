@@ -10,13 +10,10 @@ import { useNavigate } from 'react-router-dom';
 
 const TouristDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const isMobile = false; // web-only
   const [lastVisionResult, setLastVisionResult] = useState<VisionResult | null>(null);
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleVisionResult = (result: VisionResult) => {

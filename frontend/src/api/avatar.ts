@@ -29,17 +29,17 @@ export interface Voice {
 }
 
 export const getConfig = (): Promise<AvatarConfig> => {
-  return request.get('/api/avatar/config');
+  return request.get('/avatar/config');
 };
 
 export const updateConfig = (data: Partial<AvatarConfig>): Promise<AvatarConfig> => {
-  return request.put('/api/avatar/config', data);
+  return request.put('/avatar/config', data);
 };
 
 export const getVoices = (): Promise<Voice[]> => {
-  return request.get('/api/avatar/voices');
+  return request.get('/avatar/voices');
 };
 
 export const previewVoice = (voiceId: string): Promise<{ audioUrl: string }> => {
-  return request.post(`/api/avatar/voices/${voiceId}/preview`);
+  return request.post(`/avatar/voices/${voiceId}/preview`);
 };
