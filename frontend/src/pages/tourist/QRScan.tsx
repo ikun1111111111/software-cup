@@ -8,6 +8,25 @@ export interface QRScanProps {
   onError?: (error: string) => void;
 }
 
+/**
+ * Match a decoded QR code text against a list of spots.
+ * Priority: exact ID match > exact QR code match > name fuzzy match.
+ */
+export function matchSpot(decodedText: string, spots: Spot[]): Spot | undefined {
+  for (const spot of spots) {
+    if (decodedText === spot.id) {
+      return spot;
+    }
+    if (spot.qr_code && decodedText === spot.qr_code) {
+      return spot;
+    }
+    if (decodedText.includes(spot.name)) {
+      return spot;
+    }
+  }
+  return undefined;
+}
+
 const QRScanCard: React.FC<QRScanProps> = ({ onScan, onError }) => {
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<Spot | null>(null);
@@ -17,11 +36,14 @@ const QRScanCard: React.FC<QRScanProps> = ({ onScan, onError }) => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const spotsRef = useRef<Spot[]>([]);
+  useEffect(() => { spotsRef.current = spots; }, [spots]);
+
   // Load spots from API
   useEffect(() => {
     setLoading(true);
     listSpots()
-      .then((data) => setSpots(data))
+      .then((res) => setSpots(res.data.data))
       .catch(() => setSpots([]))
       .finally(() => setLoading(false));
   }, []);
@@ -50,17 +72,7 @@ const QRScanCard: React.FC<QRScanProps> = ({ onScan, onError }) => {
           scanner.stop().catch(() => {});
           setScanning(false);
 
-          let matchedSpot: Spot | undefined;
-          for (const spot of spots) {
-            if (decodedText.includes(spot.id) || decodedText.includes(spot.qr_code || '')) {
-              matchedSpot = spot;
-              break;
-            }
-            if (decodedText.includes(spot.name)) {
-              matchedSpot = spot;
-              break;
-            }
-          }
+          const matchedSpot = matchSpot(decodedText, spotsRef.current);
           if (matchedSpot) {
             setResult(matchedSpot);
             onScan?.(matchedSpot);
@@ -77,7 +89,7 @@ const QRScanCard: React.FC<QRScanProps> = ({ onScan, onError }) => {
       setScanError(msg);
       onError?.(msg);
     }
-  }, [spots, onScan, onError]);
+  }, [onScan, onError]);
 
   const handleStopScan = useCallback(() => {
     scannerRef.current?.stop().catch(() => {});
