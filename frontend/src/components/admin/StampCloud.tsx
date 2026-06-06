@@ -31,6 +31,12 @@ const STAMP_COLORS = [
   { bg: '#B85C4F', text: '#FFF' },      // 赭红
 ];
 
+const MIN_FONT_SIZE = 13;
+const MAX_FONT_SIZE = 28;
+const MIN_HEIGHT = 200;
+const BORDER_RADIUS_LARGE = 4;
+const BORDER_RADIUS_SMALL = 2;
+
 const StampCloud: React.FC<StampCloudProps> = ({
   items: propItems,
   onStampClick,
@@ -39,9 +45,7 @@ const StampCloud: React.FC<StampCloudProps> = ({
   const maxValue = Math.max(...items.map((i) => i.value), 1);
 
   const getSize = useCallback((value: number) => {
-    const min = 13;
-    const max = 28;
-    return min + (value / maxValue) * (max - min);
+    return MIN_FONT_SIZE + (value / maxValue) * (MAX_FONT_SIZE - MIN_FONT_SIZE);
   }, [maxValue]);
 
   const stamps = useMemo(() => {
@@ -61,11 +65,11 @@ const StampCloud: React.FC<StampCloudProps> = ({
       justifyContent: 'center',
       alignItems: 'center',
       padding: '24px 16px',
-      minHeight: 200,
+      minHeight: MIN_HEIGHT,
     }}>
-      {stamps.map((stamp) => (
+      {stamps.map((stamp, index) => (
         <button
-          key={stamp.text}
+          key={`${stamp.text}-${index}`}
           onClick={() => onStampClick?.(stamp.text)}
           className="animate-ink-fade"
           style={{
@@ -75,7 +79,7 @@ const StampCloud: React.FC<StampCloudProps> = ({
             color: stamp.color.text,
             backgroundColor: stamp.color.bg,
             border: 'none',
-            borderRadius: stamp.isLarge ? 4 : 2,
+            borderRadius: stamp.isLarge ? BORDER_RADIUS_LARGE : BORDER_RADIUS_SMALL,
             padding: `${stamp.size * 0.35}px ${stamp.size * 0.6}px`,
             cursor: onStampClick ? 'pointer' : 'default',
             transition: 'transform 150ms ease, box-shadow 150ms ease',
@@ -101,7 +105,9 @@ const StampCloud: React.FC<StampCloudProps> = ({
             }
           }}
           onMouseUp={(e) => {
-            e.currentTarget.style.transform = 'scale(1.08)';
+            if (onStampClick) {
+              e.currentTarget.style.transform = 'scale(1.08)';
+            }
           }}
         >
           {stamp.text}
