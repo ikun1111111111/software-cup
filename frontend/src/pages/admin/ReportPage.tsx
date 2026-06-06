@@ -4,9 +4,11 @@ import { message } from 'antd';
 import { Document, Paragraph, TextRun, HeadingLevel, Packer, AlignmentType } from 'docx';
 import { saveAs } from 'file-saver';
 import SentimentChart from '../../components/admin/SentimentChart';
-import WordCloud from '../../components/admin/WordCloud';
 import MarkdownRenderer from '../../components/admin/MarkdownRenderer';
-import GlassCard from '../../components/admin/GlassCard';
+import SealCard from '../../components/admin/SealCard';
+import PaperPanel from '../../components/admin/PaperPanel';
+import InscriptionList from '../../components/admin/InscriptionList';
+import StampCloud from '../../components/admin/StampCloud';
 import PageTransition from '../../components/admin/PageTransition';
 import {
   getTrends,
@@ -274,11 +276,24 @@ const ReportPage: React.FC = () => {
   const blindSpots = report?.content ? parseBlindSpots(report.content) : [];
   const suggestions = report?.content ? parseSuggestions(report.content) : [];
 
+  const blindSpotItems = blindSpots.map((spot, index) => ({
+    id: `blind-${index}`,
+    number: index + 1,
+    text: spot,
+    highlight: index < 3,
+  }));
+
+  const suggestionItems = suggestions.map((suggestion, index) => ({
+    id: `suggestion-${index}`,
+    number: index + 1,
+    text: suggestion,
+    highlight: index < 3,
+  }));
+
   return (
-    <div data-testid="report-page" style={{
+    <div data-testid="report-page" className="animate-scroll-unfold" style={{
       padding: isMobile ? '16px' : '28px',
-      maxWidth: '1200px',
-      margin: '0 auto',
+      paddingLeft: 64,
     }}>
       <PageTransition>
         <div style={{
@@ -290,12 +305,13 @@ const ReportPage: React.FC = () => {
           gap: '12px',
         }}>
           <div>
-            <h1 className="font-serif" style={{
+            <h1 style={{
               margin: '0 0 4px 0',
               fontSize: isMobile ? '20px' : '26px',
               fontWeight: 600,
               color: 'var(--text-primary)',
               letterSpacing: '0.5px',
+              fontFamily: 'var(--font-serif)',
             }}>
               游客感受度报告
             </h1>
@@ -353,31 +369,23 @@ const ReportPage: React.FC = () => {
         </div>
 
         {report?.content && (
-          <GlassCard style={{ marginBottom: 24 }}>
+          <PaperPanel title="报告摘要" withScrollHead style={{ marginBottom: 24 }}>
             <div data-testid="summary-section">
-              <h3 style={{
-                margin: '0 0 10px 0',
-                fontSize: '15px',
-                fontWeight: 600,
-                color: 'var(--text-primary)',
-              }}>
-                报告摘要
-              </h3>
               <MarkdownRenderer content={report.content} />
             </div>
-          </GlassCard>
+          </PaperPanel>
         )}
 
         {!report?.content && !generating && (
-          <GlassCard style={{ marginBottom: 24, padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+          <PaperPanel style={{ marginBottom: 24, padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
             暂无报告，请点击右上角生成
-          </GlassCard>
+          </PaperPanel>
         )}
 
         {generating && !report?.content && (
-          <GlassCard style={{ marginBottom: 24, padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+          <PaperPanel style={{ marginBottom: 24, padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
             报告生成中，请稍候...
-          </GlassCard>
+          </PaperPanel>
         )}
 
         <div style={{
@@ -386,12 +394,12 @@ const ReportPage: React.FC = () => {
           gap: '20px',
           marginBottom: '24px',
         }}>
-          <GlassCard style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
+          <PaperPanel style={{ flex: 1 }}>
             <SentimentChart data={trends} />
-          </GlassCard>
-          <GlassCard style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
-            <WordCloud words={wordCloudData} />
-          </GlassCard>
+          </PaperPanel>
+          <PaperPanel style={{ flex: 1 }}>
+            <StampCloud items={wordCloudData} />
+          </PaperPanel>
         </div>
 
         <div style={{
@@ -399,96 +407,28 @@ const ReportPage: React.FC = () => {
           flexDirection: isMobile ? 'column' : 'row',
           gap: '20px',
         }}>
-          <GlassCard style={{ flex: 1, padding: '20px' }}>
+          <PaperPanel title="盲区发现" style={{ flex: 1 }}>
             <div data-testid="blind-spots">
-              <h3 style={{
-                margin: '0 0 14px 0',
-                fontSize: '15px',
-                fontWeight: 600,
-                color: 'var(--text-primary)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}>
-                <WarningOutlined style={{ color: 'var(--color-error)' }} />
-                盲区发现
-              </h3>
               {blindSpots.length > 0 ? (
-                <ul style={{ margin: 0, padding: '0 0 0 20px', listStyle: 'none' }}>
-                  {blindSpots.map((spot, index) => (
-                    <li key={index} style={{
-                      marginBottom: '10px',
-                      color: 'var(--text-secondary)',
-                      fontSize: '14px',
-                      position: 'relative',
-                      paddingLeft: '14px',
-                      lineHeight: 1.6,
-                    }}>
-                      <span style={{
-                        position: 'absolute',
-                        left: 0,
-                        top: '8px',
-                        width: '6px',
-                        height: '6px',
-                        borderRadius: '50%',
-                        backgroundColor: 'var(--color-error)',
-                      }} />
-                      {spot}
-                    </li>
-                  ))}
-                </ul>
+                <InscriptionList items={blindSpotItems} />
               ) : (
                 <div style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>
                   {report?.content ? '未从报告中解析到盲区数据' : '请生成报告后查看'}
                 </div>
               )}
             </div>
-          </GlassCard>
-          <GlassCard style={{ flex: 1, padding: '20px' }}>
+          </PaperPanel>
+          <PaperPanel title="服务建议" style={{ flex: 1 }}>
             <div data-testid="suggestions">
-              <h3 style={{
-                margin: '0 0 14px 0',
-                fontSize: '15px',
-                fontWeight: 600,
-                color: 'var(--text-primary)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}>
-                <CheckCircleOutlined style={{ color: 'var(--color-success)' }} />
-                服务建议
-              </h3>
               {suggestions.length > 0 ? (
-                <ul style={{ margin: 0, padding: '0 0 0 20px', listStyle: 'none' }}>
-                  {suggestions.map((suggestion, index) => (
-                    <li key={index} style={{
-                      marginBottom: '10px',
-                      color: 'var(--text-secondary)',
-                      fontSize: '14px',
-                      position: 'relative',
-                      paddingLeft: '14px',
-                      lineHeight: 1.6,
-                    }}>
-                      <span style={{
-                        position: 'absolute',
-                        left: 0,
-                        top: '8px',
-                        width: '6px',
-                        height: '6px',
-                        borderRadius: '50%',
-                        backgroundColor: 'var(--color-success)',
-                      }} />
-                      {suggestion}
-                    </li>
-                  ))}
-                </ul>
+                <InscriptionList items={suggestionItems} />
               ) : (
                 <div style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>
                   {report?.content ? '未从报告中解析到建议数据' : '请生成报告后查看'}
                 </div>
               )}
             </div>
-          </GlassCard>
+          </PaperPanel>
         </div>
       </PageTransition>
     </div>
