@@ -190,4 +190,36 @@ describe('VoiceInput', () => {
       expect(mockStartRecording).not.toHaveBeenCalled();
     });
   });
+
+  describe('语速控制', () => {
+    it('点击设置按钮应该显示语速滑块', () => {
+      render(<VoiceInput onSend={mockOnSend} />);
+      fireEvent.click(screen.getByTestId('voice-settings-btn'));
+      expect(screen.getByTestId('speed-control')).toBeDefined();
+      expect(screen.getByTestId('speed-slider')).toBeDefined();
+    });
+
+    it('默认语速应该是1.0', () => {
+      render(<VoiceInput onSend={mockOnSend} />);
+      fireEvent.click(screen.getByTestId('voice-settings-btn'));
+      expect(screen.getByTestId('speed-value').textContent).toBe('1.0x');
+    });
+
+    it('改变语速应该调用onSpeedChange', () => {
+      const onSpeedChange = vi.fn();
+      render(<VoiceInput onSend={mockOnSend} onSpeedChange={onSpeedChange} />);
+      fireEvent.click(screen.getByTestId('voice-settings-btn'));
+      fireEvent.change(screen.getByTestId('speed-slider'), { target: { value: '1.5' } });
+      expect(onSpeedChange).toHaveBeenCalledWith(1.5);
+    });
+  });
+
+  describe('打断功能', () => {
+    it('按下按钮时应该调用onInterrupt', () => {
+      const onInterrupt = vi.fn();
+      render(<VoiceInput onSend={mockOnSend} onInterrupt={onInterrupt} />);
+      fireEvent.mouseDown(screen.getByTestId('voice-button'));
+      expect(onInterrupt).toHaveBeenCalled();
+    });
+  });
 });

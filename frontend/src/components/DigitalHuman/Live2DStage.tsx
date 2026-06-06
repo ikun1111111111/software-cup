@@ -34,6 +34,40 @@ async function loadCubismRuntime() {
     patchMethod('hitTestMoveRecursive');
     patchMethod('hitTestRecursive');
 
+    // Fix: some GPUs (especially integrated) report MAX_TEXTURE_IMAGE_UNITS = 0,
+    // which causes checkMaxIfStatementsInShader(0, gl) to throw.
+    // Override BatchRenderer.prototype.contextChange with a safe version.
+    const BatchRenderer = (pixi as any).BatchRenderer;
+    if (BatchRenderer?.prototype?.contextChange && !(BatchRenderer.prototype.contextChange as any).__safe) {
+      const settings = (pixi as any).settings;
+      const ENV = (pixi as any).ENV;
+      const checkMax = (pixi as any).checkMaxIfStatementsInShader;
+      const origContextChange = BatchRenderer.prototype.contextChange;
+
+      BatchRenderer.prototype.contextChange = function safeContextChange(this: any) {
+        try {
+          // Try original first
+          origContextChange.call(this);
+        } catch {
+          // GPU returned 0 for MAX_TEXTURE_IMAGE_UNITS — build a minimal working state
+          const gl = this.renderer?.gl;
+          const maxTex = gl ? Math.max(gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) || 0, 1) : 1;
+          this.maxTextures = settings?.PREFER_ENV === ENV?.WEBGL_LEGACY ? 1 : maxTex;
+          try {
+            if (checkMax) this.maxTextures = checkMax(this.maxTextures, gl);
+          } catch {
+            // Even clamped value failed — use absolute minimum
+            this.maxTextures = 1;
+          }
+          this._shader = this.shaderGenerator.generateShader(this.maxTextures);
+          for (let i = 0; i < this._packedGeometryPoolSize; i++) {
+            this._packedGeometries[i] = new this.geometryClass();
+          }
+        }
+      };
+      (BatchRenderer.prototype.contextChange as any).__safe = true;
+    }
+
     cubismLoaded = true;
   } catch (e) {
     throw new Error('Live2D Cubism 4 runtime not available. Ensure live2dcubismcore.js is loaded.');
@@ -59,6 +93,8 @@ export interface Live2DStageProps {
   onModelRef?: (actions: Live2DModelActions) => void;
 }
 
+const LAYOUT_TIMEOUT_MS = 3000;
+
 const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
   modelPath,
   width = 300,
@@ -74,6 +110,8 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const appRef = useRef<any>(null);
   const modelRef = useRef<any>(null);
+  // Lip sync values applied via ticker (after idle motion) to avoid override
+  const lipSyncValuesRef = useRef({ mouthOpenY: 0, mouthForm: 0, angleZ: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,9 +124,10 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
       modelRef.current?.motion(group, index);
     },
     setParameter: (id: string, value: number) => {
-      if (modelRef.current?.internalModel?.coreModel) {
-        modelRef.current.internalModel.coreModel.setParameterValueById(id, value);
-      }
+      // Store in ref for ticker-based application (avoids idle motion override)
+      if (id === 'ParamMouthOpenY') lipSyncValuesRef.current.mouthOpenY = value;
+      else if (id === 'ParamMouthForm') lipSyncValuesRef.current.mouthForm = value;
+      else if (id === 'ParamAngleZ') lipSyncValuesRef.current.angleZ = value;
     },
     getModel: () => modelRef.current,
   }), []);
@@ -100,9 +139,9 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         setExpression: (name: string) => modelRef.current?.expression(name),
         motion: (group: string, index?: number) => modelRef.current?.motion(group, index),
         setParameter: (id: string, value: number) => {
-          if (modelRef.current?.internalModel?.coreModel) {
-            modelRef.current.internalModel.coreModel.setParameterValueById(id, value);
-          }
+          if (id === 'ParamMouthOpenY') lipSyncValuesRef.current.mouthOpenY = value;
+          else if (id === 'ParamMouthForm') lipSyncValuesRef.current.mouthForm = value;
+          else if (id === 'ParamAngleZ') lipSyncValuesRef.current.angleZ = value;
         },
         getModel: () => modelRef.current,
       });
@@ -146,16 +185,16 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         await loadCubismRuntime();
         const pixi = await import('pixi.js');
 
-        // Ensure the container has been laid out with real dimensions.
+        // Wait for container to have real dimensions, with a timeout to prevent hangs
         const waitForLayout = () =>
           new Promise<void>((resolve) => {
+            const deadline = Date.now() + LAYOUT_TIMEOUT_MS;
             const check = () => {
+              if (destroyed) return resolve();
               const rect = containerRef.current?.getBoundingClientRect();
-              if (rect && rect.width > 0 && rect.height > 0) {
-                resolve();
-              } else {
-                requestAnimationFrame(check);
-              }
+              if (rect && rect.width > 0 && rect.height > 0) return resolve();
+              if (Date.now() >= deadline) return resolve(); // proceed with whatever size we have
+              requestAnimationFrame(check);
             };
             requestAnimationFrame(check);
           });
@@ -163,23 +202,18 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         await waitForLayout();
         if (destroyed) return;
 
-        // Use actual rendered dimensions from the container
+        // Use actual rendered dimensions, fall back to props if container is zero-sized
         const rect = containerRef.current!.getBoundingClientRect();
-        const w = Math.floor(rect.width);
-        const h = Math.floor(rect.height);
+        const w = Math.floor(rect.width) || width;
+        const h = Math.floor(rect.height) || height;
 
         // Set canvas size explicitly before creating renderer
         canvas.width = w;
         canvas.height = h;
 
-        // Workaround: some GPUs report maxIfStatements=0 which crashes PIXI batch renderer
-        const batchAny = (pixi as any).BatchRenderer;
-        if (batchAny) {
-          batchAny.defaultMaxIfStatements = 64;
-        }
-
-        // Create PIXI Application WITHOUT event system to avoid
-        // pixi-live2d-display compatibility issues with pixi.js v7
+        // Create PIXI Application with verified dimensions
+        // Disable PIXI's event system — pixi-live2d-display v0.4 uses v6 API
+        // (isInteractive() removed in v7). We handle mouse tracking via native DOM events.
         const app = new pixi.Application({
           view: canvas,
           width: w,
@@ -187,9 +221,9 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
           backgroundAlpha: 0,
           antialias: true,
           autoStart: true,
-          // @ts-ignore - events is not in types but works in v7
-          events: undefined,
-        });
+          eventMode: 'none',
+          eventFeatures: { move: false, globalMove: false, click: false, wheel: false },
+        } as any);
 
         appRef.current = app;
 
@@ -203,6 +237,19 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
           model.destroy();
           return;
         }
+
+        // Enable built-in lip sync so our parameter updates are applied on top of idle motion
+        // Register ticker callback to apply lip sync values AFTER idle motion updates
+        app.ticker.add(() => {
+          const v = lipSyncValuesRef.current;
+          const core = model.internalModel?.coreModel;
+          if (!core) return;
+          if (v.mouthOpenY > 0.01 || v.mouthForm > 0.01) {
+            core.setParameterValueById('ParamMouthOpenY', v.mouthOpenY);
+            core.setParameterValueById('ParamMouthForm', v.mouthForm);
+          }
+          core.setParameterValueById('ParamAngleZ', v.angleZ);
+        });
 
         // Auto-fit: scale model to fit entirely within canvas
         model.scale.set(scale);

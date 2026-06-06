@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Input, Button } from 'antd';
+import { useLocation } from 'react-router-dom';
+import { Input, Button, Tag } from 'antd';
 import {
   SendOutlined,
   CompassOutlined,
@@ -9,12 +10,16 @@ import {
   MessageOutlined,
   CloseOutlined,
   BulbOutlined,
+  BookOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import ChatBubble, { TimeDivider, isSameDay } from '../../components/DigitalHuman/ChatBubble';
 import VoiceInput from '../../components/DigitalHuman/VoiceInput';
 import DigitalHuman from '../../components/DigitalHuman/DigitalHuman';
 import { useChatStore, Message } from '../../stores/chatStore';
 import { useSSE } from '../../hooks/useSSE';
+import { getStory } from '../../api/story';
+import { synthesizeSpeech, type PhonemeTimestamp } from '../../api/tts';
 import type { Emotion } from '../../components/DigitalHuman/EmotionController';
 
 /* ================================================================
@@ -23,10 +28,10 @@ import type { Emotion } from '../../components/DigitalHuman/EmotionController';
 
 function detectEmotion(text: string): Emotion {
   if (!text) return 'neutral';
-  if (/[开心高兴棒好赞喜欢满意]/.test(text)) return 'positive';
-  if (/[抱歉遗憾难过不幸问题错]/.test(text)) return 'negative';
-  if (/[？?什么为什么怎么]/.test(text)) return 'thinking';
-  if (/[！!哇厉害惊讶]/.test(text)) return 'surprised';
+  if (/[开心高兴棒好赞喜欢满意]/.test(text)) return 'smile';
+  if (/[抱歉遗憾难过不幸问题错]/.test(text)) return 'sorry';
+  if (/[？?什么为什么怎么]/.test(text)) return 'think';
+  if (/[！!哇厉害惊讶]/.test(text)) return 'surprise';
   return 'neutral';
 }
 
@@ -244,13 +249,40 @@ const ErrorToast: React.FC<{ message: string; onClose: () => void }> = ({ messag
    ================================================================ */
 
 const ChatPage: React.FC = () => {
+  const location = useLocation();
   const [inputText, setInputText] = useState('');
   const [emotion, setEmotion] = useState<Emotion>('neutral');
   const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [inputFocused, setInputFocused] = useState(false);
+  const [audioChunks, setAudioChunks] = useState<string[]>([]);
+  const [phonemes, setPhonemes] = useState<PhonemeTimestamp[] | null>(null);
+  const [storyLoading, setStoryLoading] = useState(false);
+  const [roomId, setRoomId] = useState<string | null>(
+    () => sessionStorage.getItem('active_room_id'),
+  );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<any>(null);
+
+  // Handle vision → chat navigation
+  const fromVision = (location.state as any)?.fromVision;
+  const visionSpotName = (location.state as any)?.spotName;
+
+  // Listen for room changes
+  useEffect(() => {
+    const handler = () => {
+      setRoomId(sessionStorage.getItem('active_room_id'));
+    };
+    window.addEventListener('room_changed', handler);
+    return () => window.removeEventListener('room_changed', handler);
+  }, []);
+
+  // Mobile resize listener
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const {
     messages,
@@ -259,20 +291,41 @@ const ChatPage: React.FC = () => {
     error,
     addMessage,
     updateMessage,
+    updateMessageStatus,
     setStreaming,
     setCurrentSession,
     setError,
     getHistory,
   } = useChatStore();
 
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, []);
+
+  // Call TTS and feed audio to DigitalHuman
+  const speakText = useCallback(async (text: string) => {
+    try {
+      setAudioChunks([]);
+      setPhonemes(null);
+      setIsAvatarSpeaking(true);
+      const result = await synthesizeSpeech(text);
+      if (result.audioChunks.length > 0) {
+        setAudioChunks(result.audioChunks);
+      }
+      if (result.phonemes.length > 0) {
+        setPhonemes(result.phonemes);
+      }
+      // Keep speaking indicator for the audio duration (or min 3s)
+      const duration = result.durationMs || Math.max(text.length * 250, 3000);
+      setTimeout(() => {
+        setIsAvatarSpeaking(false);
+        setAudioChunks([]);
+        setPhonemes(null);
+      }, duration);
+    } catch {
+      // TTS failed — still show speaking animation briefly
+      setTimeout(() => setIsAvatarSpeaking(false), 3000);
+    }
   }, []);
 
   /* ---------- SSE 连接 ---------- */
@@ -293,7 +346,6 @@ const ChatPage: React.FC = () => {
         if (lastMessage && lastMessage.role === 'assistant') {
           latestUpdateMessage(lastMessage.id, msg.data.answer || '');
           latestUpdateStatus(lastMessage.id, 'sent');
-          // 更新 source
           useChatStore.setState((state) => ({
             messages: state.messages.map((m) =>
               m.id === lastMessage.id ? { ...m, source: 'faq' as const } : m
@@ -302,17 +354,16 @@ const ChatPage: React.FC = () => {
         }
         setStreaming(false);
         if (lastMessage) {
-          const detected = detectEmotion(lastMessage.content);
+          const answer = msg.data.answer || '';
+          const detected = detectEmotion(answer);
           setEmotion(detected);
-          setIsAvatarSpeaking(true);
-          setTimeout(() => setIsAvatarSpeaking(false), 3000);
+          speakText(answer);
         }
       } else if (msg.event === 'done') {
         setStreaming(false);
         if (lastMessage) {
           latestUpdateMessage(lastMessage.id, lastMessage.content);
           latestUpdateStatus(lastMessage.id, 'sent');
-          // 从 done 事件中获取 source
           const sourceFromData = msg.data?.source as 'faq' | 'rag' | 'cache' | 'offline' | undefined;
           if (sourceFromData) {
             useChatStore.setState((state) => ({
@@ -323,8 +374,7 @@ const ChatPage: React.FC = () => {
           }
           const detected = detectEmotion(lastMessage.content);
           setEmotion(detected);
-          setIsAvatarSpeaking(true);
-          setTimeout(() => setIsAvatarSpeaking(false), 3000);
+          speakText(lastMessage.content);
         }
       } else if (msg.event === 'error') {
         setError(msg.data.error || '生成回答时出错，请稍后重试');
@@ -349,6 +399,17 @@ const ChatPage: React.FC = () => {
       setCurrentSession(`session_${Date.now()}`);
     }
   }, [currentSessionId, setCurrentSession]);
+
+  // Auto-trigger question when arriving from VisionPage
+  useEffect(() => {
+    if (fromVision && visionSpotName) {
+      const question = `介绍一下${visionSpotName}`;
+      doSend(question);
+      // Clear location state to avoid re-triggering
+      window.history.replaceState({}, document.title);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ---------- 发送消息 ---------- */
   const doSend = useCallback(
@@ -392,6 +453,37 @@ const ChatPage: React.FC = () => {
   const handleSendText = useCallback(() => {
     doSend(inputText);
   }, [inputText, doSend]);
+
+  const handleStory = useCallback(async (spotName: string) => {
+    if (isStreaming || storyLoading) return;
+
+    addMessage({
+      id: `msg_${Date.now()}`,
+      role: 'user',
+      content: `讲一个${spotName}的故事`,
+      timestamp: Date.now(),
+      status: 'sent',
+    });
+    setStoryLoading(true);
+    setEmotion('think');
+
+    try {
+      const result = await getStory(spotName);
+      addMessage({
+        id: `msg_${Date.now() + 1}`,
+        role: 'assistant',
+        content: result.story,
+        timestamp: Date.now(),
+        status: 'sent',
+      });
+      setEmotion(result.emotion as Emotion);
+      speakText(result.story);
+    } catch {
+      // error handled silently
+    } finally {
+      setStoryLoading(false);
+    }
+  }, [isStreaming, storyLoading, addMessage, speakText]);
 
   const handleSendAudio = useCallback(
     (audioBlob: Blob) => {
@@ -531,11 +623,62 @@ const ChatPage: React.FC = () => {
         <DigitalHuman
           emotion={emotion}
           isSpeaking={isAvatarSpeaking}
+          audioChunks={audioChunks}
+          phonemes={phonemes}
           width={isMobile ? 180 : 320}
           height={isMobile ? 240 : 500}
           onReady={() => console.log('[ChatPage] Digital human ready')}
         />
       </div>
+
+      {/* 全息投影底座 */}
+      {!isMobile && (
+        <div style={{
+          position: 'relative',
+          width: 240,
+          height: 48,
+          margin: '-8px auto 0',
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: '50%',
+            background: isAvatarSpeaking
+              ? 'radial-gradient(ellipse at center, rgba(200,75,49,0.18) 0%, rgba(200,75,49,0.06) 40%, transparent 70%)'
+              : 'radial-gradient(ellipse at center, rgba(26,95,180,0.15) 0%, rgba(26,95,180,0.05) 40%, transparent 70%)',
+            animation: isAvatarSpeaking
+              ? 'holoSpeak 1.5s ease-in-out infinite'
+              : 'holoPulse 3s ease-in-out infinite',
+            transition: 'background 500ms ease',
+          }} />
+          <div style={{
+            position: 'absolute',
+            bottom: 4,
+            left: '15%',
+            right: '15%',
+            height: 2,
+            borderRadius: 1,
+            background: isAvatarSpeaking
+              ? 'linear-gradient(90deg, transparent, rgba(200,75,49,0.4), rgba(232,93,58,0.6), rgba(200,75,49,0.4), transparent)'
+              : 'linear-gradient(90deg, transparent, rgba(26,95,180,0.3), rgba(53,132,228,0.5), rgba(26,95,180,0.3), transparent)',
+            transition: 'background 500ms ease',
+          }} />
+          {isAvatarSpeaking && (
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '120%',
+              height: '120%',
+              borderRadius: '50%',
+              border: '1px solid rgba(200,75,49,0.15)',
+              animation: 'holoRipple 2s ease-out infinite',
+            }} />
+          )}
+        </div>
+      )}
 
       {/* 数字人名字标签 */}
       <div
@@ -574,6 +717,21 @@ const ChatPage: React.FC = () => {
           小景 {isAvatarSpeaking ? '正在讲解' : '在线'}
         </span>
       </div>
+
+      <style>{`
+        @keyframes holoPulse {
+          0%, 100% { opacity: 0.6; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.06); }
+        }
+        @keyframes holoSpeak {
+          0%, 100% { opacity: 0.7; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.1); }
+        }
+        @keyframes holoRipple {
+          0% { opacity: 0.6; transform: translate(-50%, -50%) scale(0.8); }
+          100% { opacity: 0; transform: translate(-50%, -50%) scale(1.8); }
+        }
+      `}</style>
     </div>
   );
 
@@ -635,6 +793,20 @@ const ChatPage: React.FC = () => {
               >
                 灵山胜境专属 AI 导游，为你解答景点、路线、美食、门票等各类问题
               </div>
+              {roomId && (
+                <Tag
+                  icon={<TeamOutlined />}
+                  color="orange"
+                  style={{
+                    marginTop: '10px',
+                    borderRadius: 'var(--radius-pill)',
+                    fontSize: '13px',
+                    padding: '4px 12px',
+                  }}
+                >
+                  协同房间 {roomId}
+                </Tag>
+              )}
             </div>
 
             {/* 快捷问题卡片网格 */}
@@ -719,6 +891,79 @@ const ChatPage: React.FC = () => {
                   </div>
                 </button>
               ))}
+              {/* 听故事按钮 */}
+              <button
+                className="animate-fade-in-up"
+                onClick={() => handleStory('灵山大佛')}
+                disabled={storyLoading}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  padding: '14px 14px',
+                  backgroundColor: 'var(--surface-card)',
+                  border: '1.5px solid var(--border-light)',
+                  borderRadius: '14px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+                  boxShadow: '0 1px 4px rgba(26, 22, 20, 0.04)',
+                  opacity: storyLoading ? 0.6 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (storyLoading) return;
+                  e.currentTarget.style.borderColor = '#C84B31';
+                  e.currentTarget.style.boxShadow = '0 2px 12px #C84B3118';
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border-light)';
+                  e.currentTarget.style.boxShadow = '0 1px 4px rgba(26, 22, 20, 0.04)';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                }}
+              >
+                <div
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: '10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'rgba(200, 75, 49, 0.08)',
+                    color: '#C84B31',
+                    fontSize: '14px',
+                    flexShrink: 0,
+                  }}
+                >
+                  <BookOutlined />
+                </div>
+                <div>
+                  <div
+                    style={{
+                      fontSize: '11px',
+                      color: '#C84B31',
+                      fontWeight: 600,
+                      marginBottom: '3px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}
+                  >
+                    故事
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '13px',
+                      color: 'var(--text-primary)',
+                      fontWeight: 500,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {storyLoading ? '生成中...' : '听一个灵山大佛的故事'}
+                  </div>
+                </div>
+              </button>
             </div>
 
             {/* 底部提示 */}

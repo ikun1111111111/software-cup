@@ -8,11 +8,12 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
+    "composite": true,
+    "emitDeclarationOnly": true,
     "strict": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true,
-    "composite": true
+    "noFallthroughCasesInSwitch": true
   },
   "include": ["vite.config.ts"]
 }

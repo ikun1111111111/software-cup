@@ -46,12 +46,9 @@ const MOCK_REPORT: ReportData = {
 const ReportPage: React.FC = () => {
   const [report] = useState<ReportData>(MOCK_REPORT);
   const [exporting, setExporting] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const isMobile = false; // web-only
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleExport = useCallback(() => {

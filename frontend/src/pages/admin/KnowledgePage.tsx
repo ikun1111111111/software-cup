@@ -38,12 +38,9 @@ const KnowledgePage: React.FC = () => {
   const [showUpload, setShowUpload] = useState(false);
   const [showFAQEditor, setShowFAQEditor] = useState(false);
   const [editingFAQ, setEditingFAQ] = useState<FAQ | null>(null);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const isMobile = false; // web-only
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleUploadSuccess = useCallback(() => {

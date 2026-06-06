@@ -4,6 +4,7 @@ import AvatarAppearance from '../../components/admin/AvatarAppearance';
 import VoiceSelector from '../../components/admin/VoiceSelector';
 import WelcomeEditor from '../../components/admin/WelcomeEditor';
 import DigitalHuman from '../../components/DigitalHuman/DigitalHuman';
+import { getModelPath, getExpressionForAppearance } from '../../config/avatarModels';
 import type { AppearanceConfig } from '../../components/admin/AvatarAppearance';
 import type { Voice } from '../../components/admin/VoiceSelector';
 
@@ -36,12 +37,9 @@ const AvatarPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const isMobile = false; // web-only
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleAppearanceChange = useCallback((appearance: AppearanceConfig) => {
@@ -151,9 +149,11 @@ const AvatarPage: React.FC = () => {
           </h3>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <DigitalHuman
+              modelPath={getModelPath(config.appearance.model)}
               width={isMobile ? 180 : 240}
               height={isMobile ? 260 : 340}
               emotion="neutral"
+              expression={getExpressionForAppearance(config.appearance)}
               onReady={() => console.log('[AvatarPage] Preview ready')}
             />
           </div>

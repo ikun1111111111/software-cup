@@ -32,6 +32,17 @@ SYSTEM_PROMPT_SUMMARY = (
     "报告控制在500字以内，使用中文。"
 )
 
+SYSTEM_PROMPT_STORY = (
+    "你是「小景」，一个有温度的数字人导游。请用讲故事的方式讲解这个景点。\n"
+    "要求：\n"
+    "1. 用生动的叙事方式，加入人物、情感、细节，让听众仿佛身临其境\n"
+    "2. 可以从历史典故、建造故事、文化传说等角度切入\n"
+    "3. 语言亲切自然，适合口播朗读，避免生硬的数据罗列\n"
+    "4. 控制在200-300字之间\n"
+    "5. 在故事结尾处自然地加入情感表达，方便数字人配合表情\n"
+    "6. 输出纯文本故事，不要加标题或格式标记"
+)
+
 
 def build_chat_prompt(
     question: str,
@@ -71,3 +82,21 @@ def build_chat_prompt(
 
     messages.append({"role": "user", "content": user_content})
     return messages
+
+
+def build_story_prompt(spot_name: str, context_chunks: list[dict]) -> list[dict]:
+    """Build LLM messages for storytelling narration of a scenic spot."""
+    context_text = "\n\n---\n\n".join(
+        f"[资料片段 {i+1}]\n{c['text']}" for i, c in enumerate(context_chunks)
+    )
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT_STORY},
+        {
+            "role": "user",
+            "content": (
+                f"请为景点「{spot_name}」讲一个动人的故事。\n\n"
+                f"参考资料:\n{context_text}\n\n"
+                f"请开始讲述:"
+            ),
+        },
+    ]

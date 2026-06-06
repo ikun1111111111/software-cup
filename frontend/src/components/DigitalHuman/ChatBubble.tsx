@@ -9,6 +9,8 @@ import {
   SyncOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
+// Brush write hook available from remote — can be integrated later
+// import { useBrushWrite } from '../../hooks/useBrushWrite';
 
 export interface ChatBubbleProps {
   message: Message;
@@ -48,12 +50,6 @@ export const isSameDay = (a: number, b: number): boolean => {
 
 /* ================================================================
    智能文本渲染引擎
-   将纯文本解析为结构化的 React 节点，支持：
-   - 段落分隔（空行识别）
-   - 有序/无序列表
-   - 景点名称高亮
-   - 价格/时间/数字高亮
-   - 引用块（以「」或""包裹的内容）
    ================================================================ */
 
 // 景区相关关键词，用于高亮

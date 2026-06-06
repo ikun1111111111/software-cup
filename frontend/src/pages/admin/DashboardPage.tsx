@@ -27,13 +27,10 @@ const MOCK_DATA: DashboardData = {
 const DashboardPage: React.FC = () => {
   const [data] = useState<DashboardData>(MOCK_DATA);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const isMobile = false; // web-only
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   useEffect(() => {

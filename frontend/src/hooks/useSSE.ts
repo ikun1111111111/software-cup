@@ -86,7 +86,7 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
-        let currentEvent = 'message';
+        let currentEvent = '';
         for (const line of lines) {
           if (line.startsWith('event: ')) {
             currentEvent = line.slice(7).trim();
@@ -102,7 +102,9 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
             } catch {
               // 保持原始字符串
             }
-            onMessage?.({ event: currentEvent, data: parsedData });
+            onMessage?.({ event: currentEvent || 'message', data: parsedData });
+            // Reset event after data line so next data without event uses default
+            currentEvent = '';
           }
         }
       }

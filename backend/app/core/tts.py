@@ -1,7 +1,7 @@
-"""TTS (Text-to-Speech) via CosyVoice with Redis caching.
+"""TTS (Text-to-Speech) via edge-tts with Redis caching.
 
-Provides text-to-audio synthesis with phoneme timestamps.
-When CosyVoice is not available, falls back to a placeholder implementation.
+Provides text-to-audio synthesis with phoneme timestamps for lip-sync.
+Uses Microsoft Edge TTS (free, high quality Chinese voices).
 """
 import logging
 import hashlib
@@ -15,53 +15,91 @@ from app.core.redis_client import get_redis
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# edge-tts voice mapping: voice_id -> edge-tts voice name
+_EDGE_TTS_VOICES = {
+    "mandarin": "zh-CN-XiaoxiaoNeural",     # 标准普通话女声
+    "nanjinghua": "zh-CN-XiaoxiaoNeural",    # 南京话暂用普通话
+    "sichuanhua": "zh-CN-XiaoxiaoNeural",    # 四川话暂用普通话
+    "male": "zh-CN-YunxiNeural",             # 普通话男声
+    "female": "zh-CN-XiaoyiNeural",          # 普通话年轻女声
+}
+
 
 class TTSResult(BaseModel):
     """TTS synthesis result."""
     audio_bytes: bytes
     phoneme_timestamps: list[dict]
-    sample_rate: int = 22050
+    sample_rate: int = 24000
     duration_ms: int = 0
+    audio_format: str = "mp3"
 
 
-# Lazy-loaded CosyVoice client
-_cosyvoice_client = None
+def _classify_mouth_shape(char: str) -> str:
+    """Classify a Chinese character's mouth shape for lip-sync.
+
+    Returns:
+        "open" for characters with a consonant initial (声母) — mouth opens to articulate
+        "half" for semi-vowels (y/w) — moderate opening
+        "closed" for non-CJK characters or silence — mouth stays closed
+    """
+    import pypinyin
+
+    if not char.strip() or not ('一' <= char <= '鿿' or 'ぁ' <= char <= 'ん'):
+        return "closed"
+
+    try:
+        pinyin_list = pypinyin.lazy_pinyin(char, style=pypinyin.Style.INITIALS)
+        initial = pinyin_list[0] if pinyin_list else ""
+
+        if initial in ("b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h",
+                        "j", "q", "x", "zh", "ch", "sh", "z", "c", "s", "r"):
+            return "open"
+        elif initial in ("y", "w"):
+            return "half"
+        else:
+            # No initial (pure vowel like a/o/e) — still open
+            return "open"
+    except Exception:
+        return "half"
 
 
-def _get_cosyvoice_client():
-    """Lazy load CosyVoice client."""
-    global _cosyvoice_client
-    if _cosyvoice_client is None:
-        try:
-            # CosyVoice can be used via grpc/HTTP or direct import
-            # Try importing first
-            import cosyvoice
-            _cosyvoice_client = cosyvoice
-            logger.info("CosyVoice loaded")
-        except ImportError:
-            logger.warning("CosyVoice not installed, will use HTTP fallback")
-            _cosyvoice_client = "http"
-    return _cosyvoice_client
+def _normalize_phonemes(raw_phonemes: list[dict]) -> list[dict]:
+    """Normalize phonemes to PLAN schema."""
+    normalized = []
+    for p in raw_phonemes:
+        if "char" in p and "start_ms" in p:
+            normalized.append(p)
+        elif "phoneme" in p:
+            char = p["phoneme"]
+            start_ms = int(p.get("start", 0) * 1000)
+            end_ms = int(p.get("end", 0) * 1000)
+            normalized.append({
+                "char": char,
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                "mouth_shape": _classify_mouth_shape(char),
+            })
+        else:
+            char = p.get("char", p.get("text", "?"))
+            normalized.append({
+                "char": char,
+                "start_ms": int(p.get("start_ms", p.get("start", 0))),
+                "end_ms": int(p.get("end_ms", p.get("end", 0))),
+                "mouth_shape": p.get("mouth_shape", _classify_mouth_shape(char)),
+            })
+    return normalized
 
 
 def _generate_phoneme_timestamps(text: str, duration_ms: int) -> list[dict]:
     """Generate approximate phoneme timestamps for lip-sync.
 
-    Real implementation should come from CosyVoice's phoneme alignment.
-    This is a fallback that distributes time evenly across characters.
+    Returns PLAN-compliant Phoneme schema:
+        {"char": "你", "start_ms": 0, "end_ms": 250, "mouth_shape": "closed"}
     """
-    import jieba
-
     if not text or duration_ms <= 0:
         return []
 
-    # Segment text into roughly phoneme-level units
-    # For Chinese: each character is a syllable
-    # For mixed text: use jieba + character split
-    segments = []
-    for char in text:
-        if char.strip():
-            segments.append(char)
+    segments = [char for char in text if char.strip()]
 
     if not segments:
         return []
@@ -71,16 +109,27 @@ def _generate_phoneme_timestamps(text: str, duration_ms: int) -> list[dict]:
     current_ms = 0
 
     for seg in segments:
-        start = current_ms / 1000.0
-        end = (current_ms + avg_ms) / 1000.0
+        mouth_shape = _classify_mouth_shape(seg)
         timestamps.append({
-            "phoneme": seg,
-            "start": round(start, 3),
-            "end": round(end, 3),
+            "char": seg,
+            "start_ms": int(current_ms),
+            "end_ms": int(current_ms + avg_ms),
+            "mouth_shape": mouth_shape,
         })
         current_ms += avg_ms
 
     return timestamps
+
+
+def _resolve_voice(voice_id: str | None) -> str:
+    """Resolve voice_id to edge-tts voice name.
+
+    Returns:
+        edge-tts voice name string.
+    """
+    if voice_id and voice_id in _EDGE_TTS_VOICES:
+        return _EDGE_TTS_VOICES[voice_id]
+    return _EDGE_TTS_VOICES["mandarin"]
 
 
 def _cache_key(text: str, voice_id: str | None) -> str:
@@ -100,8 +149,9 @@ async def _get_cached(text: str, voice_id: str | None) -> TTSResult | None:
             return TTSResult(
                 audio_bytes=bytes.fromhex(data["audio_hex"]),
                 phoneme_timestamps=data["phonemes"],
-                sample_rate=data.get("sample_rate", 22050),
+                sample_rate=data.get("sample_rate", 24000),
                 duration_ms=data.get("duration_ms", 0),
+                audio_format=data.get("audio_format", "mp3"),
             )
     except Exception as e:
         logger.debug("TTS cache check failed: %s", e)
@@ -118,73 +168,90 @@ async def _set_cache(text: str, voice_id: str | None, result: TTSResult) -> None
             "phonemes": result.phoneme_timestamps,
             "sample_rate": result.sample_rate,
             "duration_ms": result.duration_ms,
+            "audio_format": result.audio_format,
         }
         await redis.set(key, json.dumps(data), ex=604800)  # 7 days
     except Exception as e:
         logger.debug("TTS cache set failed: %s", e)
 
 
+def _estimate_mp3_duration(audio_bytes: bytes) -> int:
+    """Estimate MP3 duration in milliseconds from file size.
+
+    For edge-tts output (128kbps CBR), this is accurate enough.
+    """
+    if not audio_bytes:
+        return 0
+    # edge-tts produces ~128kbps MP3 = 16000 bytes/sec
+    return int(len(audio_bytes) / 16)
+
+
 async def synthesize(text: str, voice_id: str | None = None) -> TTSResult:
-    """Synthesize text to speech.
+    """Synthesize text to speech using edge-tts.
 
     Args:
         text: Text to synthesize.
         voice_id: Voice preset identifier.
 
     Returns:
-        TTSResult with audio bytes and phoneme timestamps.
-
-    Raises:
-        RuntimeError: If TTS service is not available.
+        TTSResult with MP3 audio bytes and phoneme timestamps.
     """
     if not text or not text.strip():
         return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
 
     try:
-        # Try real CosyVoice
-        client = _get_cosyvoice_client()
+        import edge_tts
 
-        if client == "http":
-            # HTTP fallback to CosyVoice service
-            import httpx
-            async with httpx.AsyncClient() as client_http:
-                response = await client_http.post(
-                    f"{settings.cosyvoice_endpoint}/synthesize",
-                    json={"text": text, "voice": voice_id or "default"},
-                    timeout=30.0,
-                )
-                response.raise_for_status()
-                result_data = response.json()
-                # Assume service returns base64 audio + phonemes
-                import base64
-                audio_bytes = base64.b64decode(result_data["audio"])
-                phonemes = result_data.get("phonemes", [])
-                duration_ms = result_data.get("duration_ms", len(audio_bytes) // 4)
-                if not audio_bytes:
-                    raise RuntimeError("CosyVoice HTTP returned empty audio")
-                return TTSResult(
-                    audio_bytes=audio_bytes,
-                    phoneme_timestamps=phonemes,
-                    duration_ms=duration_ms,
-                )
+        voice = _resolve_voice(voice_id)
+        communicate = edge_tts.Communicate(text, voice)
 
-        # Direct CosyVoice usage
-        # This is placeholder — actual API depends on CosyVoice version
-        logger.info("CosyVoice direct synthesis: %s", text[:30])
-        # Simulate audio generation
-        duration_ms = len(text) * 250  # ~250ms per character (Chinese)
-        audio_bytes = b"\x00" * (duration_ms * 44)  # 44 bytes/ms approx for 22kHz mono
-        phonemes = _generate_phoneme_timestamps(text, duration_ms)
+        audio_chunks = []
+        raw_phonemes = []
+
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_chunks.append(chunk["data"])
+            elif chunk["type"] == "WordBoundary":
+                raw_phonemes.append({
+                    "char": chunk["text"],
+                    "start_ms": chunk["offset"] // 10000,  # 100ns ticks -> ms
+                    "end_ms": (chunk["offset"] + chunk["duration"]) // 10000,
+                    "mouth_shape": _classify_mouth_shape(chunk["text"][0] if chunk["text"] else "?"),
+                })
+
+        audio_bytes = b"".join(audio_chunks)
+        if not audio_bytes:
+            raise RuntimeError("edge-tts returned empty audio")
+
+        # Use real word boundaries if available, otherwise generate approximate ones
+        if raw_phonemes:
+            phonemes = _normalize_phonemes(raw_phonemes)
+        else:
+            duration_ms = _estimate_mp3_duration(audio_bytes)
+            phonemes = _generate_phoneme_timestamps(text, duration_ms)
+
+        duration_ms = _estimate_mp3_duration(audio_bytes)
+
+        logger.info("TTS synthesized: %d bytes, %dms, %d phonemes",
+                     len(audio_bytes), duration_ms, len(phonemes))
+
         return TTSResult(
             audio_bytes=audio_bytes,
             phoneme_timestamps=phonemes,
             duration_ms=duration_ms,
         )
 
+    except ImportError:
+        logger.error("edge-tts not installed. Run: pip install edge-tts")
+        duration_ms = len(text) * 250
+        phonemes = _generate_phoneme_timestamps(text, duration_ms)
+        return TTSResult(
+            audio_bytes=b"",
+            phoneme_timestamps=phonemes,
+            duration_ms=duration_ms,
+        )
     except Exception as e:
         logger.error("TTS synthesis failed: %s", e)
-        # Graceful fallback: return empty audio but valid phonemes for lip-sync
-        # Caller (ws.py) should check audio_bytes and decide whether to play TTS
         duration_ms = len(text) * 250
         phonemes = _generate_phoneme_timestamps(text, duration_ms)
         return TTSResult(
@@ -218,3 +285,56 @@ async def synthesize_cached(text: str, voice_id: str | None = None) -> TTSResult
         await _set_cache(text, voice_id, result)
 
     return result
+
+
+async def synthesize_stream(
+    text: str,
+    voice_id: str | None = None,
+    chunk_size: int = 4096,
+):
+    """Synthesize text to speech with streaming output.
+
+    Yields audio chunks as base64-encoded strings for SSE streaming.
+    Also yields phoneme timestamps at the end.
+
+    Args:
+        text: Text to synthesize.
+        voice_id: Voice preset identifier.
+        chunk_size: Bytes per chunk (default 4KB).
+
+    Yields:
+        dict with either:
+            {"type": "audio", "data": "<base64_chunk>"}
+            {"type": "phonemes", "data": [...]}
+            {"type": "done", "duration_ms": int}
+    """
+    if not text or not text.strip():
+        yield {"type": "done", "duration_ms": 0}
+        return
+
+    # Check cache first
+    cached = await _get_cached(text, voice_id)
+    if cached and cached.audio_bytes:
+        import base64
+        audio = cached.audio_bytes
+        for i in range(0, len(audio), chunk_size):
+            chunk = audio[i:i + chunk_size]
+            yield {"type": "audio", "data": base64.b64encode(chunk).decode("utf-8")}
+        yield {"type": "phonemes", "data": cached.phoneme_timestamps}
+        yield {"type": "done", "duration_ms": cached.duration_ms}
+        return
+
+    # Fresh synthesis
+    result = await synthesize(text, voice_id)
+
+    if result.audio_bytes:
+        import base64
+        audio = result.audio_bytes
+        for i in range(0, len(audio), chunk_size):
+            chunk = audio[i:i + chunk_size]
+            yield {"type": "audio", "data": base64.b64encode(chunk).decode("utf-8")}
+        # Cache in background
+        await _set_cache(text, voice_id, result)
+
+    yield {"type": "phonemes", "data": result.phoneme_timestamps}
+    yield {"type": "done", "duration_ms": result.duration_ms}

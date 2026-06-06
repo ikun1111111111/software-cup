@@ -25,6 +25,17 @@ beforeEach(() => {
   vi.useFakeTimers();
   mockAudioInstances.length = 0;
   (global as any).Audio = MockAudio;
+  // Mock atob for base64 decoding in tests
+  if (!(global as any).atob) {
+    (global as any).atob = (str: string) => Buffer.from(str, 'base64').toString('binary');
+  }
+  // Mock URL.createObjectURL for blob handling
+  if (!(global as any).URL.createObjectURL) {
+    (global as any).URL.createObjectURL = vi.fn(() => 'blob:mock');
+  }
+  if (!(global as any).URL.revokeObjectURL) {
+    (global as any).URL.revokeObjectURL = vi.fn();
+  }
 });
 
 afterEach(() => {
@@ -113,12 +124,13 @@ describe('AudioSync', () => {
       );
     });
 
-    it('应该注册timeupdate事件监听', () => {
+    it('应该注册play/pause/ended/error事件监听（不再依赖timeupdate，改用polling）', () => {
       render(<AudioSync audioUrl="/audio/test.mp3" onTimeUpdate={vi.fn()} />);
-      expect(mockAudioInstances[0].addEventListener).toHaveBeenCalledWith(
-        'timeupdate',
-        expect.any(Function)
-      );
+      // Verify core events are registered
+      expect(mockAudioInstances[0].addEventListener).toHaveBeenCalledWith('play', expect.any(Function));
+      expect(mockAudioInstances[0].addEventListener).toHaveBeenCalledWith('pause', expect.any(Function));
+      expect(mockAudioInstances[0].addEventListener).toHaveBeenCalledWith('ended', expect.any(Function));
+      expect(mockAudioInstances[0].addEventListener).toHaveBeenCalledWith('error', expect.any(Function));
     });
 
     it('应该注册error事件监听', () => {
@@ -163,10 +175,69 @@ describe('AudioSync', () => {
       const onError = vi.fn();
       render(<AudioSync audioUrl="/audio/test.mp3" onError={onError} />);
 
-      // play被调用但不应该直接调用onError（需要catch）
       expect(screen.getByTestId('audio-sync')).toBeDefined();
 
       (global as any).Audio = originalAudio;
+    });
+  });
+
+  describe('流式音频chunks', () => {
+    it('audioChunks为空时不应该创建Audio实例', () => {
+      render(<AudioSync audioChunks={[]} />);
+      const countBefore = mockAudioInstances.length;
+      expect(countBefore).toBe(0);
+    });
+
+    it('audioChunks应该创建Audio实例', () => {
+      const bytes = new Uint8Array([0x52, 0x49, 0x46, 0x46]); // "RIFF"
+      const b64 = btoa(String.fromCharCode(...bytes));
+
+      render(<AudioSync audioChunks={[b64]} />);
+      expect(mockAudioInstances.length).toBe(1);
+    });
+
+    it('audioChunks变化时应该创建新Audio实例', () => {
+      const bytes1 = new Uint8Array([0x52, 0x49, 0x46, 0x46]);
+      const b64_1 = btoa(String.fromCharCode(...bytes1));
+      const bytes2 = new Uint8Array([0x49, 0x44, 0x33, 0x03]);
+      const b64_2 = btoa(String.fromCharCode(...bytes2));
+
+      const { rerender } = render(<AudioSync audioChunks={[b64_1]} />);
+      expect(mockAudioInstances.length).toBe(1);
+
+      rerender(<AudioSync audioChunks={[b64_1, b64_2]} />);
+      expect(mockAudioInstances.length).toBe(2);
+    });
+  });
+
+  describe('phonemes 转发', () => {
+    it('有phonemes时应该调用onPhonemes回调', () => {
+      const onPhonemes = vi.fn();
+      const phonemes = [
+        { char: '你', start_ms: 0, end_ms: 250, mouth_shape: 'closed' as const },
+      ];
+
+      render(<AudioSync phonemes={phonemes} onPhonemes={onPhonemes} />);
+      expect(onPhonemes).toHaveBeenCalledWith(phonemes);
+    });
+
+    it('无phonemes时不应该调用onPhonemes', () => {
+      const onPhonemes = vi.fn();
+      render(<AudioSync onPhonemes={onPhonemes} />);
+      expect(onPhonemes).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('时间毫秒回调', () => {
+    it('audioUrl模式autoPlay时应该启动polling更新currentTime', () => {
+      const onTimeUpdateMs = vi.fn();
+      render(<AudioSync audioUrl="/audio/test.mp3" onTimeUpdateMs={onTimeUpdateMs} autoPlay />);
+      // Simulate audio playing (mock starts paused, but autoPlay should trigger play)
+      const audio = mockAudioInstances[0];
+      audio.paused = false;
+      // Advance fake timers past the 50ms polling interval
+      vi.advanceTimersByTime(100);
+      expect(onTimeUpdateMs).toHaveBeenCalled();
     });
   });
 });
