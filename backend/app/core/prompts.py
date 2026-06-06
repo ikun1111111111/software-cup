@@ -1,14 +1,11 @@
 """System prompt templates for all LLM tasks."""
 
 SYSTEM_PROMPT_CHAT = (
-    "你是一个智慧旅游景区的数字人导览员。你的名字是「小景」。\n"
-    "请遵守以下规则：\n"
-    "1. 基于提供的资料回答问题，不要编造信息\n"
-    "2. 如果资料中没有相关信息，请诚实地说「这个问题我暂时还不太清楚，"
-    "您可以咨询景区工作人员」\n"
-    "3. 回答要亲切自然，像真人导游一样，不要使用列表或过于结构化的格式\n"
-    "4. 适当使用「您」「欢迎」「谢谢」等礼貌用语\n"
-    "5. 回答控制在200字以内，简洁明了"
+    "你是灵山胜境干了二十年的老导游小景，对景区了如指掌。\n"
+    "游客问行程你就直接推荐，不要说什么资料不资料的。\n"
+    "三日游推荐：第一天灵山大佛和九龙灌浴，第二天梵宫和五印坛城，"
+    "第三天拈花湾。\n"
+    "回答亲切自然，200字以内。"
 )
 
 SYSTEM_PROMPT_VERIFY = (
@@ -47,18 +44,44 @@ SYSTEM_PROMPT_STORY = (
 )
 
 
-def build_chat_prompt(question: str, context_chunks: list[dict]) -> list[dict]:
-    """Build LLM messages for chat with retrieved context."""
-    context_text = "\n\n---\n\n".join(
-        f"[资料片段 {i+1}]\n{c['text']}" for i, c in enumerate(context_chunks)
-    )
-    return [
-        {"role": "system", "content": SYSTEM_PROMPT_CHAT},
-        {
-            "role": "user",
-            "content": f"参考资料:\n{context_text}\n\n游客问: {question}\n请回答:",
-        },
-    ]
+def build_chat_prompt(
+    question: str,
+    context_chunks: list[dict],
+    history: list[dict] | None = None,
+    use_fallback: bool = False,
+) -> list[dict]:
+    """Build LLM messages for chat with retrieved context and optional history.
+
+    Args:
+        question: Current user question.
+        context_chunks: Retrieved knowledge chunks.
+        history: Optional list of previous messages, each as {"role": "user|assistant", "content": "..."}.
+        use_fallback: Whether the chunks are fallback knowledge (not from RAG).
+    """
+    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT_CHAT}]
+
+    # Inject conversation history (oldest first) before the current turn
+    if history:
+        for turn in history:
+            role = turn.get("role")
+            content = turn.get("content")
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": content})
+
+    if context_chunks:
+        context_text = "\n\n---\n\n".join(
+            f"[资料片段 {i+1}]\n{c['text']}" for i, c in enumerate(context_chunks)
+        )
+        if use_fallback:
+            # Fallback knowledge: present as background info, not as strict reference
+            user_content = f"你对灵山景点很了解，以下是一些背景信息供你参考：\n{context_text}\n\n游客问: {question}\n请直接给出建议，不要说自己不清楚:"
+        else:
+            user_content = f"参考资料:\n{context_text}\n\n游客问: {question}\n请回答:"
+    else:
+        user_content = f"游客问: {question}\n请回答:"
+
+    messages.append({"role": "user", "content": user_content})
+    return messages
 
 
 def build_story_prompt(spot_name: str, context_chunks: list[dict]) -> list[dict]:

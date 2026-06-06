@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>对话引擎测试台 | 灵山胜境数字人</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0f0f12;
+      --bg-secondary: #1a1a1f;
+      --bg-tertiary: #24242a;
+      --bg-hover: #2a2a32;
+      --border: #33333d;
+      --border-light: #44444f;
+      --text-primary: #e8e8ec;
+      --text-secondary: #a0a0ac;
+      --text-muted: #6e6e7a;
+      --accent: #00d4aa;
+      --accent-dim: rgba(0, 212, 170, 0.15);
+      --accent-glow: rgba(0, 212, 170, 0.4);
+      --warning: #f0a030;
+      --warning-dim: rgba(240, 160, 48, 0.15);
+      --error: #e05050;
+      --error-dim: rgba(224, 80, 80, 0.15);
+      --info: #5090e0;
+      --info-dim: rgba(80, 144, 224, 0.15);
+      --faq: #d040d0;
+      --faq-dim: rgba(208, 64, 208, 0.15);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --mono: 'JetBrains Mono', 'SF Mono', monospace;
+      --sans: 'Noto Sans SC', -apple-system, sans-serif;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--sans);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Subtle grid background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0, 212, 170, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 212, 170, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    #root { position: relative; z-index: 1; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    @keyframes typing {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-12px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes glow {
+      0%, 100% { box-shadow: 0 0 4px var(--accent-glow); }
+      50% { box-shadow: 0 0 12px var(--accent-glow), 0 0 24px rgba(0,212,170,0.1); }
+    }
+
+    .fade-in { animation: fadeIn 0.3s ease; }
+    .slide-in { animation: slideIn 0.25s ease; }
+
+    /* Component styles */
+    .test-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 20px;
+      min-height: 100vh;
+    }
+
+    @media (max-width: 1100px) {
+      .test-container { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-tertiary);
+    }
+
+    .panel-header h3 {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: var(--text-primary);
+    }
+
+    .panel-header .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-weight: 500;
+      font-family: var(--mono);
+    }
+
+    .badge-accent { background: var(--accent-dim); color: var(--accent); }
+    .badge-warning { background: var(--warning-dim); color: var(--warning); }
+    .badge-error { background: var(--error-dim); color: var(--error); }
+    .badge-info { background: var(--info-dim); color: var(--info); }
+    .badge-faq { background: var(--faq-dim); color: var(--faq); }
+
+    .panel-body {
+      padding: 16px 18px;
+    }
+
+    /* Input styles */
+    .input-group {
+      margin-bottom: 12px;
+    }
+    .input-group label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .input-group input,
+    .input-group select,
+    .input-group textarea {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-family: var(--sans);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .input-group input:focus,
+    .input-group select:focus,
+    .input-group textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-dim);
+    }
+    .input-group input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    /* Button styles */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 18px;
+      border: none;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: var(--sans);
+    }
+    .btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: #00e8ba;
+      box-shadow: 0 0 16px var(--accent-glow);
+    }
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border-color: var(--border-light);
+    }
+    .btn-danger {
+      background: var(--error-dim);
+      color: var(--error);
+      border: 1px solid rgba(224,80,80,0.3);
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(224,80,80,0.25);
+    }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+    /* Chat area */
+    .chat-area {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 40px);
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message {
+      max-width: 85%;
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+      font-size: 14px;
+      line-height: 1.7;
+      word-break: break-word;
+      animation: fadeIn 0.25s ease;
+    }
+
+    .message-user {
+      align-self: flex-end;
+      background: var(--accent-dim);
+      border: 1px solid rgba(0,212,170,0.2);
+      color: var(--text-primary);
+    }
+
+    .message-assistant {
+      align-self: flex-start;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+
+    .message-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .message-meta-item {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    .message-source-faq { color: var(--faq); }
+    .message-source-rag { color: var(--accent); }
+    .message-source-error { color: var(--error); }
+
+    .chat-input-area {
+      padding: 14px 18px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-tertiary);
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    .chat-input-row textarea {
+      flex: 1;
+      resize: none;
+      min-height: 44px;
+      max-height: 120px;
+      padding: 10px 14px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      color: var(--text-primary);
+      font-size: 14px;
+      font-family: var(--sans);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .chat-input-row textarea:focus {
+      border-color: var(--accent);
+    }
+
+    /* Typing indicator */
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 0;
+    }
+    .typing-dot {
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: typing 1.4s ease-in-out infinite;
+    }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    /* Chunks panel */
+    .chunk-item {
+      padding: 10px 12px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+      animation: slideIn 0.2s ease;
+    }
+    .chunk-item:last-child { margin-bottom: 0; }
+    .chunk-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .chunk-source {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-family: var(--mono);
+      text-transform: uppercase;
+    }
+    .chunk-source-vector { background: var(--info-dim); color: var(--info); }
+    .chunk-source-bm25 { background: var(--warning-dim); color: var(--warning); }
+    .chunk-source-both { background: var(--accent-dim); color: var(--accent); }
+    .chunk-score {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+    .chunk-text {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Token stream */
+    .token-stream {
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.8;
+      color: var(--text-primary);
+      white-space: pre-wrap;
+    }
+    .token-cursor {
+      display: inline-block;
+      width: 2px;
+      height: 1.2em;
+      background: var(--accent);
+      margin-left: 2px;
+      vertical-align: middle;
+      animation: pulse 0.8s ease-in-out infinite;
+    }
+
+    /* Debug console */
+    .debug-console {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+    .debug-line {
+      margin-bottom: 6px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+    .debug-line:last-child { margin-bottom: 0; border-bottom: none; }
+    .debug-time { color: var(--text-muted); margin-right: 8px; }
+    .debug-label {
+      display: inline-block;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-right: 6px;
+    }
+    .debug-label-send { background: var(--info-dim); color: var(--info); }
+    .debug-label-recv { background: var(--accent-dim); color: var(--accent); }
+    .debug-label-error { background: var(--error-dim); color: var(--error); }
+    .debug-label-warn { background: var(--warning-dim); color: var(--warning); }
+    .debug-data {
+      color: var(--text-secondary);
+      word-break: break-all;
+      margin-top: 4px;
+      padding-left: 16px;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      background: var(--bg-primary);
+      border-radius: var(--radius-md);
+      margin-bottom: 16px;
+    }
+    .tab {
+      flex: 1;
+      padding: 8px 12px;
+      border: none;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: var(--sans);
+    }
+    .tab:hover { color: var(--text-secondary); }
+    .tab.active {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    }
+
+    /* Quick questions */
+    .quick-questions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .quick-q {
+      padding: 5px 12px;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: var(--sans);
+    }
+    .quick-q:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    /* Connection status */
+    .conn-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+    .conn-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      transition: background 0.3s;
+    }
+    .conn-dot.connected { background: var(--accent); animation: glow 2s ease-in-out infinite; }
+    .conn-dot.disconnected { background: var(--text-muted); }
+    .conn-dot.connecting { background: var(--warning); animation: pulse 1s ease-in-out infinite; }
+    .conn-dot.error { background: var(--error); }
+
+    /* Section */
+    .section-title {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+
+    /* Toggle switch */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .toggle-label { font-size: 12px; color: var(--text-secondary); }
+    .toggle-switch {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      background: var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-switch.on { background: var(--accent); }
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle-switch.on::after { transform: translateX(16px); }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 12px;
+      opacity: 0.3;
+    }
+
+    /* Responsive */
+    @media (max-width: 1100px) {
+      .test-container { padding: 12px; gap: 12px; }
+      .chat-area { height: auto; min-height: 60vh; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ==================== Icons ====================
+    const IconSend = () => (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+    );
+    const IconMic = () => (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+        <line x1="12" y1="19" x2="12" y2="23"></line>
+        <line x1="8" y1="23" x2="16" y2="23"></line>
+      </svg>
+    );
+    const IconClear = () => (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+      </svg>
+    );
+    const IconBot = () => (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+        <circle cx="12" cy="5" r="2"></circle>
+        <path d="M12 7v4"></path>
+        <line x1="8" y1="16" x2="8" y2="16.01"></line>
+        <line x1="16" y1="16" x2="16" y2="16.01"></line>
+      </svg>
+    );
+    const IconUser = () => (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+        <circle cx="12" cy="7" r="4"></circle>
+      </svg>
+    );
+    const IconTerminal = () => (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="4 17 10 11 4 5"></polyline>
+        <line x1="12" y1="19" x2="20" y2="19"></line>
+      </svg>
+    );
+    const IconSparkles = () => (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path>
+      </svg>
+    );
+
+    // ==================== Components ====================
+
+    function ConnStatus({ status, label }) {
+      const dotClass = {
+        connected: 'connected',
+        disconnected: 'disconnected',
+        connecting: 'connecting',
+        error: 'error',
+      }[status] || 'disconnected';
+      return (
+        <span className="conn-status">
+          <span className={`conn-dot ${dotClass}`}></span>
+          {label || status}
+        </span>
+      );
+    }
+
+    function DebugConsole({ logs, clearLogs }) {
+      const scrollRef = useRef(null);
+      useEffect(() => {
+        if (scrollRef.current) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+      }, [logs]);
+
+      return (
+        <div className="panel">
+          <div className="panel-header">
+            <IconTerminal />
+            <h3>调试控制台</h3>
+            <span style={{ marginLeft: 'auto' }}>
+              <button className="btn btn-sm btn-secondary" onClick={clearLogs}>
+                <IconClear /> 清空
+              </button>
+            </span>
+          </div>
+          <div className="panel-body">
+            {logs.length === 0 ? (
+              <div className="empty-state">
+                <p style={{ fontSize: '12px' }}>暂无调试日志</p>
+              </div>
+            ) : (
+              <div className="debug-console" ref={scrollRef}>
+                {logs.map((log, i) => (
+                  <div key={i} className="debug-line">
+                    <span className="debug-time">{log.time}</span>
+                    <span className={`debug-label debug-label-${log.type}`}>{log.label}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{log.message}</span>
+                    {log.data && (
+                      <pre className="debug-data">{typeof log.data === 'string' ? log.data : JSON.stringify(log.data, null, 2)}</pre>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function ChunksPanel({ chunks, visible }) {
+      if (!visible || chunks.length === 0) return null;
+      return (
+        <div className="panel fade-in">
+          <div className="panel-header">
+            <IconSparkles />
+            <h3>检索片段</h3>
+            <span className="badge badge-info">{chunks.length} 条</span>
+          </div>
+          <div className="panel-body" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+            {chunks.map((chunk, i) => (
+              <div key={i} className="chunk-item">
+                <div className="chunk-header">
+                  <span className={`chunk-source chunk-source-${chunk.sources?.includes('vector') && chunk.sources?.includes('bm25') ? 'both' : chunk.sources?.includes('vector') ? 'vector' : 'bm25'}`}>
+                    {chunk.sources?.join('+') || 'unknown'}
+                  </span>
+                  <span className="chunk-score">
+                    RRF:{(chunk.score || 0).toFixed(3)} {chunk.rerank_score ? `| Rerank:${chunk.rerank_score.toFixed(3)}` : ''}
+                  </span>
+                </div>
+                <div className="chunk-text">{chunk.text}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function MessageBubble({ msg }) {
+      const isUser = msg.role === 'user';
+      return (
+        <div className={`message ${isUser ? 'message-user' : 'message-assistant'}`}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+            {isUser ? <IconUser /> : <IconBot />}
+            <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)' }}>
+              {isUser ? '游客' : '数字人 · 小景'}
+            </span>
+          </div>
+          <div>{msg.content}</div>
+          {msg.meta && (
+            <div className="message-meta">
+              {msg.meta.source && (
+                <span className={`message-meta-item message-source-${msg.meta.source === 'faq' ? 'faq' : msg.meta.source === 'error' ? 'error' : 'rag'}`}>
+                  {msg.meta.source === 'faq' ? 'FAQ命中' : msg.meta.source === 'rag' ? 'RAG检索' : msg.meta.source}
+                </span>
+              )}
+              {msg.meta.latency_ms !== undefined && (
+                <span className="message-meta-item">{msg.meta.latency_ms}ms</span>
+              )}
+              {msg.meta.sentiment_label && (
+                <span className="message-meta-item">
+                  情感:{msg.meta.sentiment_label}({msg.meta.sentiment_score?.toFixed(2)})
+                </span>
+              )}
+              {msg.meta.cached && (
+                <span className="badge badge-accent" style={{ fontSize: '10px' }}>缓存</span>
+              )}
+              {msg.meta.faq_id && (
+                <span className="badge badge-faq" style={{ fontSize: '10px' }}>FAQ#{msg.meta.faq_id}</span>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ==================== Main App ====================
+
+    function App() {
+      // --- State ---
+      const [apiBase, setApiBase] = useState(() => {
+        // Auto-detect: if served from dev server, use relative path
+        const host = window.location.host;
+        if (host.includes('5173') || host.includes('3000')) {
+          return 'http://localhost:8000';
+        }
+        return '';
+      });
+      const [sessionId, setSessionId] = useState(`test_${Date.now()}`);
+      const [mode, setMode] = useState('sse'); // 'sse' | 'websocket'
+      const [streamEnabled, setStreamEnabled] = useState(true);
+      const [input, setInput] = useState('');
+      const [messages, setMessages] = useState([]);
+      const [isLoading, setIsLoading] = useState(false);
+      const [chunks, setChunks] = useState([]);
+      const [logs, setLogs] = useState([]);
+      const [wsState, setWsState] = useState('disconnected');
+      const [showDebug, setShowDebug] = useState(true);
+      const [showChunks, setShowChunks] = useState(true);
+
+      const wsRef = useRef(null);
+      const abortRef = useRef(null);
+      const messagesEndRef = useRef(null);
+
+      const addLog = useCallback((type, label, message, data) => {
+        const time = new Date().toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+        setLogs(prev => [...prev.slice(-200), { time, type, label, message, data }]);
+      }, []);
+
+      const scrollToBottom = useCallback(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, []);
+
+      useEffect(() => { scrollToBottom(); }, [messages]);
+
+      // --- SSE Chat ---
+      const sendSSE = useCallback(async (question) => {
+        if (!question.trim() || isLoading) return;
+        setIsLoading(true);
+        setChunks([]);
+
+        const userMsg = { id: Date.now(), role: 'user', content: question.trim() };
+        setMessages(prev => [...prev, userMsg]);
+        setInput('');
+
+        const assistantId = Date.now() + 1;
+        setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '', meta: {} }]);
+
+        const startTime = performance.now();
+        const url = `${apiBase || ''}/api/chat/stream`;
+
+        addLog('send', 'SEND', `POST ${url}`, { session_id: sessionId, question, stream: streamEnabled });
+
+        try {
+          abortRef.current = new AbortController();
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+            body: JSON.stringify({ session_id: sessionId, question: question.trim(), stream: streamEnabled }),
+            signal: abortRef.current.signal,
+          });
+
+          if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errText}`);
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let fullAnswer = '';
+          let finalMeta = {};
+          let receivedChunks = [];
+          let isStreaming = streamEnabled;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            let currentEvent = '';
+            for (const line of lines) {
+              if (line.startsWith('event:')) {
+                currentEvent = line.slice(6).trim();
+              } else if (line.startsWith('data:')) {
+                const dataStr = line.slice(5).trim();
+                let data;
+                try { data = JSON.parse(dataStr); } catch { data = dataStr; }
+
+                addLog('recv', 'RECV', `event:${currentEvent}`, data);
+
+                if (currentEvent === 'faq_hit') {
+                  fullAnswer = data.answer || '';
+                  finalMeta = { source: 'faq', latency_ms: data.latency_ms, faq_id: data.faq_id, cached: data.cached };
+                  isStreaming = false;
+                } else if (currentEvent === 'chunk') {
+                  receivedChunks.push(data);
+                  setChunks(prev => {
+                    const exists = prev.find(c => c.index === data.index);
+                    if (exists) return prev;
+                    return [...prev, { text: data.text, score: data.score, index: data.index, sources: ['vector'] }];
+                  });
+                } else if (currentEvent === 'token') {
+                  fullAnswer += data.token || '';
+                  setMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: fullAnswer } : m));
+                } else if (currentEvent === 'done') {
+                  finalMeta = {
+                    source: data.source || 'rag',
+                    latency_ms: data.latency_ms,
+                    sentiment_score: data.sentiment_score,
+                    sentiment_label: data.sentiment_label,
+                    cached: data.cached,
+                  };
+                  isStreaming = false;
+                } else if (currentEvent === 'error') {
+                  finalMeta = { source: 'error' };
+                  fullAnswer = data.error || '生成回答时出错';
+                  isStreaming = false;
+                }
+              }
+            }
+          }
+
+          setMessages(prev => prev.map(m =>
+            m.id === assistantId ? { ...m, content: fullAnswer || m.content, meta: finalMeta } : m
+          ));
+          setChunks(receivedChunks.map(c => ({ text: c.text, score: c.score, sources: ['vector'] })));
+
+          const totalTime = Math.round(performance.now() - startTime);
+          addLog('recv', 'DONE', `总耗时 ${totalTime}ms`, finalMeta);
+
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            const errMsg = err.message || String(err);
+            addLog('error', 'ERROR', errMsg);
+            setMessages(prev => prev.map(m =>
+              m.id === assistantId ? { ...m, content: `❌ ${errMsg}`, meta: { source: 'error' } } : m
+            ));
+          }
+        } finally {
+          setIsLoading(false);
+          abortRef.current = null;
+        }
+      }, [apiBase, sessionId, streamEnabled, isLoading, addLog]);
+
+      // --- WebSocket ---
+      const connectWS = useCallback(() => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+        const wsUrl = `${apiBase.replace(/^http/, 'ws') || (window.location.protocol === 'https:' ? 'wss:' : 'ws:')}//${apiBase ? apiBase.replace(/^https?:\/\//, '') : window.location.host}/ws/chat`;
+        setWsState('connecting');
+        addLog('warn', 'WS', `Connecting to ${wsUrl}`);
+
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          setWsState('connected');
+          addLog('recv', 'WS', 'Connected');
+        };
+        ws.onmessage = (e) => {
+          let data;
+          try { data = JSON.parse(e.data); } catch { data = e.data; }
+          addLog('recv', 'WS-RECV', data.type || 'message', data);
+
+          if (data.type === 'answer' || data.type === 'voice_answer') {
+            const meta = {
+              source: data.source,
+              latency_ms: data.latency_ms,
+              sentiment_score: data.sentiment_score,
+              sentiment_label: data.sentiment_label,
+            };
+            setMessages(prev => {
+              // Check if last message is assistant and still sending
+              const last = prev[prev.length - 1];
+              if (last && last.role === 'assistant' && last.meta?.sending) {
+                return prev.map((m, i) => i === prev.length - 1 ? { ...m, content: data.answer, meta, meta_override: true } : m);
+              }
+              return [...prev, { id: Date.now(), role: 'assistant', content: data.answer, meta }];
+            });
+            setIsLoading(false);
+          } else if (data.type === 'error') {
+            setMessages(prev => [...prev, { id: Date.now(), role: 'assistant', content: `❌ ${data.message}`, meta: { source: 'error' } }]);
+            setIsLoading(false);
+          }
+        };
+        ws.onerror = (e) => {
+          setWsState('error');
+          addLog('error', 'WS', 'WebSocket error', e);
+        };
+        ws.onclose = () => {
+          setWsState('disconnected');
+          addLog('warn', 'WS', 'Disconnected');
+          wsRef.current = null;
+        };
+      }, [apiBase, addLog]);
+
+      const disconnectWS = useCallback(() => {
+        if (wsRef.current) {
+          wsRef.current.close();
+          wsRef.current = null;
+        }
+        setWsState('disconnected');
+      }, []);
+
+      const sendWS = useCallback((question) => {
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          addLog('error', 'WS', 'WebSocket not connected');
+          return;
+        }
+        setIsLoading(true);
+        setChunks([]);
+
+        const msg = { session_id: sessionId, question: question.trim(), type: 'text' };
+        wsRef.current.send(JSON.stringify(msg));
+        addLog('send', 'WS-SEND', 'text message', msg);
+
+        setMessages(prev => [...prev,
+          { id: Date.now(), role: 'user', content: question.trim() },
+          { id: Date.now() + 1, role: 'assistant', content: '', meta: { sending: true } },
+        ]);
+        setInput('');
+      }, [sessionId, addLog]);
+
+      // --- Voice ---
+      const sendVoiceWS = useCallback(async (audioBase64) => {
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          addLog('error', 'WS', 'WebSocket not connected');
+          return;
+        }
+        setIsLoading(true);
+        const msg = { session_id: sessionId, audio_base64: audioBase64, type: 'voice' };
+        wsRef.current.send(JSON.stringify(msg));
+        addLog('send', 'WS-SEND', 'voice message', { session_id: sessionId, type: 'voice', audio_length: audioBase64.length });
+
+        setMessages(prev => [...prev,
+          { id: Date.now(), role: 'user', content: '[语音消息]' },
+          { id: Date.now() + 1, role: 'assistant', content: '', meta: { sending: true } },
+        ]);
+      }, [sessionId, addLog]);
+
+      // --- Send handler ---
+      const handleSend = useCallback(() => {
+        if (!input.trim() || isLoading) return;
+        if (mode === 'sse') {
+          sendSSE(input);
+        } else {
+          if (wsState !== 'connected') {
+            connectWS();
+            // Queue message after connection
+            setTimeout(() => sendWS(input), 500);
+          } else {
+            sendWS(input);
+          }
+        }
+      }, [input, mode, isLoading, sendSSE, wsState, connectWS, sendWS]);
+
+      const handleKeyDown = useCallback((e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          handleSend();
+        }
+      }, [handleSend]);
+
+      const clearChat = useCallback(() => {
+        setMessages([]);
+        setChunks([]);
+        addLog('warn', 'SYS', '聊天记录已清空');
+      }, [addLog]);
+
+      const clearLogsFn = useCallback(() => setLogs([]), []);
+
+      const regenerateSession = useCallback(() => {
+        const newId = `test_${Date.now()}`;
+        setSessionId(newId);
+        addLog('warn', 'SYS', `新会话 ID: ${newId}`);
+      }, [addLog]);
+
+      // --- Recording ---
+      const [isRecording, setIsRecording] = useState(false);
+      const mediaRef = useRef(null);
+
+      const startRecording = useCallback(async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const mediaRecorder = new MediaRecorder(stream);
+          const chunks = [];
+          mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+          mediaRecorder.onstop = () => {
+            const blob = new Blob(chunks, { type: 'audio/webm' });
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const base64 = reader.result.split(',')[1];
+              if (mode === 'websocket') {
+                if (wsState !== 'connected') connectWS();
+                setTimeout(() => sendVoiceWS(base64), wsState === 'connected' ? 0 : 500);
+              } else {
+                addLog('warn', 'SYS', '语音输入仅在 WebSocket 模式下支持');
+              }
+            };
+            reader.readAsDataURL(blob);
+            stream.getTracks().forEach(t => t.stop());
+          };
+          mediaRecorder.start();
+          mediaRef.current = mediaRecorder;
+          setIsRecording(true);
+        } catch (err) {
+          addLog('error', 'MIC', '无法访问麦克风: ' + err.message);
+        }
+      }, [mode, wsState, connectWS, sendVoiceWS, addLog]);
+
+      const stopRecording = useCallback(() => {
+        if (mediaRef.current && mediaRef.current.state !== 'inactive') {
+          mediaRef.current.stop();
+        }
+        setIsRecording(false);
+      }, []);
+
+      // Cleanup on unmount
+      useEffect(() => {
+        return () => {
+          if (abortRef.current) abortRef.current.abort();
+          disconnectWS();
+        };
+      }, [disconnectWS]);
+
+      // Quick questions
+      const quickQuestions = [
+        '灵山大佛有多高？',
+        '九龙灌浴是什么？',
+        '灵山胜境门票多少钱？',
+        '推荐一条游玩路线',
+        '梵宫有什么特色？',
+        '景区开放时间？',
+      ];
+
+      return (
+        <div className="test-container">
+          {/* Left: Chat Area */}
+          <div className="chat-area panel">
+            <div className="panel-header">
+              <IconBot />
+              <h3>对话测试</h3>
+              <ConnStatus status={mode === 'sse' ? (isLoading ? 'connecting' : 'connected') : wsState} label={mode === 'sse' ? 'SSE' : 'WS'} />
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
+                <button className="btn btn-sm btn-secondary" onClick={clearChat} title="清空对话">
+                  <IconClear />
+                </button>
+              </span>
+            </div>
+
+            <div className="chat-messages">
+              {messages.length === 0 && (
+                <div className="empty-state">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                  </svg>
+                  <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>对话引擎测试台</div>
+                  <div style={{ fontSize: '12px' }}>在下方输入问题，测试 FAQ → RAG → LLM 全链路效果</div>
+                </div>
+              )}
+              {messages.map(msg => (
+                <MessageBubble key={msg.id} msg={msg} />
+              ))}
+              {isLoading && messages.length > 0 && messages[messages.length - 1].role === 'assistant' && messages[messages.length - 1].content === '' && (
+                <div className="message message-assistant">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                    <IconBot />
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)' }}>数字人 · 小景</span>
+                  </div>
+                  <div className="typing-indicator">
+                    <span className="typing-dot"></span>
+                    <span className="typing-dot"></span>
+                    <span className="typing-dot"></span>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Quick Questions */}
+            <div style={{ padding: '0 18px' }}>
+              <div className="quick-questions">
+                {quickQuestions.map(q => (
+                  <button key={q} className="quick-q" onClick={() => setInput(q)}>{q}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Input */}
+            <div className="chat-input-area">
+              <div className="chat-input-row">
+                <textarea
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="输入问题测试对话效果..."
+                  rows={1}
+                  disabled={isLoading}
+                />
+                <button
+                  className="btn btn-secondary"
+                  style={{ padding: '10px' }}
+                  onMouseDown={startRecording}
+                  onMouseUp={stopRecording}
+                  onTouchStart={startRecording}
+                  onTouchEnd={stopRecording}
+                  title={isRecording ? '录音中...' : '按住录音'}
+                >
+                  <span style={{ color: isRecording ? 'var(--error)' : 'inherit' }}>
+                    <IconMic />
+                  </span>
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleSend}
+                  disabled={!input.trim() || isLoading}
+                >
+                  <IconSend /> 发送
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Sidebar */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Settings Panel */}
+            <div className="panel">
+              <div className="panel-header">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 5 15.34a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.66 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.66a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                <h3>连接配置</h3>
+              </div>
+              <div className="panel-body">
+                <div className="input-group">
+                  <label>API 地址</label>
+                  <input
+                    value={apiBase}
+                    onChange={e => setApiBase(e.target.value)}
+                    placeholder="http://localhost:8000"
+                  />
+                </div>
+                <div className="input-row">
+                  <div className="input-group">
+                    <label>会话 ID</label>
+                    <input value={sessionId} onChange={e => setSessionId(e.target.value)} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '2px' }}>
+                    <button className="btn btn-sm btn-secondary" onClick={regenerateSession}>刷新</button>
+                  </div>
+                </div>
+
+                <div className="tabs">
+                  <button className={`tab ${mode === 'sse' ? 'active' : ''}`} onClick={() => { setMode('sse'); disconnectWS(); }}>
+                    SSE 流式
+                  </button>
+                  <button className={`tab ${mode === 'websocket' ? 'active' : ''}`} onClick={() => setMode('websocket')}>
+                    WebSocket
+                  </button>
+                </div>
+
+                {mode === 'sse' && (
+                  <div className="toggle-row">
+                    <span className="toggle-label">启用流式输出</span>
+                    <div className={`toggle-switch ${streamEnabled ? 'on' : ''}`} onClick={() => setStreamEnabled(!streamEnabled)}></div>
+                  </div>
+                )}
+
+                {mode === 'websocket' && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                    <button className="btn btn-sm btn-primary" onClick={connectWS} disabled={wsState === 'connected'}>连接</button>
+                    <button className="btn btn-sm btn-danger" onClick={disconnectWS} disabled={wsState !== 'connected'}>断开</button>
+                  </div>
+                )}
+
+                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+                  <div className="toggle-row">
+                    <span className="toggle-label">显示检索片段</span>
+                    <div className={`toggle-switch ${showChunks ? 'on' : ''}`} onClick={() => setShowChunks(!showChunks)}></div>
+                  </div>
+                  <div className="toggle-row">
+                    <span className="toggle-label">显示调试日志</span>
+                    <div className={`toggle-switch ${showDebug ? 'on' : ''}`} onClick={() => setShowDebug(!showDebug)}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Chunks */}
+            <ChunksPanel chunks={chunks} visible={showChunks} />
+
+            {/* Debug */}
+            {showDebug && <DebugConsole logs={logs} clearLogs={clearLogsFn} />}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

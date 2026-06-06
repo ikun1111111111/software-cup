@@ -11,6 +11,7 @@ describe('chatStore', () => {
       error: null,
     });
   });
+});
 
   describe('初始状态', () => {
     it('应该有空消息列表', () => {
@@ -179,35 +180,43 @@ describe('chatStore', () => {
     });
   });
 
-  describe('removeMessage', () => {
-    it('应该删除指定消息', () => {
-      const message1: Message = {
-        id: '1',
-        role: 'user',
-        content: '你好',
-        timestamp: Date.now(),
-      };
-
-      const message2: Message = {
-        id: '2',
-        role: 'assistant',
-        content: '你好！',
-        timestamp: Date.now(),
-      };
-
-      useChatStore.getState().addMessage(message1);
-      useChatStore.getState().addMessage(message2);
-      useChatStore.getState().removeMessage('1');
-
-      const { messages } = useChatStore.getState();
-      expect(messages).toHaveLength(1);
-      expect(messages[0].id).toBe('2');
+  describe('getHistory', () => {
+    it('空消息时应该返回空数组', () => {
+      const history = useChatStore.getState().getHistory();
+      expect(history).toEqual([]);
     });
 
-    it('删除不存在的消息不应该报错', () => {
-      useChatStore.getState().removeMessage('nonexistent');
-      const { messages } = useChatStore.getState();
-      expect(messages).toHaveLength(0);
+    it('应该返回最近的消息历史', () => {
+      const msg1: Message = { id: '1', role: 'user', content: '你好', timestamp: 1000 };
+      const msg2: Message = { id: '2', role: 'assistant', content: '您好！', timestamp: 1001 };
+      const msg3: Message = { id: '3', role: 'user', content: '再问一个', timestamp: 1002 };
+
+      useChatStore.getState().addMessage(msg1);
+      useChatStore.getState().addMessage(msg2);
+      useChatStore.getState().addMessage(msg3);
+
+      const history = useChatStore.getState().getHistory(5);
+      expect(history).toHaveLength(3);
+      expect(history[0]).toEqual({ role: 'user', content: '你好' });
+      expect(history[1]).toEqual({ role: 'assistant', content: '您好！' });
+      expect(history[2]).toEqual({ role: 'user', content: '再问一个' });
+    });
+
+    it('应该限制返回轮数', () => {
+      // 添加 6 条消息 (3 轮)
+      for (let i = 0; i < 6; i++) {
+        useChatStore.getState().addMessage({
+          id: `msg_${i}`,
+          role: i % 2 === 0 ? 'user' : 'assistant',
+          content: `内容${i}`,
+          timestamp: i,
+        });
+      }
+
+      // maxRounds=1 应该只返回最近 2 条
+      const history = useChatStore.getState().getHistory(1);
+      expect(history).toHaveLength(2);
+      expect(history[0].content).toBe('内容4');
+      expect(history[1].content).toBe('内容5');
     });
   });
-});

@@ -1,8 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 
 // SSE选项接口
+export interface SSEMessage {
+  event: string;
+  data: any;
+}
+
 export interface SSEOptions {
-  onMessage?: (data: string) => void;
+  onMessage?: (msg: SSEMessage) => void;
   onError?: (error: Event) => void;
   onOpen?: () => void;
   onClose?: () => void;
@@ -34,6 +39,10 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
     // 断开之前的连接
     disconnect();
 
+    // 如果 URL 是相对路径，保持相对路径让浏览器自动使用当前域名
+    // vite dev server proxy 会转发 /api 和 /ws 到后端
+    const fullUrl = url;
+
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
@@ -42,7 +51,7 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
       setError(null);
       onOpen?.();
 
-      const response = await fetch(url, {
+      const response = await fetch(fullUrl, {
         method: body ? 'POST' : 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -78,7 +87,7 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
         buffer = lines.pop() || '';
 
         let currentEvent = '';
-      for (const line of lines) {
+        for (const line of lines) {
           if (line.startsWith('event: ')) {
             currentEvent = line.slice(7).trim();
           } else if (line.startsWith('data: ')) {
@@ -87,12 +96,14 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
               disconnect();
               return;
             }
+            let parsedData: any = rawData;
             try {
-              const parsed = JSON.parse(rawData);
-              onMessage?.({ ...parsed, _event: currentEvent });
+              parsedData = JSON.parse(rawData);
             } catch {
-              onMessage?.({ token: rawData, _event: currentEvent });
+              // 保持原始字符串
             }
+            onMessage?.({ event: currentEvent || 'message', data: parsedData });
+            // Reset event after data line so next data without event uses default
             currentEvent = '';
           }
         }
