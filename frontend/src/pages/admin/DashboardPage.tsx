@@ -1,11 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { message } from 'antd';
-import { TeamOutlined, MessageOutlined, SmileOutlined, FullscreenOutlined, FullscreenExitOutlined } from '@ant-design/icons';
+import { TeamOutlined, MessageOutlined, SmileOutlined } from '@ant-design/icons';
 import MetricsCard from '../../components/admin/MetricsCard';
 import HotQuestions from '../../components/admin/HotQuestions';
 import RealtimeMonitor from '../../components/admin/RealtimeMonitor';
 import HeatmapChart from '../../components/admin/HeatmapChart';
-import GlassCard from '../../components/admin/GlassCard';
+import SealCard from '../../components/admin/SealCard';
+import PaperPanel from '../../components/admin/PaperPanel';
 import AnimatedNumber from '../../components/admin/AnimatedNumber';
 import PageTransition from '../../components/admin/PageTransition';
 import {
@@ -22,9 +23,7 @@ const DashboardPage: React.FC = () => {
   const [topQuestions, setTopQuestions] = useState<TopQuestionItem[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const isMobile = false; // web-only
-  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -57,20 +56,6 @@ const DashboardPage: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    const handleChange = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', handleChange);
-    return () => document.removeEventListener('fullscreenchange', handleChange);
-  }, []);
-
-  const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen();
-    } else {
-      document.exitFullscreen();
-    }
-  }, []);
-
   const handleQuestionClick = useCallback((question: { id: string; question: string }) => {
     console.log('Question clicked:', question);
   }, []);
@@ -93,13 +78,11 @@ const DashboardPage: React.FC = () => {
 
   return (
     <div
-      ref={containerRef}
       data-testid="dashboard-page"
+      className="animate-scroll-unfold"
       style={{
         padding: isMobile ? '16px' : '28px',
-        maxWidth: '1440px',
-        margin: '0 auto',
-        minHeight: isFullscreen ? '100vh' : undefined,
+        paddingLeft: 64,
       }}
     >
       <PageTransition>
@@ -109,36 +92,16 @@ const DashboardPage: React.FC = () => {
           alignItems: 'center',
           marginBottom: isMobile ? '20px' : '28px',
         }}>
-          <h1 className="font-serif" style={{
+          <h1 style={{
             margin: 0,
             fontSize: isMobile ? '20px' : '26px',
             fontWeight: 600,
             color: 'var(--text-primary)',
             letterSpacing: '0.5px',
+            fontFamily: 'var(--font-serif)',
           }}>
             数据大屏
           </h1>
-          <button
-            onClick={toggleFullscreen}
-            aria-label={isFullscreen ? '退出全屏' : '全屏模式'}
-            style={{
-              width: 44,
-              height: 44,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'var(--surface)',
-              border: '1px solid var(--surface-border)',
-              borderRadius: 12,
-              cursor: 'pointer',
-              color: 'var(--text-secondary)',
-              fontSize: '18px',
-              transition: 'all 200ms',
-              backdropFilter: 'blur(12px)',
-            }}
-          >
-            {isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-          </button>
         </div>
 
         {loading ? (
@@ -151,7 +114,7 @@ const DashboardPage: React.FC = () => {
               gap: isMobile ? '12px' : '16px',
               marginBottom: isMobile ? '16px' : '28px',
             }}>
-              <GlassCard style={{ padding: 20 }}>
+              <SealCard size="sm" color="vermilion">
                 <MetricsCard
                   title="今日交互"
                   value={<AnimatedNumber value={overview?.todayInteractions ?? 0} style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }} />}
@@ -160,8 +123,8 @@ const DashboardPage: React.FC = () => {
                   icon={<TeamOutlined />}
                   color="var(--accent)"
                 />
-              </GlassCard>
-              <GlassCard style={{ padding: 20 }}>
+              </SealCard>
+              <SealCard size="sm" color="vermilion">
                 <MetricsCard
                   title="活跃会话"
                   value={<AnimatedNumber value={overview?.uniqueSessions ?? 0} style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }} />}
@@ -170,8 +133,8 @@ const DashboardPage: React.FC = () => {
                   icon={<MessageOutlined />}
                   color="var(--accent)"
                 />
-              </GlassCard>
-              <GlassCard style={{ padding: 20 }}>
+              </SealCard>
+              <SealCard size="sm" color="vermilion">
                 <MetricsCard
                   title="平均情感分"
                   value={<AnimatedNumber value={overview?.avgSentimentScore ?? 0} decimals={2} style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }} />}
@@ -180,8 +143,8 @@ const DashboardPage: React.FC = () => {
                   icon={<SmileOutlined />}
                   color="var(--accent)"
                 />
-              </GlassCard>
-              <GlassCard style={{ padding: 20 }}>
+              </SealCard>
+              <SealCard size="sm" color="vermilion">
                 <MetricsCard
                   title="FAQ命中率"
                   value={<AnimatedNumber value={((overview?.faqHitRate ?? 0) * 100)} decimals={0} suffix="%" style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }} />}
@@ -190,7 +153,7 @@ const DashboardPage: React.FC = () => {
                   icon={<SmileOutlined />}
                   color="var(--accent)"
                 />
-              </GlassCard>
+              </SealCard>
             </div>
 
             <div style={{
@@ -198,17 +161,17 @@ const DashboardPage: React.FC = () => {
               flexDirection: isMobile ? 'column' : 'row',
               gap: isMobile ? '12px' : '20px',
             }}>
-              <GlassCard style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
+              <PaperPanel style={{ flex: 1 }}>
                 <RealtimeMonitor data={realtimeData} />
-              </GlassCard>
-              <GlassCard style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
+              </PaperPanel>
+              <PaperPanel style={{ flex: 1 }}>
                 <HotQuestions questions={hotQuestions} onQuestionClick={handleQuestionClick} />
-              </GlassCard>
+              </PaperPanel>
             </div>
 
-            <GlassCard style={{ marginTop: isMobile ? '12px' : '20px', padding: 0, overflow: 'hidden' }}>
+            <PaperPanel title="交互时段热力图" style={{ marginTop: isMobile ? '12px' : '20px' }}>
               <HeatmapChart data={heatmapData} />
-            </GlassCard>
+            </PaperPanel>
           </>
         )}
       </PageTransition>
