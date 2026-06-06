@@ -3,7 +3,9 @@ import { DatabaseOutlined, QuestionCircleOutlined, UploadOutlined, PlusOutlined,
 import DocumentUpload from '../../components/admin/DocumentUpload';
 import ChunkPreview from '../../components/admin/ChunkPreview';
 import FAQEditor from '../../components/admin/FAQEditor';
-import GlassCard from '../../components/admin/GlassCard';
+import SealCard from '../../components/admin/SealCard';
+import PaperPanel from '../../components/admin/PaperPanel';
+import InscriptionList from '../../components/admin/InscriptionList';
 import PageTransition from '../../components/admin/PageTransition';
 import type { FAQ } from '../../components/admin/FAQEditor';
 import {
@@ -212,30 +214,31 @@ const KnowledgePage: React.FC = () => {
   );
 
   return (
-    <div data-testid="knowledge-page" style={{
+    <div data-testid="knowledge-page" className="animate-scroll-unfold" style={{
       padding: isMobile ? '16px' : '28px',
-      maxWidth: '1200px',
-      margin: '0 auto',
+      paddingLeft: 64,
     }}>
       <PageTransition>
-        <h1 className="font-serif" style={{
+        <h1 style={{
           margin: '0 0 24px 0',
           fontSize: isMobile ? '20px' : '26px',
           fontWeight: 600,
           color: 'var(--text-primary)',
           letterSpacing: '0.5px',
+          fontFamily: 'var(--font-serif)',
         }}>
           知识库管理
         </h1>
 
-        <div data-testid="tab-bar" className="scroll-tags" style={{
+        <div data-testid="tab-bar" style={{
           marginBottom: '20px',
-          backgroundColor: 'var(--surface)',
+          backgroundColor: 'var(--ink-dark)',
           borderRadius: 'var(--radius-md)',
           padding: '4px',
           width: 'fit-content',
           overflowX: 'auto',
-          backdropFilter: 'blur(12px)',
+          display: 'flex',
+          gap: '2px',
         }}>
           {[
             { key: 'documents' as const, label: '文档管理', icon: <DatabaseOutlined /> },
@@ -247,8 +250,8 @@ const KnowledgePage: React.FC = () => {
               onClick={() => handleTabChange(tab.key)}
               style={{
                 padding: '8px 20px',
-                backgroundColor: activeTab === tab.key ? 'var(--surface-solid)' : 'transparent',
-                color: activeTab === tab.key ? 'var(--accent)' : 'var(--text-secondary)',
+                backgroundColor: activeTab === tab.key ? 'rgba(243, 239, 230, 0.1)' : 'transparent',
+                color: activeTab === tab.key ? 'var(--gold-leaf)' : 'rgba(243, 239, 230, 0.55)',
                 border: 'none',
                 borderRadius: 'var(--radius-sm)',
                 cursor: 'pointer',
@@ -258,18 +261,30 @@ const KnowledgePage: React.FC = () => {
                 alignItems: 'center',
                 gap: '6px',
                 transition: 'all 200ms',
-                boxShadow: activeTab === tab.key ? 'var(--shadow-sm)' : 'none',
                 whiteSpace: 'nowrap',
+                position: 'relative',
               }}
             >
               {tab.icon}
               {tab.label}
+              {activeTab === tab.key && (
+                <span style={{
+                  position: 'absolute',
+                  bottom: 4,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: 4,
+                  height: 4,
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--vermilion)',
+                }} />
+              )}
             </button>
           ))}
         </div>
 
         {activeTab === 'documents' && (
-          <GlassCard>
+          <PaperPanel title="文档管理">
             <div data-testid="documents-panel">
               <div style={{
                 display: 'flex',
@@ -321,25 +336,17 @@ const KnowledgePage: React.FC = () => {
                 {documents.map((doc) => {
                   const status = STATUS_MAP[doc.status];
                   return (
-                    <div
+                    <SealCard
                       key={doc.id}
-                      data-testid={`doc-${doc.id}`}
+                      size="sm"
+                      color="ink"
                       onClick={() => handleDocSelect(doc)}
-                      className="card-hover"
                       style={{
-                        padding: '14px 16px',
-                        border: selectedDoc?.id === doc.id
-                          ? '1.5px solid var(--accent)'
-                          : '1px solid var(--surface-border)',
-                        borderRadius: 'var(--radius-md)',
                         marginBottom: '10px',
-                        cursor: 'pointer',
-                        backgroundColor: selectedDoc?.id === doc.id
-                          ? 'var(--surface)'
-                          : 'var(--surface-solid)',
+                        border: selectedDoc?.id === doc.id ? '1.5px solid var(--accent)' : undefined,
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div data-testid={`doc-${doc.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{
                           fontWeight: 600,
                           color: 'var(--text-primary)',
@@ -399,7 +406,7 @@ const KnowledgePage: React.FC = () => {
                       }}>
                         分块数: {doc.chunkCount} | 上传时间: {doc.uploadTime}
                       </div>
-                    </div>
+                    </SealCard>
                   );
                 })}
               </div>
@@ -418,11 +425,11 @@ const KnowledgePage: React.FC = () => {
                 </div>
               )}
             </div>
-          </GlassCard>
+          </PaperPanel>
         )}
 
         {activeTab === 'faq' && (
-          <GlassCard>
+          <PaperPanel title="FAQ管理">
             <div data-testid="faq-panel">
               <div style={{
                 display: 'flex',
@@ -476,51 +483,30 @@ const KnowledgePage: React.FC = () => {
                     暂无FAQ，请点击右上角新建
                   </div>
                 )}
-                {faqs.map((faq) => (
-                  <div
-                    key={faq.id}
-                    data-testid={`faq-${faq.id}`}
-                    onClick={() => { setEditingFAQ(faq); setShowFAQEditor(true); }}
-                    className="card-hover"
-                    style={{
-                      padding: '14px 16px',
-                      border: '1px solid var(--surface-border)',
-                      borderRadius: 'var(--radius-md)',
-                      marginBottom: '10px',
-                      cursor: 'pointer',
-                      backgroundColor: 'var(--surface-solid)',
-                    }}
-                  >
-                    <div style={{
-                      fontWeight: 600,
-                      marginBottom: '4px',
-                      color: 'var(--text-primary)',
-                      fontSize: '14px',
-                    }}>
-                      {faq.question}
-                    </div>
-                    <div style={{
-                      fontSize: '13px',
-                      color: 'var(--text-secondary)',
-                      lineHeight: 1.6,
-                    }}>
-                      {faq.answer}
-                    </div>
-                    <div style={{
-                      fontSize: '12px',
-                      color: 'var(--text-tertiary)',
-                      marginTop: '8px',
-                      display: 'flex',
-                      gap: '12px',
-                    }}>
-                      <span>分类: {faq.category}</span>
-                      <span>关键词: {faq.keywords.join(', ')}</span>
-                    </div>
-                  </div>
-                ))}
+                {(() => {
+                  const faqItems = faqs.map((faq, index) => ({
+                    id: faq.id ?? '',
+                    number: index + 1,
+                    text: faq.question,
+                    note: `${faq.answer}　|　分类: ${faq.category}　|　关键词: ${faq.keywords.join(', ')}`,
+                    highlight: index < 3,
+                  }));
+                  return (
+                    <InscriptionList
+                      items={faqItems}
+                      onItemClick={(item) => {
+                        const faq = faqs.find((f) => f.id === item.id);
+                        if (faq) {
+                          setEditingFAQ(faq);
+                          setShowFAQEditor(true);
+                        }
+                      }}
+                    />
+                  );
+                })()}
               </div>
             </div>
-          </GlassCard>
+          </PaperPanel>
         )}
       </PageTransition>
     </div>
