@@ -122,12 +122,15 @@ const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
             gap: '4px',
           }}
         >
-          <span style={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            backgroundColor: connected ? 'var(--color-success)' : 'var(--color-error)',
-          }} />
+          <span
+            className="animate-pulse-vermilion"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              backgroundColor: connected ? 'var(--color-success)' : 'var(--color-error)',
+            }}
+          />
           {connected ? '已连接' : '未连接'}
         </span>
       </div>
@@ -142,7 +145,7 @@ const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
             padding: '14px',
             border: '1px solid var(--border-light)',
             borderRadius: 'var(--radius-md)',
-            backgroundColor: 'var(--surface-elevated)',
+            backgroundColor: 'transparent',
           }}>
             <div style={{
               fontSize: '12px',
@@ -152,7 +155,8 @@ const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
             }}>
               {m.label}
             </div>
-            <div className="font-mono" style={{
+            <div style={{
+              fontFamily: 'var(--font-mono)',
               fontSize: '24px',
               fontWeight: 700,
               color: m.color,

@@ -77,7 +77,6 @@ const MetricsCard: React.FC<MetricsCardProps> = ({
   return (
     <div
       data-testid="metrics-card"
-      className="card-hover"
       style={{
         padding: '20px',
         border: '1px solid var(--border-light)',
@@ -95,10 +94,11 @@ const MetricsCard: React.FC<MetricsCardProps> = ({
           }}>
             {title}
           </div>
-          <div className="font-mono" style={{
+          <div style={{
+            fontFamily: 'var(--font-serif)',
             fontSize: '28px',
             fontWeight: 700,
-            color: 'var(--text-primary)',
+            color: 'var(--vermilion)',
             lineHeight: 1,
           }}>
             {displayValue}

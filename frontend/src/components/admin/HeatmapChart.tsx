@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { FireOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
+import { mountainTheme, heatmapColors } from './MountainChart';
 
 export interface HeatmapItem {
   day_of_week: number;
@@ -41,7 +42,9 @@ const HeatmapChart: React.FC<HeatmapChartProps> = ({ data: propData }) => {
 
   const option = useMemo(() => {
     return {
+      ...mountainTheme,
       tooltip: {
+        ...mountainTheme.tooltip,
         position: 'top',
         formatter: (params: any) => {
           return `${DAYS[params.value[0]]} ${HOURS[params.value[1]]}<br/>交互次数: ${params.value[2]}`;
@@ -77,7 +80,7 @@ const HeatmapChart: React.FC<HeatmapChartProps> = ({ data: propData }) => {
         left: 'center',
         bottom: '0%',
         inRange: {
-          color: ['#FFF3E0', '#FFCC80', '#FF9800', '#E65100'],
+          color: heatmapColors,
         },
         textStyle: { color: 'var(--text-secondary)' },
       },
