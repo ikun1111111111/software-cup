@@ -3,17 +3,14 @@ import json
 import logging
 import time
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.redis_client import get_redis
-from app.core.llm_router import LLMTask, route, route_stream
-from app.core.rag import retrieve
-from app.core.faq_matcher import search_faq
-from app.core.prompts import build_chat_prompt
+from app.services.chat_service import process_chat, finalize_chat
 from app.models.interaction import InteractionLog
 
 logger = logging.getLogger(__name__)
@@ -24,36 +21,37 @@ class ChatRequest(BaseModel):
     session_id: str
     question: str
     stream: bool = True
+    history: list[dict] = []  # Optional conversation history from frontend
 
 
-def _cache_key(session_id: str, question: str) -> str:
-    """Generate Redis cache key for chat Q&A."""
+def _exact_cache_key(session_id: str, question: str) -> str:
+    """Generate Redis cache key for exact-match chat Q&A."""
     from hashlib import md5
     q_hash = md5(question.encode("utf-8")).hexdigest()[:16]
     return f"chat:{session_id}:{q_hash}"
 
 
-async def _check_cache(session_id: str, question: str) -> dict | None:
-    """Check Redis for cached answer."""
+async def _check_exact_cache(session_id: str, question: str) -> dict | None:
+    """Check Redis for exact-match cached answer."""
     try:
         redis = await get_redis()
-        key = _cache_key(session_id, question)
+        key = _exact_cache_key(session_id, question)
         cached = await redis.get(key)
         if cached:
             return json.loads(cached)
     except Exception as e:
-        logger.debug("Cache check failed: %s", e)
+        logger.debug("Exact cache check failed: %s", e)
     return None
 
 
-async def _set_cache(session_id: str, question: str, answer: dict, ttl: int = 300):
+async def _set_exact_cache(session_id: str, question: str, answer: dict, ttl: int = 300):
     """Cache answer in Redis with TTL (default 5 min)."""
     try:
         redis = await get_redis()
-        key = _cache_key(session_id, question)
+        key = _exact_cache_key(session_id, question)
         await redis.set(key, json.dumps(answer, ensure_ascii=False), ex=ttl)
     except Exception as e:
-        logger.debug("Cache set failed: %s", e)
+        logger.debug("Exact cache set failed: %s", e)
 
 
 async def _log_interaction(
@@ -91,28 +89,40 @@ async def _log_interaction(
 
 @router.post("/stream")
 async def chat_stream(
-    request: ChatRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Streaming chat endpoint via Server-Sent Events.
 
+    Pipeline: exact cache -> chat_service (FAQ -> semantic cache -> RAG -> LLM) -> finalize
+
     Returns SSE events:
         - event: faq_hit   (if FAQ exact match)
+        - event: cache_hit (if semantic cache hit)
+        - event: chunk     (retrieved knowledge chunks)
         - event: token     (LLM streaming tokens)
         - event: done      (final metadata)
         - event: error     (on failure)
     """
+    # Parse JSON body manually to work around FastAPI body parsing issues
+    try:
+        body_json = await request.json()
+        request_data = ChatRequest(**body_json)
+    except Exception as e:
+        logger.error("Failed to parse request body: %s", e)
+        raise HTTPException(status_code=400, detail=f"Invalid JSON body: {str(e)}")
+
     start_time = time.time()
-    session_id = request.session_id
-    question = request.question.strip()
+    session_id = request_data.session_id
+    question = request_data.question.strip()
 
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
-    # 1. Check cache
-    cached = await _check_cache(session_id, question)
+    # 1. Exact-match cache (fastest, same question same session)
+    cached = await _check_exact_cache(session_id, question)
     if cached:
-        logger.info("Cache hit for session %s", session_id)
+        logger.info("Exact cache hit for session %s", session_id)
         cached["cached"] = True
         cached["latency_ms"] = int((time.time() - start_time) * 1000)
 
@@ -124,18 +134,19 @@ async def chat_stream(
             media_type="text/event-stream",
         )
 
-    # 2. FAQ check
-    faq_result = await search_faq(question, db)
-    if faq_result:
-        latency_ms = int((time.time() - start_time) * 1000)
-        answer = faq_result["answer"]
-        result = {
-            "answer": answer,
-            "source": "faq",
-            "faq_id": faq_result.get("faq_id"),
-            "latency_ms": latency_ms,
-        }
-        await _set_cache(session_id, question, result)
+    # 2. Run full pipeline via chat_service
+    result = await process_chat(
+        question, session_id, db,
+        stream=request_data.stream,
+        history=request_data.history if request_data.history else None,
+    )
+
+    # Fast paths: FAQ or semantic cache hit -> immediate response
+    if result.get("is_faq"):
+        latency_ms = result["latency_ms"]
+        answer = result["answer"]
+        await _set_exact_cache(session_id, question, result)
+        await finalize_chat(session_id, question, answer, "faq")
         await _log_interaction(
             db, session_id, question, answer, "faq", [],
             0.5, "neutral", latency_ms, is_faq=True,
@@ -149,18 +160,29 @@ async def chat_stream(
             media_type="text/event-stream",
         )
 
-    # 3. RAG retrieval
-    try:
-        chunks = await retrieve(question)
-    except Exception as e:
-        logger.error("RAG retrieval failed: %s", e)
-        chunks = []
+    if result.get("from_cache"):
+        latency_ms = result["latency_ms"]
+        answer = result["answer"]
+        await _set_exact_cache(session_id, question, result)
+        await finalize_chat(session_id, question, answer, "cache")
+        await _log_interaction(
+            db, session_id, question, answer, "cache", [],
+            0.5, "neutral", latency_ms,
+        )
 
-    # 4. Build prompt
-    messages = build_chat_prompt(question, chunks)
+        async def cache_generator():
+            yield f"event: done\ndata: {json.dumps(result, ensure_ascii=False)}\n\n"
 
-    # 5. Streaming or non-streaming generation
-    if request.stream:
+        return StreamingResponse(
+            cache_generator(),
+            media_type="text/event-stream",
+        )
+
+    # 3. Streaming generation
+    if request_data.stream:
+        chunks = result.get("chunks", [])
+        stream_gen = result.get("_stream")
+
         async def token_generator():
             tokens = []
             try:
@@ -168,29 +190,24 @@ async def chat_stream(
                 for i, chunk in enumerate(chunks[:3]):
                     yield (
                         f"event: chunk\n"
-                        f"data: {json.dumps({'index': i, 'text': chunk.get('text', '')[:200], 'score': chunk.get('rerank_score', chunk.get('score', 0))}, ensure_ascii=False)}\n\n"
+                        f"data: {json.dumps({'index': i, 'text': chunk.get('text', '')[:200], 'score': chunk.get('score', 0)}, ensure_ascii=False)}\n\n"
                     )
 
                 # Stream LLM tokens
-                async for token in route_stream(LLMTask.chat, messages):
-                    tokens.append(token)
-                    yield (
-                        f"event: token\n"
-                        f"data: {json.dumps({'token': token, 'index': len(tokens) - 1}, ensure_ascii=False)}\n\n"
-                    )
+                if stream_gen:
+                    async for token in stream_gen:
+                        tokens.append(token)
+                        yield (
+                            f"event: token\n"
+                            f"data: {json.dumps({'token': token, 'index': len(tokens) - 1}, ensure_ascii=False)}\n\n"
+                        )
 
                 full_answer = "".join(tokens)
                 latency_ms = int((time.time() - start_time) * 1000)
+                sentiment_score = result.get("sentiment_score", 0.5)
+                sentiment_label = result.get("sentiment_label", "neutral")
 
-                # Sentiment analysis (fire-and-forget)
-                sentiment_score, sentiment_label = 0.5, "neutral"
-                try:
-                    from app.core.llm import analyze_sentiment
-                    sentiment_score, sentiment_label = await analyze_sentiment(question)
-                except Exception:
-                    pass
-
-                result = {
+                done_result = {
                     "answer": full_answer,
                     "source": "rag",
                     "latency_ms": latency_ms,
@@ -198,15 +215,15 @@ async def chat_stream(
                     "sentiment_label": sentiment_label,
                 }
 
-                # Cache and log
-                await _set_cache(session_id, question, result)
+                # Persist turn and cache
+                await _set_exact_cache(session_id, question, done_result)
+                await finalize_chat(session_id, question, full_answer, "rag")
                 await _log_interaction(
                     db, session_id, question, full_answer, "rag",
-                    [{"text": c.get("text", ""), "score": c.get("rerank_score", c.get("score", 0))} for c in chunks],
-                    sentiment_score, sentiment_label, latency_ms,
+                    chunks, sentiment_score, sentiment_label, latency_ms,
                 )
 
-                yield f"event: done\ndata: {json.dumps(result, ensure_ascii=False)}\n\n"
+                yield f"event: done\ndata: {json.dumps(done_result, ensure_ascii=False)}\n\n"
 
             except Exception as e:
                 logger.error("Stream generation failed: %s", e)
@@ -221,22 +238,24 @@ async def chat_stream(
         )
     else:
         # Non-streaming fallback
-        try:
-            answer = await route(LLMTask.chat, messages=messages)
-        except Exception as e:
-            logger.error("LLM generation failed: %s", e)
-            raise HTTPException(status_code=503, detail="AI 服务暂时不可用，请稍后重试")
-
+        answer = result.get("answer", "")
         latency_ms = int((time.time() - start_time) * 1000)
-        result = {
+        sentiment_score = result.get("sentiment_score", 0.5)
+        sentiment_label = result.get("sentiment_label", "neutral")
+        chunks = result.get("chunks", [])
+
+        done_result = {
             "answer": answer,
             "source": "rag",
-            "chunks": [{"text": c.get("text", ""), "score": c.get("rerank_score", c.get("score", 0))} for c in chunks],
+            "chunks": chunks,
             "latency_ms": latency_ms,
+            "sentiment_score": sentiment_score,
+            "sentiment_label": sentiment_label,
         }
-        await _set_cache(session_id, question, result)
+        await _set_exact_cache(session_id, question, done_result)
+        await finalize_chat(session_id, question, answer, "rag")
         await _log_interaction(
             db, session_id, question, answer, "rag",
-            result["chunks"], 0.5, "neutral", latency_ms,
+            chunks, sentiment_score, sentiment_label, latency_ms,
         )
-        return result
+        return done_result

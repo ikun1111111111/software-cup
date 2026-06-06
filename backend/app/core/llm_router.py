@@ -18,6 +18,10 @@ def _get_deepseek_key_pool() -> list[str]:
         settings.deepseek_api_key_2,
         settings.deepseek_api_key_3,
         settings.deepseek_api_key_4,
+        settings.deepseek_api_key_5,
+        settings.deepseek_api_key_6,
+        settings.deepseek_api_key_7,
+        settings.deepseek_api_key_8,
     ]
     valid = [k for k in keys if k and k.strip()]
     if not valid:
@@ -165,6 +169,48 @@ async def _call_qwen_vl(image_url: str, prompt: str, **kwargs) -> str:
     raise RuntimeError(f"Qwen-VL failed: {response.message}")
 
 
+async def _call_doubao_stream(messages: list[dict], **kwargs):
+    """Call Doubao Lite (streaming). Yields tokens."""
+    from openai import AsyncOpenAI
+
+    if not settings.doubao_api_key:
+        raise RuntimeError("No Doubao API key available")
+
+    client = AsyncOpenAI(api_key=settings.doubao_api_key, base_url=settings.doubao_base_url)
+    response = await client.chat.completions.create(
+        model=settings.llm_sentiment_model,
+        messages=messages,
+        stream=True,
+        temperature=kwargs.get("temperature", 0.7),
+        max_tokens=kwargs.get("max_tokens", 2048),
+    )
+    async for chunk in response:
+        delta = chunk.choices[0].delta.content if chunk.choices else ""
+        if delta:
+            yield delta
+
+
+async def _call_qwen_stream(messages: list[dict], **kwargs):
+    """Call Qwen-Long (streaming). Yields tokens."""
+    from openai import AsyncOpenAI
+
+    if not settings.qwen_api_key:
+        raise RuntimeError("No Qwen API key available")
+
+    client = AsyncOpenAI(api_key=settings.qwen_api_key, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
+    response = await client.chat.completions.create(
+        model=settings.llm_summary_model,
+        messages=messages,
+        stream=True,
+        temperature=kwargs.get("temperature", 0.7),
+        max_tokens=kwargs.get("max_tokens", 2048),
+    )
+    async for chunk in response:
+        delta = chunk.choices[0].delta.content if chunk.choices else ""
+        if delta:
+            yield delta
+
+
 # Map provider name to caller function name (resolved at runtime via globals())
 _CALLER_NAMES = {
     "deepseek": "_call_deepseek_sync",
@@ -177,8 +223,8 @@ _CALLER_NAMES = {
 # Map provider name to stream caller function name
 _STREAM_CALLER_NAMES = {
     "deepseek": "_call_deepseek_stream",
-    "doubao": "_call_deepseek_stream",
-    "qwen": "_call_deepseek_stream",
+    "doubao": "_call_doubao_stream",
+    "qwen": "_call_qwen_stream",
 }
 
 

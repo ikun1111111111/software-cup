@@ -87,7 +87,90 @@ class TestProcessChat:
             assert result["answer"] == ""
 
     @pytest.mark.asyncio
-    async def test_sentiment_fallback(self):
+    async def test_semantic_cache_fast_path(self):
+        """Semantic cache hit should bypass RAG/LLM."""
+        mock_db = MagicMock()
+        with patch("app.services.chat_service.search_faq", new_callable=AsyncMock, return_value=None), \
+             patch("app.services.chat_service.get_similar", new_callable=AsyncMock, return_value="缓存答案"):
+
+            result = await process_chat("灵山大佛多高？", "s1", mock_db, stream=True)
+            assert result["answer"] == "缓存答案"
+            assert result["source"] == "cache"
+            assert result["from_cache"] is True
+            assert "_stream" not in result
+
+    @pytest.mark.asyncio
+    async def test_context_history_injected(self):
+        """Should load history and inject into prompt."""
+        mock_db = MagicMock()
+
+        async def fake_stream():
+            yield "回"
+            yield "答"
+
+        with patch("app.services.chat_service.search_faq", new_callable=AsyncMock, return_value=None), \
+             patch("app.services.chat_service.get_similar", new_callable=AsyncMock, return_value=None), \
+             patch("app.services.chat_service.get_history", new_callable=AsyncMock, return_value=[
+                 {"user": "之前的问题？", "assistant": "之前的答案。", "timestamp": 1000}
+             ]), \
+             patch("app.services.chat_service.retrieve", new_callable=AsyncMock, return_value=[]), \
+             patch("app.services.chat_service.route_stream", return_value=fake_stream()), \
+             patch("app.core.llm.analyze_sentiment", new_callable=AsyncMock, return_value=(0.5, "neutral")):
+
+            result = await process_chat("现在的问题？", "s1", mock_db, stream=True)
+            assert result["source"] == "rag"
+            assert "_stream" in result
+
+    @pytest.mark.asyncio
+    async def test_external_history_priority(self):
+        """Should use externally provided history instead of loading from Redis."""
+        mock_db = MagicMock()
+
+        with patch("app.services.chat_service.search_faq", new_callable=AsyncMock, return_value=None), \
+             patch("app.services.chat_service.get_similar", new_callable=AsyncMock, return_value=None), \
+             patch("app.services.chat_service.get_history", new_callable=AsyncMock) as mock_get_history, \
+             patch("app.services.chat_service.retrieve", new_callable=AsyncMock, return_value=[]), \
+             patch("app.services.chat_service.route", new_callable=AsyncMock, return_value="回答"), \
+             patch("app.core.llm.analyze_sentiment", new_callable=AsyncMock, return_value=(0.5, "neutral")):
+
+            external_history = [
+                {"role": "user", "content": "外部问题"},
+                {"role": "assistant", "content": "外部回答"},
+            ]
+            result = await process_chat("问题", "s1", mock_db, stream=False, history=external_history)
+            assert result["answer"] == "回答"
+            # Should NOT call get_history because external history was provided
+            mock_get_history.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_finalize_chat(self):
+        """Should save turn to context and semantic cache."""
+        with patch("app.core.context_manager.save_turn", new_callable=AsyncMock) as mock_save, \
+             patch("app.core.semantic_cache.set_cache", new_callable=AsyncMock) as mock_cache:
+
+            await finalize_chat("s1", "问题", "答案", "rag")
+            mock_save.assert_called_once_with("s1", "问题", "答案")
+            mock_cache.assert_called_once_with("问题", "答案")
+
+    @pytest.mark.asyncio
+    async def test_finalize_chat_skips_faq(self):
+        """Should not save to semantic cache for FAQ answers."""
+        with patch("app.core.context_manager.save_turn", new_callable=AsyncMock) as mock_save, \
+             patch("app.core.semantic_cache.set_cache", new_callable=AsyncMock) as mock_cache:
+
+            await finalize_chat("s1", "问题", "答案", "faq")
+            mock_save.assert_called_once()
+            mock_cache.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_finalize_chat_skips_cache(self):
+        """Should not save to semantic cache for cache hits."""
+        with patch("app.core.context_manager.save_turn", new_callable=AsyncMock) as mock_save, \
+             patch("app.core.semantic_cache.set_cache", new_callable=AsyncMock) as mock_cache:
+
+            await finalize_chat("s1", "问题", "答案", "cache")
+            mock_save.assert_called_once()
+            mock_cache.assert_not_called()
         """Sentiment analysis failure should not break the pipeline."""
         mock_db = MagicMock()
         with patch("app.services.chat_service.search_faq", new_callable=AsyncMock, return_value=None), \

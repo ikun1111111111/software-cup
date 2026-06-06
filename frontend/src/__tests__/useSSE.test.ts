@@ -46,7 +46,7 @@ describe('useSSE', () => {
         await result.current.connect('/api/chat/stream');
       });
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/chat/stream', expect.objectContaining({
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:8000/api/chat/stream', expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({
           'Accept': 'text/event-stream',
@@ -75,7 +75,7 @@ describe('useSSE', () => {
         await result.current.connect('/api/chat/stream', { message: 'test' });
       });
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/chat/stream', expect.objectContaining({
+      expect(mockFetch).toHaveBeenCalledWith('http://localhost:8000/api/chat/stream', expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ message: 'test' }),
       }));
