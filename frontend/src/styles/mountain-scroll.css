@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@300;400;500;600&family=Noto+Serif+SC:wght@400;600;700;900&display=swap');
+
+:root {
+  /* Chinese mineral pigment palette */
+  --mountain-deep: #1B4D3E;
+  --mountain-mid: #4A7C6F;
+  --mountain-light: #8FB8AA;
+  --sky-dawn: #E8DCC4;
+  --sky-mist: #C9D5D1;
+  --ink-dark: #2A2520;
+  --ink-medium: #5C534A;
+  --ink-light: #9A9085;
+  --vermilion: #C84B31;
+  --gold-leaf: #C9A96E;
+  --paper-texture: #F3EFE6;
+
+  /* Semantic mappings */
+  --bg-page: linear-gradient(180deg, var(--sky-dawn) 0%, var(--paper-texture) 40%, var(--sky-mist) 100%);
+  --bg-panel: rgba(243, 239, 230, 0.92);
+  --bg-nav: rgba(27, 77, 62, 0.95);
+
+  --text-primary: var(--ink-dark);
+  --text-secondary: var(--ink-medium);
+  --text-tertiary: var(--ink-light);
+  --text-inverse: var(--paper-texture);
+
+  --accent: var(--vermilion);
+  --accent-secondary: var(--gold-leaf);
+
+  --border-subtle: rgba(154, 144, 133, 0.25);
+  --border-ink: rgba(42, 37, 32, 0.15);
+
+  /* Font variables */
+  --font-serif: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  --font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+
+  /* Size variables */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-pill: 9999px;
+
+  --shadow-soft: 0 2px 12px rgba(42, 37, 32, 0.06);
+  --shadow-medium: 0 8px 32px rgba(42, 37, 32, 0.12);
+}
+
+/* Global noise texture overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Custom scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ink-light);
+  border-radius: var(--radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-medium);
+}
