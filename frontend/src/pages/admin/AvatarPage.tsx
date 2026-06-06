@@ -5,7 +5,7 @@ import AvatarAppearance from '../../components/admin/AvatarAppearance';
 import VoiceSelector from '../../components/admin/VoiceSelector';
 import WelcomeEditor from '../../components/admin/WelcomeEditor';
 import DigitalHuman from '../../components/DigitalHuman/DigitalHuman';
-import GlassCard from '../../components/admin/GlassCard';
+import PaperPanel from '../../components/admin/PaperPanel';
 import PageTransition from '../../components/admin/PageTransition';
 import { getModelPath, getExpressionForAppearance } from '../../config/avatarModels';
 import { previewVoice } from '../../api/tts';
@@ -154,10 +154,9 @@ const AvatarPage: React.FC = () => {
   const tabs = ['外观', '声音', '欢迎语'];
 
   return (
-    <div data-testid="avatar-page" style={{
+    <div data-testid="avatar-page" className="animate-scroll-unfold" style={{
       padding: isMobile ? '16px' : '28px',
-      maxWidth: '1200px',
-      margin: '0 auto',
+      paddingLeft: 64,
     }}>
       <PageTransition>
         <div style={{
@@ -168,12 +167,13 @@ const AvatarPage: React.FC = () => {
           flexWrap: 'wrap',
           gap: '12px',
         }}>
-          <h1 className="font-serif" style={{
+          <h1 style={{
             margin: 0,
             fontSize: isMobile ? '20px' : '26px',
             fontWeight: 600,
             color: 'var(--text-primary)',
             letterSpacing: '0.5px',
+            fontFamily: 'var(--font-serif)',
           }}>
             数字人配置
           </h1>
@@ -196,7 +196,7 @@ const AvatarPage: React.FC = () => {
               disabled={saving || loading}
               style={{
                 padding: '8px 22px',
-                backgroundColor: saving || loading ? 'var(--gray-300)' : 'var(--accent)',
+                backgroundColor: saving || loading ? 'var(--gray-300)' : '#A83828',
                 color: '#fff',
                 border: 'none',
                 borderRadius: 'var(--radius-sm)',
@@ -207,7 +207,21 @@ const AvatarPage: React.FC = () => {
                 alignItems: 'center',
                 gap: '6px',
                 transition: 'all 200ms',
-                boxShadow: saving || loading ? 'none' : '0 2px 8px rgba(0,0,0,0.1)',
+                boxShadow: saving || loading ? 'none' : '0 2px 8px rgba(168, 56, 40, 0.25)',
+              }}
+              onMouseEnter={(e) => {
+                if (!saving && !loading) {
+                  e.currentTarget.style.backgroundColor = '#8C2E20';
+                  e.currentTarget.style.transform = 'translateY(1px)';
+                  e.currentTarget.style.boxShadow = '0 0 0 2px rgba(201, 169, 110, 0.3)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!saving && !loading) {
+                  e.currentTarget.style.backgroundColor = '#A83828';
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 8px rgba(168, 56, 40, 0.25)';
+                }
               }}
             >
               <SaveOutlined />
@@ -224,44 +238,51 @@ const AvatarPage: React.FC = () => {
             flexDirection: isMobile ? 'column' : 'row',
             gap: '24px',
           }}>
-            <GlassCard style={{
+            <PaperPanel title="实时预览" style={{
               flex: isMobile ? 'auto' : '0 0 280px',
-              padding: '20px',
             }}>
               <div data-testid="preview-area">
-                <h3 style={{
-                  margin: '0 0 14px 0',
-                  fontSize: '15px',
-                  fontWeight: 600,
-                  color: 'var(--text-primary)',
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  padding: '8px',
+                  borderRadius: '50% / 45%',
+                  border: '1px solid var(--border-ink)',
+                  overflow: 'hidden',
+                  backgroundColor: 'var(--paper-texture)',
                 }}>
-                  实时预览
-                </h3>
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <DigitalHuman
-                    modelPath={getModelPath(config.appearance.model)}
-                    width={isMobile ? 180 : 240}
-                    height={isMobile ? 260 : 340}
-                    emotion="neutral"
-                    expression={getExpressionForAppearance(config.appearance)}
-                    onReady={() => console.log('[AvatarPage] Preview ready')}
-                  />
+                  <div style={{
+                    borderRadius: '50% / 45%',
+                    overflow: 'hidden',
+                    width: isMobile ? 180 : 240,
+                    height: isMobile ? 260 : 340,
+                  }}>
+                    <DigitalHuman
+                      modelPath={getModelPath(config.appearance.model)}
+                      width={isMobile ? 180 : 240}
+                      height={isMobile ? 260 : 340}
+                      emotion="neutral"
+                      expression={getExpressionForAppearance(config.appearance)}
+                      onReady={() => console.log('[AvatarPage] Preview ready')}
+                    />
+                  </div>
                 </div>
                 <div style={{ marginTop: '14px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
                   <div>模型: {config.appearance.model}</div>
                   <div>声音: {DEFAULT_VOICES.find((v) => v.id === config.voiceId)?.name || config.voiceId}</div>
                 </div>
               </div>
-            </GlassCard>
+            </PaperPanel>
 
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div data-testid="config-tabs" className="scroll-tags" style={{
+              <div data-testid="config-tabs" style={{
                 marginBottom: '20px',
-                backgroundColor: 'var(--surface)',
+                backgroundColor: 'var(--ink-dark)',
                 borderRadius: 'var(--radius-md)',
                 padding: '4px',
                 width: 'fit-content',
-                backdropFilter: 'blur(12px)',
+                display: 'flex',
+                gap: '2px',
               }}>
                 {tabs.map((tab, i) => (
                   <span
@@ -269,23 +290,35 @@ const AvatarPage: React.FC = () => {
                     onClick={() => setActiveTab(i)}
                     style={{
                       padding: '8px 18px',
-                      backgroundColor: activeTab === i ? 'var(--surface-solid)' : 'transparent',
-                      color: activeTab === i ? 'var(--accent)' : 'var(--text-secondary)',
+                      backgroundColor: activeTab === i ? 'rgba(243, 239, 230, 0.1)' : 'transparent',
+                      color: activeTab === i ? 'var(--gold-leaf)' : 'rgba(243, 239, 230, 0.55)',
                       borderRadius: 'var(--radius-sm)',
                       fontWeight: activeTab === i ? 600 : 400,
                       fontSize: '14px',
                       cursor: 'pointer',
                       transition: 'all 200ms',
-                      boxShadow: activeTab === i ? 'var(--shadow-sm)' : 'none',
                       whiteSpace: 'nowrap',
+                      position: 'relative',
                     }}
                   >
                     {tab}
+                    {activeTab === i && (
+                      <span style={{
+                        position: 'absolute',
+                        bottom: 4,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        width: 4,
+                        height: 4,
+                        borderRadius: '50%',
+                        backgroundColor: 'var(--vermilion)',
+                      }} />
+                    )}
                   </span>
                 ))}
               </div>
 
-              <GlassCard style={{ overflow: 'hidden' }}>
+              <PaperPanel>
                 {activeTab === 0 && (
                   <div data-testid="appearance-section">
                     <AvatarAppearance config={config.appearance} onChange={handleAppearanceChange} />
@@ -310,7 +343,7 @@ const AvatarPage: React.FC = () => {
                     />
                   </div>
                 )}
-              </GlassCard>
+              </PaperPanel>
             </div>
           </div>
         )}
