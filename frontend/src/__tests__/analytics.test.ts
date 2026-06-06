@@ -1,107 +1,55 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as analyticsApi from '../api/analytics';
 
 vi.mock('../api/request', () => ({
-  default: {
-    get: vi.fn(() => Promise.resolve({})),
-    post: vi.fn(() => Promise.resolve({})),
-    put: vi.fn(() => Promise.resolve({})),
-    delete: vi.fn(() => Promise.resolve({})),
-  },
+  get: vi.fn(() => Promise.resolve({ data: { code: 200, data: {} } })),
+  post: vi.fn(() => Promise.resolve({ data: { code: 200, data: {} } })),
 }));
 
 describe('analytics.ts', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   describe('模块导出', () => {
-    it('getSentimentData应该是函数', () => {
-      expect(typeof analyticsApi.getSentimentData).toBe('function');
+    it('getTrends应该是函数', () => {
+      expect(typeof analyticsApi.getTrends).toBe('function');
     });
-
-    it('getReport应该是函数', () => {
-      expect(typeof analyticsApi.getReport).toBe('function');
+    it('getTopQuestions应该是函数', () => {
+      expect(typeof analyticsApi.getTopQuestions).toBe('function');
     });
-
-    it('getDashboardMetrics应该是函数', () => {
-      expect(typeof analyticsApi.getDashboardMetrics).toBe('function');
+    it('getOverview应该是函数', () => {
+      expect(typeof analyticsApi.getOverview).toBe('function');
     });
-
-    it('getHotQuestions应该是函数', () => {
-      expect(typeof analyticsApi.getHotQuestions).toBe('function');
+    it('triggerReport应该是函数', () => {
+      expect(typeof analyticsApi.triggerReport).toBe('function');
     });
-
-    it('subscribeRealtime应该是函数', () => {
-      expect(typeof analyticsApi.subscribeRealtime).toBe('function');
+    it('getReportStatus应该是函数', () => {
+      expect(typeof analyticsApi.getReportStatus).toBe('function');
     });
   });
 
-  describe('getSentimentData', () => {
+  describe('getTrends', () => {
     it('应该返回Promise', () => {
-      const result = analyticsApi.getSentimentData();
-      expect(result).toBeInstanceOf(Promise);
-    });
-
-    it('应该支持日期参数', () => {
-      const result = analyticsApi.getSentimentData({ startDate: '2024-01-01', endDate: '2024-01-31' });
+      const result = analyticsApi.getTrends();
       expect(result).toBeInstanceOf(Promise);
     });
   });
 
-  describe('getReport', () => {
+  describe('getTopQuestions', () => {
     it('应该返回Promise', () => {
-      const result = analyticsApi.getReport();
+      const result = analyticsApi.getTopQuestions();
       expect(result).toBeInstanceOf(Promise);
     });
   });
 
-  describe('getDashboardMetrics', () => {
+  describe('triggerReport', () => {
     it('应该返回Promise', () => {
-      const result = analyticsApi.getDashboardMetrics();
+      const result = analyticsApi.triggerReport();
       expect(result).toBeInstanceOf(Promise);
     });
   });
 
-  describe('getHotQuestions', () => {
+  describe('getReportStatus', () => {
     it('应该返回Promise', () => {
-      const result = analyticsApi.getHotQuestions();
+      const result = analyticsApi.getReportStatus('task-123');
       expect(result).toBeInstanceOf(Promise);
-    });
-  });
-
-  describe('subscribeRealtime', () => {
-    it('应该返回取消订阅函数', () => {
-      const unsubscribe = analyticsApi.subscribeRealtime(() => {});
-      expect(typeof unsubscribe).toBe('function');
-    });
-
-    it('应该定期调用回调', () => {
-      const callback = vi.fn();
-      analyticsApi.subscribeRealtime(callback);
-
-      vi.advanceTimersByTime(5000);
-      expect(callback).toHaveBeenCalledTimes(1);
-
-      vi.advanceTimersByTime(5000);
-      expect(callback).toHaveBeenCalledTimes(2);
-    });
-
-    it('取消订阅后应该停止调用', () => {
-      const callback = vi.fn();
-      const unsubscribe = analyticsApi.subscribeRealtime(callback);
-
-      vi.advanceTimersByTime(5000);
-      expect(callback).toHaveBeenCalledTimes(1);
-
-      unsubscribe();
-
-      vi.advanceTimersByTime(5000);
-      expect(callback).toHaveBeenCalledTimes(1);
     });
   });
 });

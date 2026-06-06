@@ -1,42 +1,58 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { TeamOutlined, MessageOutlined, SmileOutlined, StarOutlined, FullscreenOutlined, FullscreenExitOutlined } from '@ant-design/icons';
+import { message } from 'antd';
+import { TeamOutlined, MessageOutlined, SmileOutlined, FullscreenOutlined, FullscreenExitOutlined } from '@ant-design/icons';
 import MetricsCard from '../../components/admin/MetricsCard';
 import HotQuestions from '../../components/admin/HotQuestions';
 import RealtimeMonitor from '../../components/admin/RealtimeMonitor';
-
-interface DashboardData {
-  totalVisitors: number;
-  activeSessions: number;
-  avgSentiment: number;
-  satisfactionRate: number;
-  hotQuestions: Array<{ id: string; question: string; count: number; trend: 'up' | 'down' | 'stable' }>;
-}
-
-const MOCK_DATA: DashboardData = {
-  totalVisitors: 12580,
-  activeSessions: 156,
-  avgSentiment: 4.2,
-  satisfactionRate: 0.92,
-  hotQuestions: [
-    { id: '1', question: '灵山大佛有多高？', count: 156, trend: 'up' },
-    { id: '2', question: '景区开放时间是什么？', count: 132, trend: 'stable' },
-    { id: '3', question: '怎么去梵宫？', count: 98, trend: 'up' },
-  ],
-};
+import GlassCard from '../../components/admin/GlassCard';
+import AnimatedNumber from '../../components/admin/AnimatedNumber';
+import PageTransition from '../../components/admin/PageTransition';
+import {
+  getOverview,
+  getTopQuestions,
+  type OverviewMetrics,
+  type TopQuestionItem,
+} from '../../api/analytics';
 
 const DashboardPage: React.FC = () => {
-  const [data] = useState<DashboardData>(MOCK_DATA);
+  const [overview, setOverview] = useState<OverviewMetrics | null>(null);
+  const [topQuestions, setTopQuestions] = useState<TopQuestionItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const isMobile = false; // web-only
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const [ov, tq] = await Promise.all([
+          getOverview(),
+          getTopQuestions(10),
+        ]);
+        setOverview(ov);
+        setTopQuestions(tq);
+      } catch (err: any) {
+        message.error('加载数据失败: ' + (err?.message || '未知错误'));
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
   }, []);
 
   useEffect(() => {
-    const handleChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
+    const interval = setInterval(async () => {
+      try {
+        const ov = await getOverview();
+        setOverview(ov);
+      } catch {}
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const handleChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handleChange);
     return () => document.removeEventListener('fullscreenchange', handleChange);
   }, []);
@@ -53,126 +69,139 @@ const DashboardPage: React.FC = () => {
     console.log('Question clicked:', question);
   }, []);
 
+  const hotQuestions = topQuestions.map((q, i) => ({
+    id: `q-${i}`,
+    question: q.question,
+    count: q.count,
+    trend: 'stable' as const,
+  }));
+
+  const realtimeData = overview
+    ? {
+        activeUsers: overview.uniqueSessions,
+        messagesPerMinute: Math.max(1, Math.round(overview.todayInteractions / 60)),
+        avgResponseTime: Math.round(overview.avgLatencyMs),
+        sentimentScore: overview.avgSentimentScore,
+      }
+    : undefined;
+
   return (
     <div
       ref={containerRef}
       data-testid="dashboard-page"
-      data-theme="dark"
       style={{
         padding: isMobile ? '16px' : '28px',
         maxWidth: '1440px',
         margin: '0 auto',
         minHeight: isFullscreen ? '100vh' : undefined,
-        backgroundColor: 'var(--surface-bg)',
-        color: 'var(--text-primary)',
       }}
     >
-      {/* Header */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: isMobile ? '20px' : '28px',
-      }}>
-        <h1 style={{
-          margin: 0,
-          fontSize: isMobile ? '18px' : '22px',
-          fontWeight: 700,
-          color: 'var(--text-primary)',
-        }}>
-          数据大屏
-        </h1>
-        <button
-          onClick={toggleFullscreen}
-          aria-label={isFullscreen ? '退出全屏' : '全屏模式'}
-          style={{
-            width: 44,
-            height: 44,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'var(--surface-elevated)',
-            border: '1px solid var(--border-light)',
-            borderRadius: 'var(--radius-md)',
-            cursor: 'pointer',
-            color: 'var(--text-secondary)',
-            fontSize: '18px',
-            transition: 'all 200ms',
-          }}
-        >
-          {isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-        </button>
-      </div>
-
-      {/* Metrics Grid */}
-      <div data-testid="metrics-grid" style={{
-        display: 'grid',
-        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
-        gap: isMobile ? '12px' : '16px',
-        marginBottom: isMobile ? '16px' : '28px',
-      }}>
-        <MetricsCard
-          title="今日访客"
-          value={data.totalVisitors}
-          trend="up"
-          trendValue="较昨日+12%"
-          icon={<TeamOutlined />}
-          color="#1A5FB4"
-        />
-        <MetricsCard
-          title="活跃会话"
-          value={data.activeSessions}
-          trend="up"
-          trendValue="较昨日+8%"
-          icon={<MessageOutlined />}
-          color="#2D8B57"
-        />
-        <MetricsCard
-          title="平均情感分"
-          value={data.avgSentiment.toFixed(1)}
-          trend="stable"
-          trendValue="与昨日持平"
-          icon={<SmileOutlined />}
-          color="#E8A838"
-        />
-        <MetricsCard
-          title="满意度"
-          value={`${(data.satisfactionRate * 100).toFixed(0)}%`}
-          trend="up"
-          trendValue="较昨日+2%"
-          icon={<StarOutlined />}
-          color="#8B5CF6"
-        />
-      </div>
-
-      {/* Panels */}
-      <div style={{
-        display: 'flex',
-        flexDirection: isMobile ? 'column' : 'row',
-        gap: isMobile ? '12px' : '20px',
-      }}>
+      <PageTransition>
         <div style={{
-          flex: 1,
-          backgroundColor: 'var(--surface-card)',
-          borderRadius: 'var(--radius-lg)',
-          border: '1px solid var(--border-light)',
-          boxShadow: 'var(--shadow-sm)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: isMobile ? '20px' : '28px',
         }}>
-          <RealtimeMonitor />
+          <h1 className="font-serif" style={{
+            margin: 0,
+            fontSize: isMobile ? '20px' : '26px',
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            letterSpacing: '0.5px',
+          }}>
+            数据大屏
+          </h1>
+          <button
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? '退出全屏' : '全屏模式'}
+            style={{
+              width: 44,
+              height: 44,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'var(--surface)',
+              border: '1px solid var(--surface-border)',
+              borderRadius: 12,
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              fontSize: '18px',
+              transition: 'all 200ms',
+              backdropFilter: 'blur(12px)',
+            }}
+          >
+            {isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+          </button>
         </div>
-        <div style={{
-          flex: 1,
-          backgroundColor: 'var(--surface-card)',
-          borderRadius: 'var(--radius-lg)',
-          border: '1px solid var(--border-light)',
-          boxShadow: 'var(--shadow-sm)',
-        }}>
-          <HotQuestions
-            questions={data.hotQuestions}
-            onQuestionClick={handleQuestionClick}
-          />
-        </div>
-      </div>
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-tertiary)' }}>加载中...</div>
+        ) : (
+          <>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+              gap: isMobile ? '12px' : '16px',
+              marginBottom: isMobile ? '16px' : '28px',
+            }}>
+              <GlassCard style={{ padding: 20 }}>
+                <MetricsCard
+                  title="今日交互"
+                  value={<AnimatedNumber value={overview?.todayInteractions ?? 0} style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }} />}
+                  trend="up"
+                  trendValue="实时"
+                  icon={<TeamOutlined />}
+                  color="var(--accent)"
+                />
+              </GlassCard>
+              <GlassCard style={{ padding: 20 }}>
+                <MetricsCard
+                  title="活跃会话"
+                  value={<AnimatedNumber value={overview?.uniqueSessions ?? 0} style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }} />}
+                  trend="up"
+                  trendValue="实时"
+                  icon={<MessageOutlined />}
+                  color="var(--accent)"
+                />
+              </GlassCard>
+              <GlassCard style={{ padding: 20 }}>
+                <MetricsCard
+                  title="平均情感分"
+                  value={<AnimatedNumber value={overview?.avgSentimentScore ?? 0} decimals={2} style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }} />}
+                  trend="stable"
+                  trendValue="实时"
+                  icon={<SmileOutlined />}
+                  color="var(--accent)"
+                />
+              </GlassCard>
+              <GlassCard style={{ padding: 20 }}>
+                <MetricsCard
+                  title="FAQ命中率"
+                  value={<AnimatedNumber value={((overview?.faqHitRate ?? 0) * 100)} decimals={0} suffix="%" style={{ fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }} />}
+                  trend="up"
+                  trendValue="实时"
+                  icon={<SmileOutlined />}
+                  color="var(--accent)"
+                />
+              </GlassCard>
+            </div>
+
+            <div style={{
+              display: 'flex',
+              flexDirection: isMobile ? 'column' : 'row',
+              gap: isMobile ? '12px' : '20px',
+            }}>
+              <GlassCard style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
+                <RealtimeMonitor data={realtimeData} />
+              </GlassCard>
+              <GlassCard style={{ flex: 1, padding: 0, overflow: 'hidden' }}>
+                <HotQuestions questions={hotQuestions} onQuestionClick={handleQuestionClick} />
+              </GlassCard>
+            </div>
+          </>
+        )}
+      </PageTransition>
     </div>
   );
 };

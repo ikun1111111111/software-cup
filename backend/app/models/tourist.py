@@ -16,6 +16,8 @@ class TouristProfile(Base):
     visit_history: Mapped[list | None] = mapped_column(JSON)     # [{"spot": "xx", "time": "..."}]
     total_interactions: Mapped[int] = mapped_column(Integer, default=0)
     avg_sentiment: Mapped[float | None] = mapped_column(Float)
+    dna_type: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    dna_scores: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

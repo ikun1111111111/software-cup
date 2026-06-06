@@ -25,22 +25,26 @@ const MOCK_WORDS: WordCloudItem[] = [
 ];
 
 const COLORS = [
-  'var(--color-primary)',
-  'var(--color-success)',
-  'var(--color-accent)',
-  'var(--color-error)',
+  'var(--accent)',
+  'var(--text-primary)',
+  'var(--text-secondary)',
+  'var(--color-vermilion)',
+  'var(--color-celadon)',
   '#8B5CF6',
   '#13c2c2',
   '#C23B22',
-  '#0D7377',
 ];
 
 const WordCloud: React.FC<WordCloudProps> = ({
   words: propWords,
   onWordClick,
 }) => {
-  const words = propWords || MOCK_WORDS;
-  const maxValue = Math.max(...words.map((w) => w.value));
+  const merged = (propWords || MOCK_WORDS).reduce<Record<string, number>>((acc, w) => {
+    acc[w.text] = (acc[w.text] || 0) + w.value;
+    return acc;
+  }, {});
+  const words = Object.entries(merged).map(([text, value]) => ({ text, value }));
+  const maxValue = Math.max(...words.map((w) => w.value), 1);
 
   const getFontSize = useCallback((value: number) => {
     const minSize = 14;
@@ -63,7 +67,7 @@ const WordCloud: React.FC<WordCloudProps> = ({
         alignItems: 'center',
         gap: '6px',
       }}>
-        <CloudOutlined style={{ color: 'var(--color-primary)' }} />
+        <CloudOutlined style={{ color: 'var(--accent)' }} />
         关注点词云
       </h3>
       <div
@@ -75,10 +79,7 @@ const WordCloud: React.FC<WordCloudProps> = ({
           justifyContent: 'center',
           alignItems: 'center',
           padding: '28px',
-          border: '1px solid var(--border-light)',
-          borderRadius: 'var(--radius-md)',
           minHeight: '200px',
-          backgroundColor: 'var(--surface-elevated)',
         }}
       >
         {words.map((word, index) => (

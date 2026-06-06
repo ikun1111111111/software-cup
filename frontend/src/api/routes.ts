@@ -1,4 +1,4 @@
-import request from './request';
+import { get, post } from './request';
 
 export interface TourRoute {
   id: string;
@@ -14,13 +14,14 @@ export interface TourRouteDetail extends TourRoute {
   spot_details: Record<string, { 讲解重点: string[]; 特色体验: string[] }> | null;
 }
 
-export const listRoutes = (routeType?: string) => {
-  const params = routeType ? { route_type: routeType } : {};
-  return request.get<TourRoute[]>('/routes', params);
+export const listRoutes = async (routeType?: string): Promise<TourRoute[]> => {
+  const resp = await get<TourRoute[]>('/routes', routeType ? { route_type: routeType } : undefined);
+  return resp.data;
 };
 
-export const getRouteById = (id: string) => {
-  return request.get<TourRouteDetail>(`/routes/${id}`);
+export const getRouteById = async (id: string): Promise<TourRouteDetail> => {
+  const resp = await get<TourRouteDetail>(`/routes/${id}`);
+  return resp.data;
 };
 
 export interface RecommendationResult {
@@ -38,16 +39,49 @@ export interface RecommendRequest {
   lng?: number;
 }
 
-/**
- * Get AI-powered personalized route recommendations.
- */
-export const getRecommendations = (params?: RecommendRequest) => {
-  return request.post<RecommendationResult[]>('/recommend/routes', params || {});
+export const getRecommendations = async (params?: RecommendRequest): Promise<RecommendationResult[]> => {
+  const resp = await get<RecommendationResult[]>('/recommend', params);
+  return resp.data;
 };
 
-/**
- * Submit recommendation feedback for model improvement.
- */
-export const submitRecommendFeedback = (routeId: string, rating: number) => {
-  return request.post('/recommend/feedback', { route_id: routeId, rating });
+export const submitRecommendFeedback = async (routeId: string, rating: number): Promise<void> => {
+  await post('/recommend/feedback', { route_id: routeId, rating });
+};
+
+// ===== DNA Recommendation APIs =====
+
+export interface DNAProfile {
+  session_id: string;
+  dna_type: string;
+  dna_scores: Record<string, number>;
+}
+
+export interface DNARecommendItem {
+  rank: number;
+  spot_name: string;
+  category: string;
+  reason: string;
+  suggested_duration: string;
+  tags: string[];
+  source: string;
+  dna_similarity?: number;
+}
+
+export interface DNARecommendResponse {
+  session_id: string;
+  dna_type: string;
+  dna_scores: Record<string, number>;
+  recommendations: DNARecommendItem[];
+  cf_attractions: Array<{ attraction: string; score: number }>;
+  strategy: string;
+}
+
+export const getDNAProfile = async (sessionId: string): Promise<DNAProfile> => {
+  const resp = await get<DNAProfile>('/recommend/dna/profile', { session_id: sessionId });
+  return resp.data;
+};
+
+export const getDNARecommendations = async (sessionId: string, limit?: number): Promise<DNARecommendResponse> => {
+  const resp = await get<DNARecommendResponse>('/recommend/dna', { session_id: sessionId, limit });
+  return resp.data;
 };

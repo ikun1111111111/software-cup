@@ -2,57 +2,61 @@ import { describe, it, expect, vi } from 'vitest';
 import * as avatarApi from '../api/avatar';
 
 vi.mock('../api/request', () => ({
-  default: {
-    get: vi.fn(() => Promise.resolve({})),
-    post: vi.fn(() => Promise.resolve({})),
-    put: vi.fn(() => Promise.resolve({})),
-    delete: vi.fn(() => Promise.resolve({})),
-  },
+  get: vi.fn(() => Promise.resolve({ data: { code: 200, data: {} } })),
+  post: vi.fn(() => Promise.resolve({ data: { code: 200, data: {} } })),
+  put: vi.fn(() => Promise.resolve({ data: { code: 200, data: {} } })),
+  del: vi.fn(() => Promise.resolve({ data: { code: 200, data: {} } })),
 }));
 
 describe('avatar.ts', () => {
   describe('模块导出', () => {
-    it('getConfig应该是函数', () => {
-      expect(typeof avatarApi.getConfig).toBe('function');
+    it('getAvatars应该是函数', () => {
+      expect(typeof avatarApi.getAvatars).toBe('function');
     });
-
-    it('updateConfig应该是函数', () => {
-      expect(typeof avatarApi.updateConfig).toBe('function');
+    it('getAvatar应该是函数', () => {
+      expect(typeof avatarApi.getAvatar).toBe('function');
     });
-
-    it('getVoices应该是函数', () => {
-      expect(typeof avatarApi.getVoices).toBe('function');
+    it('getActiveAvatar应该是函数', () => {
+      expect(typeof avatarApi.getActiveAvatar).toBe('function');
     });
-
-    it('previewVoice应该是函数', () => {
-      expect(typeof avatarApi.previewVoice).toBe('function');
+    it('createAvatar应该是函数', () => {
+      expect(typeof avatarApi.createAvatar).toBe('function');
+    });
+    it('updateAvatar应该是函数', () => {
+      expect(typeof avatarApi.updateAvatar).toBe('function');
+    });
+    it('deleteAvatar应该是函数', () => {
+      expect(typeof avatarApi.deleteAvatar).toBe('function');
+    });
+    it('activateAvatar应该是函数', () => {
+      expect(typeof avatarApi.activateAvatar).toBe('function');
     });
   });
 
-  describe('getConfig', () => {
+  describe('getActiveAvatar', () => {
     it('应该返回Promise', () => {
-      const result = avatarApi.getConfig();
+      const result = avatarApi.getActiveAvatar();
       expect(result).toBeInstanceOf(Promise);
     });
   });
 
-  describe('updateConfig', () => {
+  describe('updateAvatar', () => {
     it('应该返回Promise', () => {
-      const result = avatarApi.updateConfig({ name: '测试' });
+      const result = avatarApi.updateAvatar('1', { name: '测试' });
       expect(result).toBeInstanceOf(Promise);
     });
   });
 
-  describe('getVoices', () => {
+  describe('createAvatar', () => {
     it('应该返回Promise', () => {
-      const result = avatarApi.getVoices();
+      const result = avatarApi.createAvatar({ name: '测试' });
       expect(result).toBeInstanceOf(Promise);
     });
   });
 
-  describe('previewVoice', () => {
+  describe('activateAvatar', () => {
     it('应该返回Promise', () => {
-      const result = avatarApi.previewVoice('voice-1');
+      const result = avatarApi.activateAvatar('1');
       expect(result).toBeInstanceOf(Promise);
     });
   });

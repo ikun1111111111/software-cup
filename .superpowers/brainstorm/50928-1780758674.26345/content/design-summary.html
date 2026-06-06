@@ -1,0 +1,75 @@
+<h2>设计总览 — 晨雾之境</h2>
+<p class="subtitle">所有关键决策已确认，以下是完整的设计蓝图</p>
+
+<div style="background:#f8f9fa;border-radius:12px;padding:20px;margin:20px 0;">
+  <div style="font-weight:600;margin-bottom:12px;color:#333;font-size:16px;">🎯 设计基因</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;">
+    <div><strong>整体方向</strong>：沉浸式意境</div>
+    <div><strong>导航方式</strong>：底部 Dock 浮动栏</div>
+    <div><strong>默认主题</strong>：晨雾 Dawn</div>
+    <div><strong>自动切换</strong>：晨/昼/暮/夜四时</div>
+  </div>
+</div>
+
+<div style="margin:20px 0;">
+  <div style="font-weight:600;margin-bottom:12px;color:#333;font-size:16px;">🎨 色彩系统</div>
+  <div style="background:linear-gradient(135deg,#e8e4df,#d4cbb8);border-radius:8px;padding:16px;color:#3d352e;">
+    <div style="font-size:14px;font-weight:600;margin-bottom:8px;">晨雾 Dawn（默认 6:00-10:00）</div>
+    <div style="display:flex;gap:12px;font-size:12px;">
+      <div>背景：#e8e4df → #d4cbb8</div>
+      <div>文字：#3d352e</div>
+      <div>卡片：rgba(255,255,255,0.72)</div>
+      <div>点缀：#c9a96e（金棕）</div>
+    </div>
+  </div>
+  <div style="margin-top:12px;font-size:13px;color:#666;line-height:1.6;">
+    其他时段自动切换：<br>
+    🌅 <strong>白昼</strong> 10:00-16:00｜🌇 <strong>日暮</strong> 16:00-19:00｜🌙 <strong>月夜</strong> 19:00-6:00
+  </div>
+</div>
+
+<div style="margin:20px 0;">
+  <div style="font-weight:600;margin-bottom:12px;color:#333;font-size:16px;">🧭 底部 Dock 导航</div>
+  <ul style="margin:0;padding-left:20px;color:#555;line-height:1.8;font-size:13px;">
+    <li><strong>位置</strong>：底部居中浮动，距底边 24px</li>
+    <li><strong>样式</strong>：胶囊形毛玻璃容器（backdrop-filter: blur(20px)）</li>
+    <li><strong>图标</strong>：4 个核心模块图标（数据大屏、知识库、数字人、报告）</li>
+    <li><strong>交互</strong>：hover 弹性放大 1.15x + 聚光灯高亮</li>
+    <li><strong>选中态</strong>：底部发光指示条 + 图标颜色变为点缀色</li>
+  </ul>
+</div>
+
+<div style="margin:20px 0;">
+  <div style="font-weight:600;margin-bottom:12px;color:#333;font-size:16px;">✨ 炫技动效清单</div>
+  <ul style="margin:0;padding-left:20px;color:#555;line-height:1.8;font-size:13px;">
+    <li><strong>页面切换</strong>：内容区淡入淡出（cross-fade 300ms）</li>
+    <li><strong>卡片入场</strong>：stagger 上滑淡入（每个延迟 60ms）</li>
+    <li><strong>数据图表</strong>：ECharts 带入场动画，数字滚动计数</li>
+    <li><strong>主题切换</strong>：背景渐变平滑过渡（2s ease-in-out）</li>
+    <li><strong>Dock 交互</strong>：hover 弹性缩放（spring physics）</li>
+  </ul>
+</div>
+
+<div style="margin:20px 0;">
+  <div style="font-weight:600;margin-bottom:12px;color:#333;font-size:16px;">🔤 字体方案</div>
+  <div style="font-size:13px;color:#555;line-height:1.8;">
+    <strong>标题</strong>：Noto Serif SC（思源宋体）— 文化厚重感，区别于千篇一律的黑体<br>
+    <strong>正文</strong>：Noto Sans SC（思源黑体）— 清晰易读，屏显优化<br>
+    <strong>数据/数字</strong>：DIN Alternate / Roboto Mono — 等宽感，数据专业感
+  </div>
+</div>
+
+<div style="margin:20px 0;">
+  <div style="font-weight:600;margin-bottom:12px;color:#333;font-size:16px;">📐 各页面布局要点</div>
+  <div style="font-size:13px;color:#555;line-height:1.8;">
+    <strong>数据大屏 Dashboard</strong>：三列 masonry 卡片流，实时数据滚动，KPI 大数字<br>
+    <strong>知识库 Knowledge</strong>：左右分栏（文档树 + 内容区），文件卡片网格<br>
+    <strong>数字人 Avatar</strong>：居中预览 + 右侧配置面板，Live2D 模型实时渲染<br>
+    <strong>报告 Report</strong>：全宽时间轴 + 情感趋势图 + 可展开的报告卡片
+  </div>
+</div>
+
+<div style="background:#e8f5e9;border-radius:8px;padding:16px;margin:20px 0;">
+  <div style="font-weight:600;color:#2e7d32;margin-bottom:8px;">✅ 确认以上设计方向？</div>
+  <div style="font-size:13px;color:#555;">如果确认，我将写入设计文档并制定详细实施计划。</div>
+</div>

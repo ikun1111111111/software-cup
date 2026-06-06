@@ -1,27 +1,35 @@
 import React, { useCallback, useState } from 'react';
 import { LineChartOutlined } from '@ant-design/icons';
+import ReactECharts from 'echarts-for-react';
 
-export interface SentimentData {
+export interface TrendsItem {
   date: string;
-  positive: number;
-  negative: number;
-  neutral: number;
+  interactions: number;
+  avgSentiment: number;
+  avgLatencyMs: number;
+  faqHitRate: number;
 }
 
 export interface SentimentChartProps {
-  data?: SentimentData[];
+  data?: TrendsItem[];
   onDateChange?: (startDate: string, endDate: string) => void;
 }
 
-const MOCK_DATA: SentimentData[] = [
-  { date: '2024-01-15', positive: 65, negative: 15, neutral: 20 },
-  { date: '2024-01-16', positive: 70, negative: 10, neutral: 20 },
-  { date: '2024-01-17', positive: 60, negative: 20, neutral: 20 },
-  { date: '2024-01-18', positive: 75, negative: 10, neutral: 15 },
-  { date: '2024-01-19', positive: 80, negative: 5, neutral: 15 },
-  { date: '2024-01-20', positive: 72, negative: 12, neutral: 16 },
-  { date: '2024-01-21', positive: 68, negative: 18, neutral: 14 },
+const MOCK_DATA: TrendsItem[] = [
+  { date: '2024-01-15', interactions: 120, avgSentiment: 0.65, avgLatencyMs: 150, faqHitRate: 0.72 },
+  { date: '2024-01-16', interactions: 135, avgSentiment: 0.70, avgLatencyMs: 142, faqHitRate: 0.75 },
+  { date: '2024-01-17', interactions: 98, avgSentiment: 0.60, avgLatencyMs: 160, faqHitRate: 0.68 },
+  { date: '2024-01-18', interactions: 145, avgSentiment: 0.75, avgLatencyMs: 130, faqHitRate: 0.78 },
+  { date: '2024-01-19', interactions: 160, avgSentiment: 0.80, avgLatencyMs: 125, faqHitRate: 0.80 },
+  { date: '2024-01-20', interactions: 130, avgSentiment: 0.72, avgLatencyMs: 140, faqHitRate: 0.74 },
+  { date: '2024-01-21', interactions: 115, avgSentiment: 0.68, avgLatencyMs: 155, faqHitRate: 0.70 },
 ];
+
+function getCssVar(name: string, fallback: string): string {
+  if (typeof document === 'undefined') return fallback;
+  const val = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return val || fallback;
+}
 
 const SentimentChart: React.FC<SentimentChartProps> = ({
   data: propData,
@@ -37,6 +45,82 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
     onDateChange?.(start, end);
   }, [onDateChange]);
 
+  const accentColor = getCssVar('--accent', '#c9a96e');
+  const textSecondary = getCssVar('--text-secondary', '#5c534a');
+  const textTertiary = getCssVar('--text-tertiary', '#9a9085');
+
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' },
+    },
+    legend: {
+      data: ['平均情感得分', '交互次数'],
+      bottom: 0,
+      textStyle: { color: textSecondary },
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '15%',
+      top: '10%',
+      containLabel: true,
+    },
+    xAxis: {
+      type: 'category',
+      data: data.map((d) => d.date.slice(5)),
+      axisLine: { lineStyle: { color: textTertiary } },
+      axisLabel: { color: textSecondary },
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: '情感得分',
+        min: 0,
+        max: 1,
+        axisLabel: { color: textSecondary, formatter: '{value}' },
+        splitLine: { lineStyle: { color: 'rgba(128,128,128,0.15)' } },
+      },
+      {
+        type: 'value',
+        name: '交互次数',
+        axisLabel: { color: textSecondary },
+        splitLine: { show: false },
+      },
+    ],
+    series: [
+      {
+        name: '平均情感得分',
+        type: 'line',
+        smooth: true,
+        data: data.map((d) => d.avgSentiment),
+        itemStyle: { color: accentColor },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: accentColor + '33' },
+              { offset: 1, color: accentColor + '05' },
+            ],
+          },
+        },
+        yAxisIndex: 0,
+        animationDuration: 800,
+        animationEasing: 'cubicOut',
+      },
+      {
+        name: '交互次数',
+        type: 'bar',
+        data: data.map((d) => d.interactions),
+        itemStyle: { color: accentColor, borderRadius: [4, 4, 0, 0], opacity: 0.6 },
+        yAxisIndex: 1,
+        animationDuration: 800,
+        animationEasing: 'cubicOut',
+      },
+    ],
+  };
+
   return (
     <div data-testid="sentiment-chart" style={{ padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '18px', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
@@ -49,7 +133,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
           alignItems: 'center',
           gap: '6px',
         }}>
-          <LineChartOutlined style={{ color: 'var(--color-primary)' }} />
+          <LineChartOutlined style={{ color: 'var(--accent)' }} />
           情感趋势
         </h3>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -59,7 +143,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
             value={startDate}
             onChange={(e) => handleDateChange(e.target.value, endDate)}
             className="input-base"
-            style={{ padding: '4px 8px', fontSize: '12px', width: 'auto' }}
+            style={{ padding: '4px 8px', fontSize: '12px', width: 'auto', background: 'var(--surface-solid)', border: '1px solid var(--surface-border)', color: 'var(--text-primary)', borderRadius: 6 }}
           />
           <span style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>至</span>
           <input
@@ -68,73 +152,15 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
             value={endDate}
             onChange={(e) => handleDateChange(startDate, e.target.value)}
             className="input-base"
-            style={{ padding: '4px 8px', fontSize: '12px', width: 'auto' }}
+            style={{ padding: '4px 8px', fontSize: '12px', width: 'auto', background: 'var(--surface-solid)', border: '1px solid var(--surface-border)', color: 'var(--text-primary)', borderRadius: 6 }}
           />
         </div>
       </div>
 
       <div data-testid="chart-container" style={{
-        height: '300px',
-        border: '1px solid var(--border-light)',
-        borderRadius: 'var(--radius-md)',
-        padding: '16px',
-        backgroundColor: 'var(--surface-elevated)',
+        height: '320px',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '16px' }}>
-          {[
-            { label: '正面', color: 'var(--color-success)' },
-            { label: '中性', color: 'var(--color-warning)' },
-            { label: '负面', color: 'var(--color-error)' },
-          ].map((item) => (
-            <span key={item.label} style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '12px',
-              color: 'var(--text-secondary)',
-            }}>
-              <span style={{ width: 10, height: 10, backgroundColor: item.color, borderRadius: '2px' }} />
-              {item.label}
-            </span>
-          ))}
-        </div>
-
-        <div data-testid="chart-data" style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-end',
-          height: '200px',
-        }}>
-          {data.map((item, index) => (
-            <div key={index} data-testid={`data-point-${index}`} style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '4px',
-            }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                <div style={{
-                  width: '20px',
-                  height: `${item.positive * 2}px`,
-                  backgroundColor: 'var(--color-success)',
-                  borderRadius: '3px 3px 0 0',
-                }} />
-                <div style={{
-                  width: '20px',
-                  height: `${item.neutral * 2}px`,
-                  backgroundColor: 'var(--color-warning)',
-                }} />
-                <div style={{
-                  width: '20px',
-                  height: `${item.negative * 2}px`,
-                  backgroundColor: 'var(--color-error)',
-                  borderRadius: '0 0 3px 3px',
-                }} />
-              </div>
-              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{item.date.slice(5)}</span>
-            </div>
-          ))}
-        </div>
+        <ReactECharts option={option} style={{ height: '100%', width: '100%' }} />
       </div>
     </div>
   );

@@ -38,18 +38,11 @@ const createAxiosInstance = (): AxiosInstance => {
       const { data } = response;
       // 业务错误码处理 — only reject when code field is present and indicates error
       if (data && typeof data.code === 'number' && data.code !== 0 && data.code !== 200) {
-        if (!response.config?.silent) {
-          message.error(data.message || '请求失败');
-        }
         return Promise.reject(new Error(data.message));
       }
       return response;
     },
     (error) => {
-      // Skip toast for silent requests (e.g. background polling)
-      if (!error.config?.silent) {
-        handleError(error);
-      }
       return Promise.reject(error);
     }
   );
@@ -91,19 +84,19 @@ const request = createAxiosInstance();
 
 // 封装请求方法
 export const get = <T = any>(url: string, params?: any, config?: AxiosRequestConfig) => {
-  return request.get<ApiResponse<T>>(url, { params, ...config });
+  return request.get<T>(url, { params, ...config });
 };
 
 export const post = <T = any>(url: string, data?: any, config?: AxiosRequestConfig) => {
-  return request.post<ApiResponse<T>>(url, data, config);
+  return request.post<T>(url, data, config);
 };
 
 export const put = <T = any>(url: string, data?: any, config?: AxiosRequestConfig) => {
-  return request.put<ApiResponse<T>>(url, data, config);
+  return request.put<T>(url, data, config);
 };
 
 export const del = <T = any>(url: string, config?: AxiosRequestConfig) => {
-  return request.delete<ApiResponse<T>>(url, config);
+  return request.delete<T>(url, config);
 };
 
 export default request;

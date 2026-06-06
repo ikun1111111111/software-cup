@@ -1,4 +1,4 @@
-import request from './request';
+import { get } from './request';
 
 export interface Spot {
   id: string;
@@ -14,11 +14,12 @@ export interface SpotDetail extends Spot {
   related_spots: string[] | null;
 }
 
-export const listSpots = (category?: string) => {
-  const params = category ? { category } : {};
-  return request.get<Spot[]>('/spots', params);
+export const listSpots = async (category?: string): Promise<Spot[]> => {
+  const resp = await get<Spot[]>('/spots', category ? { category } : undefined);
+  return resp.data;
 };
 
-export const getSpotById = (id: string) => {
-  return request.get<SpotDetail>(`/spots/${id}`);
+export const getSpotById = async (id: string): Promise<SpotDetail> => {
+  const resp = await get<SpotDetail>(`/spots/${id}`);
+  return resp.data;
 };

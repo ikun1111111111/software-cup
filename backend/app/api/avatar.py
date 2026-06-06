@@ -134,6 +134,23 @@ async def create_avatar(
     return _serialize_avatar(avatar)
 
 
+@router.get("/active", response_model=ActiveAvatarResponse)
+async def get_active_avatar(
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the currently active avatar configuration.
+
+    Returns 404 if no avatar is activated.
+    """
+    result = await db.execute(
+        select(AvatarConfig).where(AvatarConfig.is_active == True)
+    )
+    avatar = result.scalar_one_or_none()
+    if not avatar:
+        raise HTTPException(status_code=404, detail="当前没有激活的数字人配置")
+    return _serialize_avatar(avatar)
+
+
 @router.get("/{avatar_id}", response_model=AvatarOut)
 async def get_avatar(
     avatar_id: int,
@@ -210,20 +227,3 @@ async def activate_avatar(
     await db.commit()
     logger.info("Avatar activated: id=%d", avatar_id)
     return ActivateResponse(status="activated", avatar_id=avatar_id)
-
-
-@router.get("/active", response_model=ActiveAvatarResponse)
-async def get_active_avatar(
-    db: AsyncSession = Depends(get_db),
-):
-    """Get the currently active avatar configuration.
-
-    Returns 404 if no avatar is activated.
-    """
-    result = await db.execute(
-        select(AvatarConfig).where(AvatarConfig.is_active == True)
-    )
-    avatar = result.scalar_one_or_none()
-    if not avatar:
-        raise HTTPException(status_code=404, detail="当前没有激活的数字人配置")
-    return _serialize_avatar(avatar)

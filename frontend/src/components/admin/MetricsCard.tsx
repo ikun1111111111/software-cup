@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, isValidElement } from 'react';
 
 export interface MetricsCardProps {
   title: string;
-  value: number | string;
+  value: React.ReactNode;
   trend?: 'up' | 'down' | 'stable';
   trendValue?: string;
   icon?: React.ReactNode;
@@ -55,14 +55,24 @@ const MetricsCard: React.FC<MetricsCardProps> = ({
   icon,
   color = 'var(--color-primary)',
 }) => {
+  const isPrimitive = typeof value === 'number' || typeof value === 'string';
+
   const animatedValue = useCountUp(
-    typeof value === 'number' ? value : parseFloat(value as string) || 0
+    isPrimitive
+      ? (typeof value === 'number' ? value : parseFloat(value as string) || 0)
+      : 0
   );
-  const displayValue = typeof value === 'string' && value.includes('%')
-    ? `${animatedValue}%`
-    : typeof value === 'string' && value.includes('.')
-      ? (typeof animatedValue === 'number' ? animatedValue.toFixed(1) : animatedValue)
-      : animatedValue;
+
+  let displayValue: React.ReactNode;
+  if (!isPrimitive) {
+    displayValue = value;
+  } else if (typeof value === 'string' && value.includes('%')) {
+    displayValue = `${animatedValue}%`;
+  } else if (typeof value === 'string' && value.includes('.')) {
+    displayValue = typeof animatedValue === 'number' ? animatedValue.toFixed(1) : animatedValue;
+  } else {
+    displayValue = animatedValue;
+  }
 
   return (
     <div
