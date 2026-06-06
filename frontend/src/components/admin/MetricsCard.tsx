@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, isValidElement } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export interface MetricsCardProps {
   title: string;
@@ -98,7 +98,7 @@ const MetricsCard: React.FC<MetricsCardProps> = ({
             fontFamily: 'var(--font-serif)',
             fontSize: '28px',
             fontWeight: 700,
-            color: 'var(--vermilion)',
+            color: color || 'var(--vermilion)',
             lineHeight: 1,
           }}>
             {displayValue}
