@@ -1,0 +1,127 @@
+@keyframes scrollUnfold {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0;
+  }
+  to {
+    clip-path: inset(0 0% 0 0);
+    opacity: 1;
+  }
+}
+
+.animate-scroll-unfold {
+  animation: scrollUnfold 800ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes sealPress {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-seal-press {
+  animation: sealPress 300ms ease-out both;
+}
+
+@keyframes brushStroke {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes inkFadeIn {
+  from {
+    opacity: 0;
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+.animate-ink-fade {
+  animation: inkFadeIn 500ms ease-out both;
+}
+
+@keyframes inscriptionAppear {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-inscription {
+  animation: inscriptionAppear 400ms ease-out both;
+}
+
+@keyframes mistReveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-mist {
+  animation: mistReveal 1200ms ease-out 300ms both;
+}
+
+@keyframes vermilionPulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(200, 75, 49, 0.4);
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 8px rgba(200, 75, 49, 0);
+  }
+}
+
+.animate-pulse-vermilion {
+  animation: vermilionPulse 2s ease-in-out infinite both;
+}
+
+.corner-fold {
+  position: relative;
+}
+
+.corner-fold::before,
+.corner-fold::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--ink-medium);
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.corner-fold::before {
+  top: 0;
+  left: 0;
+  border-right: none;
+  border-bottom: none;
+}
+
+.corner-fold::after {
+  bottom: 0;
+  right: 0;
+  border-left: none;
+  border-top: none;
+}
