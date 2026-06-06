@@ -133,7 +133,7 @@ const ReportPage: React.FC = () => {
 
   const startPolling = useCallback((taskId: string) => {
     let attempts = 0;
-    const maxAttempts = 30;
+    const maxAttempts = 40;
     const interval = setInterval(async () => {
       attempts++;
       try {
@@ -149,11 +149,18 @@ const ReportPage: React.FC = () => {
           pollRef.current = null;
           setGenerating(false);
           message.warning('报告生成超时，请稍后手动刷新');
+        } else {
+          // Update loading message with progress
+          message.loading({
+            content: `报告生成中，已等待 ${Math.round((attempts * 5) / 60)} 分钟...`,
+            key: 'report_gen',
+            duration: 0,
+          });
         }
       } catch {
         // continue polling
       }
-    }, 3000);
+    }, 5000);
     pollRef.current = interval;
   }, []);
 
@@ -203,23 +210,66 @@ const ReportPage: React.FC = () => {
 
   const wordCloudData = topQuestions.map((q) => ({ text: q.question, value: q.count }));
 
-  const parseBlindSpots = (content: string): string[] => {
-    const match = content.match(/盲区发现[\s\S]*?(?=服务改进建议|$)/i);
-    if (match) {
-      const lines = match[0].split('\n').filter((l) => l.trim().startsWith('-') || l.trim().startsWith('•') || /^\d+\./.test(l.trim()));
-      return lines.map((l) => l.replace(/^[-•\d.\s]+/, '').trim()).filter(Boolean);
+  const parseSection = (
+    content: string,
+    startPatterns: RegExp[],
+    endPatterns: RegExp[]
+  ): string[] => {
+    let startIdx = -1;
+    for (const pattern of startPatterns) {
+      const m = content.match(pattern);
+      if (m && m.index !== undefined) {
+        startIdx = m.index + m[0].length;
+        break;
+      }
     }
-    return [];
+    if (startIdx === -1) return [];
+
+    const afterStart = content.slice(startIdx);
+    let endIdx = afterStart.length;
+    for (const pattern of endPatterns) {
+      const m = afterStart.match(pattern);
+      if (m && m.index !== undefined) {
+        endIdx = m.index;
+        break;
+      }
+    }
+
+    const section = afterStart.slice(0, endIdx);
+    const lines = section
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.startsWith('-') || l.startsWith('•') || /^\d+[.．、]/.test(l));
+    return lines.map((l) => l.replace(/^[-•\d.．、\s]+/, '').trim()).filter(Boolean);
   };
 
-  const parseSuggestions = (content: string): string[] => {
-    const match = content.match(/服务改进建议[\s\S]*?(?=$)/i);
-    if (match) {
-      const lines = match[0].split('\n').filter((l) => l.trim().startsWith('-') || l.trim().startsWith('•') || /^\d+\./.test(l.trim()));
-      return lines.map((l) => l.replace(/^[-•\d.\s]+/, '').trim()).filter(Boolean);
-    }
-    return [];
-  };
+  const parseBlindSpots = (content: string): string[] =>
+    parseSection(
+      content,
+      [
+        /###?\s*3?[.．、]?\s*知识库盲区发现/i,
+        /###?\s*3?[.．、]?\s*盲区发现/i,
+        /盲区发现/i,
+      ],
+      [
+        /###?\s*4?[.．、]?\s*服务改进建议/i,
+        /###?\s*4?[.．、]?\s*改进建议/i,
+        /服务改进建议/i,
+        /改进建议/i,
+      ]
+    );
+
+  const parseSuggestions = (content: string): string[] =>
+    parseSection(
+      content,
+      [
+        /###?\s*4?[.．、]?\s*服务改进建议/i,
+        /###?\s*4?[.．、]?\s*改进建议/i,
+        /服务改进建议/i,
+        /改进建议/i,
+      ],
+      []
+    );
 
   const blindSpots = report?.content ? parseBlindSpots(report.content) : [];
   const suggestions = report?.content ? parseSuggestions(report.content) : [];

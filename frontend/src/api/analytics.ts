@@ -6,6 +6,9 @@ export interface TrendsItem {
   avgSentiment: number;
   avgLatencyMs: number;
   faqHitRate: number;
+  positiveRatio: number;
+  neutralRatio: number;
+  negativeRatio: number;
 }
 
 export interface TopQuestionItem {
@@ -47,6 +50,9 @@ export const getTrends = async (days?: number): Promise<TrendsItem[]> => {
       avg_sentiment: number;
       avg_latency_ms: number;
       faq_hit_rate: number;
+      positive_ratio: number;
+      neutral_ratio: number;
+      negative_ratio: number;
     }>;
   }>('/analytics/trends', { days });
   return resp.data.trends.map((t) => ({
@@ -55,6 +61,9 @@ export const getTrends = async (days?: number): Promise<TrendsItem[]> => {
     avgSentiment: t.avg_sentiment,
     avgLatencyMs: t.avg_latency_ms,
     faqHitRate: t.faq_hit_rate,
+    positiveRatio: t.positive_ratio,
+    neutralRatio: t.neutral_ratio,
+    negativeRatio: t.negative_ratio,
   }));
 };
 
@@ -107,6 +116,38 @@ export const triggerReport = async (params?: { startDate?: string; endDate?: str
     status: resp.data.status,
     message: resp.data.message,
   };
+};
+
+export interface RealtimeLogItem {
+  session_id: string;
+  question: string;
+  answer: string;
+  input_type: string;
+  sentiment_label: string | null;
+  sentiment_score: number | null;
+  source: string;
+  latency_ms: number;
+  created_at: string | null;
+}
+
+export interface HeatmapItem {
+  day_of_week: number;
+  hour: number;
+  count: number;
+}
+
+export const getRealtime = async (limit?: number): Promise<RealtimeLogItem[]> => {
+  const resp = await get<{
+    recent: RealtimeLogItem[];
+  }>('/analytics/realtime', { limit });
+  return resp.data.recent;
+};
+
+export const getHeatmap = async (): Promise<HeatmapItem[]> => {
+  const resp = await get<{
+    data: HeatmapItem[];
+  }>('/analytics/heatmap');
+  return resp.data.data;
 };
 
 export const getReportStatus = async (taskId: string): Promise<ReportStatusResult> => {

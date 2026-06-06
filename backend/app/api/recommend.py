@@ -2,9 +2,11 @@
 import json
 import logging
 from hashlib import md5
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -49,6 +51,10 @@ class RecommendResponse(BaseModel):
 
 def _cache_key(session_id: str, limit: int) -> str:
     return f"recommend:{session_id}:{limit}"
+
+
+def _dna_cache_key(session_id: str, limit: int) -> str:
+    return f"recommend:dna:{session_id}:{limit}"
 
 
 async def _check_cache(session_id: str, limit: int) -> dict | None:
@@ -192,6 +198,18 @@ async def get_dna_recommendations(
     Combines collaborative filtering with content-based recommendations
     and enriches with DNA similarity scores.
     """
+    # 0. Check cache
+    try:
+        redis = await get_redis()
+        cache_key = _dna_cache_key(session_id, limit)
+        cached = await redis.get(cache_key)
+        if cached:
+            data = json.loads(cached)
+            data["cached"] = True
+            return DNARecommendResponse(**data)
+    except Exception as e:
+        logger.debug("DNA recommend cache check failed: %s", e)
+
     # 1. Ensure profile exists
     stmt = select(TouristProfile).where(TouristProfile.session_id == session_id)
     result = await db.execute(stmt)
@@ -225,7 +243,7 @@ async def get_dna_recommendations(
     for i, r in enumerate(cb_recs, start=1):
         r["rank"] = i
 
-    return DNARecommendResponse(
+    response = DNARecommendResponse(
         session_id=session_id,
         dna_type=profile.dna_type or "未分类",
         dna_scores=profile.dna_scores or {},
@@ -233,3 +251,17 @@ async def get_dna_recommendations(
         cf_attractions=cf_recs,
         strategy="dna_hybrid",
     )
+
+    # 7. Cache result
+    try:
+        redis = await get_redis()
+        cache_key = _dna_cache_key(session_id, limit)
+        await redis.set(
+            cache_key,
+            json.dumps(response.model_dump(), ensure_ascii=False),
+            ex=300,
+        )
+    except Exception as e:
+        logger.debug("DNA recommend cache set failed: %s", e)
+
+    return response

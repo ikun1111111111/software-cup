@@ -19,7 +19,7 @@ import FloatingAssistant from './components/DigitalHuman/FloatingAssistant';
 import InkEntryOverlay from './components/DigitalHuman/InkEntryOverlay';
 import PushCard from './components/Notification/PushCard';
 import { usePushNotification } from './hooks/usePushNotification';
-import DockNav from './components/admin/DockNav';
+import ScrollNav from './components/admin/ScrollNav';
 
 const theme = {
   token: {
@@ -208,8 +208,8 @@ function App() {
 
           <Route path="/admin/*" element={
             <>
-              <DockNav />
-              <div style={{ paddingBottom: 96 }}>
+              <ScrollNav />
+              <div style={{ paddingLeft: 64 }}>
                 <Routes>
                   <Route path="/" element={<KnowledgePage />} />
                   <Route path="avatar" element={<AvatarPage />} />

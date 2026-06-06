@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { SyncOutlined } from '@ant-design/icons';
+import { message } from 'antd';
+import { getRealtime } from '../../api/analytics';
 
 export interface RealtimeData {
   activeUsers: number;
@@ -21,6 +23,37 @@ const DEFAULT_DATA: RealtimeData = {
   sentimentScore: 0,
 };
 
+function computeMetrics(logs: Awaited<ReturnType<typeof getRealtime>>): RealtimeData {
+  if (logs.length === 0) {
+    return DEFAULT_DATA;
+  }
+
+  const activeUsers = new Set(logs.map((l) => l.session_id)).size;
+
+  const now = Date.now();
+  const oneMinuteAgo = now - 60 * 1000;
+  const messagesPerMinute = logs.filter((l) => {
+    if (!l.created_at) return false;
+    return new Date(l.created_at).getTime() > oneMinuteAgo;
+  }).length;
+
+  const avgResponseTime = Math.round(
+    logs.reduce((sum, l) => sum + (l.latency_ms || 0), 0) / logs.length
+  );
+
+  const scores = logs.map((l) => l.sentiment_score).filter((s): s is number => s !== null && s !== undefined);
+  const sentimentScore = scores.length > 0
+    ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100
+    : 0;
+
+  return {
+    activeUsers,
+    messagesPerMinute,
+    avgResponseTime,
+    sentimentScore,
+  };
+}
+
 const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
   data: propData,
   onConnect,
@@ -35,28 +68,26 @@ const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
     }
   }, [propData]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
+  const fetchData = useCallback(async () => {
+    try {
+      const logs = await getRealtime(50);
+      setData(computeMetrics(logs));
       setConnected(true);
       onConnect?.();
+    } catch {
+      setConnected(false);
+      onDisconnect?.();
+    }
+  }, [onConnect, onDisconnect]);
 
-      const interval = setInterval(() => {
-        setData({
-          activeUsers: Math.floor(Math.random() * 100),
-          messagesPerMinute: Math.floor(Math.random() * 50),
-          avgResponseTime: Math.floor(Math.random() * 200),
-          sentimentScore: 0.7 + Math.random() * 0.3,
-        });
-      }, 3000);
-
-      return () => clearInterval(interval);
-    }, 1000);
-
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 5000);
     return () => {
-      clearTimeout(timer);
+      clearInterval(interval);
       onDisconnect?.();
     };
-  }, [onConnect, onDisconnect]);
+  }, [fetchData, onDisconnect]);
 
   const metrics = [
     { label: '活跃用户', value: data.activeUsers, color: 'var(--color-primary)', testId: 'metric-active-users' },

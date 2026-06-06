@@ -79,3 +79,29 @@ export async function synthesizeSpeech(
 
   return { audioChunks, phonemes, durationMs };
 }
+
+export const previewVoice = async (voiceId: string, text?: string): Promise<string> => {
+  const response = await fetch('/api/tts/cache', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      voice_id: voiceId,
+      text: text || '你好，欢迎来到灵山景区，我是你的数字人导游。',
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`TTS preview failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (!data.cached || !data.audio_base64) {
+    throw new Error('TTS 未缓存');
+  }
+
+  const byteCharacters = atob(data.audio_base64);
+  const byteNumbers = new Array(byteCharacters.length).fill(0).map((_, i) => byteCharacters.charCodeAt(i));
+  const byteArray = new Uint8Array(byteNumbers);
+  const blob = new Blob([byteArray], { type: 'audio/mp3' });
+  return URL.createObjectURL(blob);
+};

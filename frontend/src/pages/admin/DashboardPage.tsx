@@ -4,19 +4,23 @@ import { TeamOutlined, MessageOutlined, SmileOutlined, FullscreenOutlined, Fulls
 import MetricsCard from '../../components/admin/MetricsCard';
 import HotQuestions from '../../components/admin/HotQuestions';
 import RealtimeMonitor from '../../components/admin/RealtimeMonitor';
+import HeatmapChart from '../../components/admin/HeatmapChart';
 import GlassCard from '../../components/admin/GlassCard';
 import AnimatedNumber from '../../components/admin/AnimatedNumber';
 import PageTransition from '../../components/admin/PageTransition';
 import {
   getOverview,
   getTopQuestions,
+  getHeatmap,
   type OverviewMetrics,
   type TopQuestionItem,
+  type HeatmapItem,
 } from '../../api/analytics';
 
 const DashboardPage: React.FC = () => {
   const [overview, setOverview] = useState<OverviewMetrics | null>(null);
   const [topQuestions, setTopQuestions] = useState<TopQuestionItem[]>([]);
+  const [heatmapData, setHeatmapData] = useState<HeatmapItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const isMobile = false; // web-only
@@ -26,12 +30,14 @@ const DashboardPage: React.FC = () => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [ov, tq] = await Promise.all([
+        const [ov, tq, hm] = await Promise.all([
           getOverview(),
           getTopQuestions(10),
+          getHeatmap(),
         ]);
         setOverview(ov);
         setTopQuestions(tq);
+        setHeatmapData(hm);
       } catch (err: any) {
         message.error('加载数据失败: ' + (err?.message || '未知错误'));
       } finally {
@@ -199,6 +205,10 @@ const DashboardPage: React.FC = () => {
                 <HotQuestions questions={hotQuestions} onQuestionClick={handleQuestionClick} />
               </GlassCard>
             </div>
+
+            <GlassCard style={{ marginTop: isMobile ? '12px' : '20px', padding: 0, overflow: 'hidden' }}>
+              <HeatmapChart data={heatmapData} />
+            </GlassCard>
           </>
         )}
       </PageTransition>

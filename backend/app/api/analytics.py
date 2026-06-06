@@ -14,6 +14,7 @@ from app.core.analytics import (
     sentiment_distribution,
     knowledge_stats,
     realtime_logs,
+    heatmap_stats,
 )
 from app.tasks.report_task import generate_report_task, get_report_status
 
@@ -40,6 +41,9 @@ class TrendItem(BaseModel):
     avg_sentiment: float
     avg_latency_ms: float
     faq_hit_rate: float
+    positive_ratio: float
+    neutral_ratio: float
+    negative_ratio: float
 
 
 class TrendsResponse(BaseModel):
@@ -91,6 +95,16 @@ class RealtimeLogItem(BaseModel):
 
 class RealtimeResponse(BaseModel):
     recent: list[RealtimeLogItem]
+
+
+class HeatmapItem(BaseModel):
+    day_of_week: int
+    hour: int
+    count: int
+
+
+class HeatmapResponse(BaseModel):
+    data: list[HeatmapItem]
 
 
 class ReportTriggerResponse(BaseModel):
@@ -206,3 +220,12 @@ async def get_report(
         period=report.get("period"),
         generated_at=report.get("generated_at"),
     )
+
+
+@router.get("/heatmap", response_model=HeatmapResponse)
+async def get_heatmap(
+    db: AsyncSession = Depends(get_db),
+):
+    """Interaction heatmap by day-of-week and hour."""
+    result = await heatmap_stats(db)
+    return HeatmapResponse(data=result["data"])

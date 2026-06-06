@@ -8,6 +8,7 @@ import DigitalHuman from '../../components/DigitalHuman/DigitalHuman';
 import GlassCard from '../../components/admin/GlassCard';
 import PageTransition from '../../components/admin/PageTransition';
 import { getModelPath, getExpressionForAppearance } from '../../config/avatarModels';
+import { previewVoice } from '../../api/tts';
 import {
   getActiveAvatar,
   getAvatars,
@@ -296,7 +297,7 @@ const AvatarPage: React.FC = () => {
                       voices={DEFAULT_VOICES}
                       selected={config.voiceId}
                       onChange={handleVoiceChange}
-                      onPreview={() => {}}
+                      previewVoice={(voiceId) => previewVoice(voiceId, config.welcomeMessage)}
                     />
                   </div>
                 )}

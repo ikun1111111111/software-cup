@@ -8,6 +8,9 @@ export interface TrendsItem {
   avgSentiment: number;
   avgLatencyMs: number;
   faqHitRate: number;
+  positiveRatio?: number;
+  neutralRatio?: number;
+  negativeRatio?: number;
 }
 
 export interface SentimentChartProps {
@@ -16,13 +19,13 @@ export interface SentimentChartProps {
 }
 
 const MOCK_DATA: TrendsItem[] = [
-  { date: '2024-01-15', interactions: 120, avgSentiment: 0.65, avgLatencyMs: 150, faqHitRate: 0.72 },
-  { date: '2024-01-16', interactions: 135, avgSentiment: 0.70, avgLatencyMs: 142, faqHitRate: 0.75 },
-  { date: '2024-01-17', interactions: 98, avgSentiment: 0.60, avgLatencyMs: 160, faqHitRate: 0.68 },
-  { date: '2024-01-18', interactions: 145, avgSentiment: 0.75, avgLatencyMs: 130, faqHitRate: 0.78 },
-  { date: '2024-01-19', interactions: 160, avgSentiment: 0.80, avgLatencyMs: 125, faqHitRate: 0.80 },
-  { date: '2024-01-20', interactions: 130, avgSentiment: 0.72, avgLatencyMs: 140, faqHitRate: 0.74 },
-  { date: '2024-01-21', interactions: 115, avgSentiment: 0.68, avgLatencyMs: 155, faqHitRate: 0.70 },
+  { date: '2024-01-15', interactions: 120, avgSentiment: 0.65, avgLatencyMs: 150, faqHitRate: 0.72, positiveRatio: 0.60, neutralRatio: 0.30, negativeRatio: 0.10 },
+  { date: '2024-01-16', interactions: 135, avgSentiment: 0.70, avgLatencyMs: 142, faqHitRate: 0.75, positiveRatio: 0.65, neutralRatio: 0.25, negativeRatio: 0.10 },
+  { date: '2024-01-17', interactions: 98, avgSentiment: 0.60, avgLatencyMs: 160, faqHitRate: 0.68, positiveRatio: 0.50, neutralRatio: 0.35, negativeRatio: 0.15 },
+  { date: '2024-01-18', interactions: 145, avgSentiment: 0.75, avgLatencyMs: 130, faqHitRate: 0.78, positiveRatio: 0.70, neutralRatio: 0.20, negativeRatio: 0.10 },
+  { date: '2024-01-19', interactions: 160, avgSentiment: 0.80, avgLatencyMs: 125, faqHitRate: 0.80, positiveRatio: 0.75, neutralRatio: 0.15, negativeRatio: 0.10 },
+  { date: '2024-01-20', interactions: 130, avgSentiment: 0.72, avgLatencyMs: 140, faqHitRate: 0.74, positiveRatio: 0.68, neutralRatio: 0.22, negativeRatio: 0.10 },
+  { date: '2024-01-21', interactions: 115, avgSentiment: 0.68, avgLatencyMs: 155, faqHitRate: 0.70, positiveRatio: 0.62, neutralRatio: 0.28, negativeRatio: 0.10 },
 ];
 
 function getCssVar(name: string, fallback: string): string {
@@ -55,7 +58,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
       axisPointer: { type: 'cross' },
     },
     legend: {
-      data: ['平均情感得分', '交互次数'],
+      data: ['正面情感', '中性情感', '负面情感', '交互次数'],
       bottom: 0,
       textStyle: { color: textSecondary },
     },
@@ -75,7 +78,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
     yAxis: [
       {
         type: 'value',
-        name: '情感得分',
+        name: '占比',
         min: 0,
         max: 1,
         axisLabel: { color: textSecondary, formatter: '{value}' },
@@ -90,21 +93,31 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
     ],
     series: [
       {
-        name: '平均情感得分',
+        name: '正面情感',
         type: 'line',
         smooth: true,
-        data: data.map((d) => d.avgSentiment),
-        itemStyle: { color: accentColor },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: accentColor + '33' },
-              { offset: 1, color: accentColor + '05' },
-            ],
-          },
-        },
+        data: data.map((d) => d.positiveRatio ?? 0),
+        itemStyle: { color: '#52c41a' },
+        yAxisIndex: 0,
+        animationDuration: 800,
+        animationEasing: 'cubicOut',
+      },
+      {
+        name: '中性情感',
+        type: 'line',
+        smooth: true,
+        data: data.map((d) => d.neutralRatio ?? 0),
+        itemStyle: { color: '#8c8c8c' },
+        yAxisIndex: 0,
+        animationDuration: 800,
+        animationEasing: 'cubicOut',
+      },
+      {
+        name: '负面情感',
+        type: 'line',
+        smooth: true,
+        data: data.map((d) => d.negativeRatio ?? 0),
+        itemStyle: { color: '#ff4d4f' },
         yAxisIndex: 0,
         animationDuration: 800,
         animationEasing: 'cubicOut',
@@ -113,7 +126,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
         name: '交互次数',
         type: 'bar',
         data: data.map((d) => d.interactions),
-        itemStyle: { color: accentColor, borderRadius: [4, 4, 0, 0], opacity: 0.6 },
+        itemStyle: { color: accentColor, borderRadius: [4, 4, 0, 0], opacity: 0.4 },
         yAxisIndex: 1,
         animationDuration: 800,
         animationEasing: 'cubicOut',

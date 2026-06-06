@@ -112,6 +112,7 @@ async def trend_stats(db: AsyncSession, days: int = 7) -> dict:
     try:
         since = datetime.utcnow() - timedelta(days=days)
 
+        # Base aggregates per day
         stmt = (
             select(
                 cast(InteractionLog.created_at, Date).label("date"),
@@ -128,16 +129,45 @@ async def trend_stats(db: AsyncSession, days: int = 7) -> dict:
         result = await db.execute(stmt)
         rows = result.all()
 
+        # Sentiment label distribution per day
+        sentiment_stmt = (
+            select(
+                cast(InteractionLog.created_at, Date).label("date"),
+                InteractionLog.sentiment_label,
+                func.count(InteractionLog.id).label("count"),
+            )
+            .where(InteractionLog.created_at >= since)
+            .where(InteractionLog.sentiment_label.isnot(None))
+            .group_by(cast(InteractionLog.created_at, Date), InteractionLog.sentiment_label)
+        )
+        sentiment_result = await db.execute(sentiment_stmt)
+        sentiment_rows = sentiment_result.all()
+
+        # Build sentiment ratio map: date -> {positive, neutral, negative}
+        sentiment_map: dict[str, dict[str, int]] = {}
+        for row in sentiment_rows:
+            d = str(row.date)
+            if d not in sentiment_map:
+                sentiment_map[d] = {"positive": 0, "neutral": 0, "negative": 0}
+            label = row.sentiment_label or "neutral"
+            if label in sentiment_map[d]:
+                sentiment_map[d][label] = row.count or 0
+
         trends = []
         for row in rows:
             total = row.interactions or 0
             faq_hits = row.faq_hits or 0
+            d = str(row.date)
+            s = sentiment_map.get(d, {"positive": 0, "neutral": 0, "negative": 0})
             trends.append({
-                "date": str(row.date),
+                "date": d,
                 "interactions": total,
                 "avg_sentiment": round(float(row.avg_sentiment or 0), 4),
                 "avg_latency_ms": round(float(row.avg_latency or 0), 2),
                 "faq_hit_rate": round(faq_hits / total, 4) if total > 0 else 0.0,
+                "positive_ratio": round(s["positive"] / total, 4) if total > 0 else 0.0,
+                "neutral_ratio": round(s["neutral"] / total, 4) if total > 0 else 0.0,
+                "negative_ratio": round(s["negative"] / total, 4) if total > 0 else 0.0,
             })
 
         return {"days": days, "trends": trends}
@@ -281,6 +311,45 @@ async def knowledge_stats(db: AsyncSession) -> dict:
             "active_faqs": 0,
             "top_faqs": [],
         }
+
+
+async def heatmap_stats(db: AsyncSession) -> dict:
+    """Return interaction heatmap data by day-of-week and hour."""
+    try:
+        stmt = (
+            select(
+                func.extract("dow", InteractionLog.created_at).label("dow"),
+                func.extract("hour", InteractionLog.created_at).label("hour"),
+                func.count(InteractionLog.id).label("count"),
+            )
+            .group_by(
+                func.extract("dow", InteractionLog.created_at),
+                func.extract("hour", InteractionLog.created_at),
+            )
+            .order_by(
+                func.extract("dow", InteractionLog.created_at),
+                func.extract("hour", InteractionLog.created_at),
+            )
+        )
+        result = await db.execute(stmt)
+        rows = result.all()
+
+        data = []
+        for row in rows:
+            # PostgreSQL dow: 0=Sun, 1=Mon, ..., 6=Sat
+            # Frontend expects: 0=Mon, ..., 6=Sun
+            dow = int(row.dow or 0)
+            mapped_dow = dow - 1 if dow > 0 else 6
+            data.append({
+                "day_of_week": mapped_dow,
+                "hour": int(row.hour or 0),
+                "count": int(row.count or 0),
+            })
+
+        return {"data": data}
+    except Exception as e:
+        logger.warning("heatmap_stats failed: %s", e)
+        return {"data": []}
 
 
 async def realtime_logs(db: AsyncSession, limit: int = 20) -> dict:
