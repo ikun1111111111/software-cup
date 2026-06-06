@@ -75,20 +75,27 @@ async def hybrid_search(query: str, top_k: int | None = None) -> list[dict]:
     if top_k is None:
         top_k = settings.retrieval_top_k
 
-    # Vector search
+    # Vector search (run embedding in thread pool to avoid blocking event loop)
     engine = get_embedding_engine()
     store = get_vector_store()
-    query_embedding = engine.encode_query(query)
-
     try:
-        vector_results = store.search(
-            query_embedding=query_embedding,
-            top_k=top_k * 2,
-            output_fields=["id", "doc_id", "chunk_index", "text"],
-        )
+        loop = __import__('asyncio').get_running_loop()
+        query_embedding = await loop.run_in_executor(None, engine.encode_query, query)
     except Exception as e:
-        logger.warning("Vector search failed: %s", e)
-        vector_results = []
+        logger.warning("Embedding failed, skipping vector search: %s", e)
+        query_embedding = None
+
+    vector_results = []
+    if query_embedding is not None:
+        try:
+            vector_results = store.search(
+                query_embedding=query_embedding,
+                top_k=top_k * 2,
+                output_fields=["id", "doc_id", "chunk_index", "text"],
+            )
+        except Exception as e:
+            logger.warning("Vector search failed: %s", e)
+            vector_results = []
 
     # BM25 search
     bm25 = get_bm25_index()

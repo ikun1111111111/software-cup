@@ -13,6 +13,27 @@ async function loadCubismRuntime() {
     Live2DModel = live2d.Live2DModel;
     MotionPreloadStrategy = live2d.MotionPreloadStrategy;
     (Live2DModel as any).registerTicker?.(pixi.Ticker);
+
+    // Patch PIXI v7 EventBoundary to avoid isInteractive crash with pixi-live2d-display
+    const EventBoundary = (pixi as any).EventBoundary;
+    const patchMethod = (methodName: string) => {
+      if (EventBoundary?.prototype?.[methodName]) {
+        const original = EventBoundary.prototype[methodName];
+        EventBoundary.prototype[methodName] = function (...args: any[]) {
+          try {
+            return original.apply(this, args);
+          } catch (e: any) {
+            if (e?.message?.includes('isInteractive')) {
+              return null;
+            }
+            throw e;
+          }
+        };
+      }
+    };
+    patchMethod('hitTestMoveRecursive');
+    patchMethod('hitTestRecursive');
+
     cubismLoaded = true;
   } catch (e) {
     throw new Error('Live2D Cubism 4 runtime not available. Ensure live2dcubismcore.js is loaded.');
@@ -88,17 +109,6 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
     }
   }, [onModelRef]);
 
-  // Mouse tracking for eye/head follow
-  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!modelRef.current || !canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const px = (e.clientX - rect.left) / rect.width;
-    const py = (e.clientY - rect.top) / rect.height;
-
-    // Focus on pointer position (maps to model core parameters)
-    modelRef.current.focus(px * rect.width, py * rect.height);
-  }, []);
-
   // Click to trigger random motion
   const handleClick = useCallback(() => {
     if (!modelRef.current) return;
@@ -117,6 +127,8 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
 
     const canvas = canvasRef.current;
     let destroyed = false;
+    let clickHandler: (() => void) | null = null;
+    let moveHandler: ((e: MouseEvent) => void) | null = null;
 
     const init = async () => {
       try {
@@ -135,7 +147,6 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         const pixi = await import('pixi.js');
 
         // Ensure the container has been laid out with real dimensions.
-        // If the container is still zero-sized, wait one frame for layout.
         const waitForLayout = () =>
           new Promise<void>((resolve) => {
             const check = () => {
@@ -161,13 +172,14 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         canvas.width = w;
         canvas.height = h;
 
-        // Create PIXI Application with verified dimensions
         // Workaround: some GPUs report maxIfStatements=0 which crashes PIXI batch renderer
         const batchAny = (pixi as any).BatchRenderer;
         if (batchAny) {
           batchAny.defaultMaxIfStatements = 64;
         }
 
+        // Create PIXI Application WITHOUT event system to avoid
+        // pixi-live2d-display compatibility issues with pixi.js v7
         const app = new pixi.Application({
           view: canvas,
           width: w,
@@ -175,6 +187,8 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
           backgroundAlpha: 0,
           antialias: true,
           autoStart: true,
+          // @ts-ignore - events is not in types but works in v7
+          events: undefined,
         });
 
         appRef.current = app;
@@ -195,8 +209,6 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         const curW = model.width || 0;
         const curH = model.height || 0;
         if (curW > 0 && curH > 0) {
-          // model.width/height are in canvas pixels at current scale,
-          // so dividing by scale gives unscaled size, then compute fit
           const unscaledW = curW / scale;
           const unscaledH = curH / scale;
           const fitScale = Math.min(w / unscaledW, h / unscaledH) * 0.92;
@@ -206,12 +218,22 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         model.x = w / 2 + x;
         model.y = h / 2 + y;
 
-        // Enable interaction
-        model.interactive = true;
-        model.on('pointerdown', handleClick);
-
         app.stage.addChild(model);
         modelRef.current = model;
+
+        // Use native DOM events instead of PIXI events to avoid
+        // isInteractive compatibility issues
+        clickHandler = () => handleClick();
+        canvas.addEventListener('click', clickHandler);
+
+        moveHandler = (e: MouseEvent) => {
+          if (!modelRef.current || !canvasRef.current) return;
+          const rect = canvasRef.current.getBoundingClientRect();
+          const px = e.clientX - rect.left;
+          const py = e.clientY - rect.top;
+          modelRef.current.focus(px, py);
+        };
+        canvas.addEventListener('mousemove', moveHandler);
 
         setIsLoading(false);
         onModelLoaded?.(model);
@@ -229,6 +251,12 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
 
     return () => {
       destroyed = true;
+      if (clickHandler && canvas) {
+        canvas.removeEventListener('click', clickHandler);
+      }
+      if (moveHandler && canvas) {
+        canvas.removeEventListener('mousemove', moveHandler);
+      }
       if (modelRef.current) {
         modelRef.current.destroy();
         modelRef.current = null;
@@ -238,7 +266,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         appRef.current = null;
       }
     };
-  }, [modelPath, width, height, scale, x, y]);
+  }, [modelPath, width, height, scale, x, y, handleClick]);
 
   return (
     <div
@@ -253,7 +281,6 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
       <canvas
         ref={canvasRef}
         data-testid="live2d-canvas"
-        onPointerMove={handlePointerMove}
         style={{
           display: 'block',
           width: '100%',

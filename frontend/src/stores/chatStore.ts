@@ -7,6 +7,7 @@ export interface Message {
   content: string;
   timestamp: number;
   status?: 'sending' | 'sent' | 'error';
+  source?: 'faq' | 'rag' | 'cache' | 'offline';
 }
 
 // 对话状态接口
@@ -20,15 +21,17 @@ interface ChatState {
   // 操作
   addMessage: (message: Message) => void;
   updateMessage: (id: string, content: string) => void;
+  updateMessageStatus: (id: string, status: Message['status']) => void;
   setStreaming: (isStreaming: boolean) => void;
   clearMessages: () => void;
   setCurrentSession: (sessionId: string) => void;
   setError: (error: string | null) => void;
   removeMessage: (id: string) => void;
+  getHistory: (maxRounds?: number) => Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 // 创建对话状态store
-export const useChatStore = create<ChatState>((set) => ({
+export const useChatStore = create<ChatState>((set, get) => ({
   // 初始状态
   messages: [],
   currentSessionId: null,
@@ -46,6 +49,14 @@ export const useChatStore = create<ChatState>((set) => ({
     set((state) => ({
       messages: state.messages.map((msg) =>
         msg.id === id ? { ...msg, content } : msg
+      ),
+    })),
+
+  // 更新消息状态
+  updateMessageStatus: (id, status) =>
+    set((state) => ({
+      messages: state.messages.map((msg) =>
+        msg.id === id ? { ...msg, status } : msg
       ),
     })),
 
@@ -70,6 +81,17 @@ export const useChatStore = create<ChatState>((set) => ({
     set((state) => ({
       messages: state.messages.filter((msg) => msg.id !== id),
     })),
+
+  // 获取历史消息（用于传给后端API）
+  getHistory: (maxRounds = 5) => {
+    const { messages } = get();
+    // 取最近 maxRounds * 2 条消息（每轮= user + assistant）
+    const recent = messages.slice(-maxRounds * 2);
+    return recent.map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }));
+  },
 }));
 
 export default useChatStore;

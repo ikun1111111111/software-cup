@@ -49,7 +49,35 @@ class TestPrompts:
         assert messages[1]["role"] == "user"
         assert "test" in messages[1]["content"]
 
-    def test_build_chat_prompt_chunk_numbering(self):
+    def test_build_chat_prompt_with_history(self):
+        """Should inject history messages before the current turn."""
+        chunks = [{"text": "灵山大佛高88米"}]
+        history = [
+            {"role": "user", "content": "你好"},
+            {"role": "assistant", "content": "您好！有什么可以帮您？"},
+        ]
+        messages = build_chat_prompt("灵山大佛多高？", chunks, history=history)
+
+        assert len(messages) == 4  # system + 2 history + current user
+        assert messages[0]["role"] == "system"
+        assert messages[1]["role"] == "user"
+        assert messages[1]["content"] == "你好"
+        assert messages[2]["role"] == "assistant"
+        assert messages[2]["content"] == "您好！有什么可以帮您？"
+        assert messages[3]["role"] == "user"
+        assert "灵山大佛多高？" in messages[3]["content"]
+
+    def test_build_chat_prompt_with_empty_history(self):
+        """Should work with empty history."""
+        chunks = [{"text": "片段"}]
+        messages = build_chat_prompt("问", chunks, history=[])
+        assert len(messages) == 2
+
+    def test_build_chat_prompt_with_none_history(self):
+        """Should work with None history."""
+        chunks = [{"text": "片段"}]
+        messages = build_chat_prompt("问", chunks, history=None)
+        assert len(messages) == 2
         """Chunks should be numbered in the prompt."""
         chunks = [
             {"text": "片段一"},

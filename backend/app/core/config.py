@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     deepseek_api_key_2: str = ""
     deepseek_api_key_3: str = ""
     deepseek_api_key_4: str = ""
+    deepseek_api_key_5: str = ""
+    deepseek_api_key_6: str = ""
+    deepseek_api_key_7: str = ""
+    deepseek_api_key_8: str = ""
     deepseek_base_url: str = "https://api.deepseek.com/v1"
 
     qwen_api_key: str = ""  # dashscope API key
@@ -74,6 +78,16 @@ class Settings(BaseSettings):
     reranker_model: str = "BAAI/bge-reranker-v2-m3"
     retrieval_top_k: int = 10
     rerank_top_k: int = 5
+
+    # Semantic cache
+    semantic_cache_model: str = "BAAI/bge-small-zh-v1.5"
+    semantic_cache_similarity_threshold: float = 0.90
+    semantic_cache_max_entries: int = 1000
+    semantic_cache_ttl: int = 3600  # 1 hour
+
+    # Context management
+    context_max_rounds: int = 5
+    context_ttl: int = 86400  # 24 hours
 
     class Config:
         env_file = ".env"

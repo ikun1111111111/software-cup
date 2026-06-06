@@ -1,8 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 
 // SSE选项接口
+export interface SSEMessage {
+  event: string;
+  data: any;
+}
+
 export interface SSEOptions {
-  onMessage?: (data: string) => void;
+  onMessage?: (msg: SSEMessage) => void;
   onError?: (error: Event) => void;
   onOpen?: () => void;
   onClose?: () => void;
@@ -34,6 +39,10 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
     // 断开之前的连接
     disconnect();
 
+    // 如果 URL 是相对路径，保持相对路径让浏览器自动使用当前域名
+    // vite dev server proxy 会转发 /api 和 /ws 到后端
+    const fullUrl = url;
+
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
@@ -42,7 +51,7 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
       setError(null);
       onOpen?.();
 
-      const response = await fetch(url, {
+      const response = await fetch(fullUrl, {
         method: body ? 'POST' : 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -77,14 +86,23 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
+        let currentEvent = 'message';
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            const rawData = line.slice(6);
+            if (rawData === '[DONE]') {
               disconnect();
               return;
             }
-            onMessage?.(data);
+            let parsedData: any = rawData;
+            try {
+              parsedData = JSON.parse(rawData);
+            } catch {
+              // 保持原始字符串
+            }
+            onMessage?.({ event: currentEvent, data: parsedData });
           }
         }
       }

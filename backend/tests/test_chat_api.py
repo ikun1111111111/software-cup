@@ -116,7 +116,31 @@ class TestChatStream:
             assert data["answer"] == "88米"
             assert data["source"] == "rag"
 
-    def test_chat_stream_llm_failure(self):
+    def test_chat_stream_with_history(self):
+        """Should accept and pass history field."""
+        with patch("app.api.chat.process_chat", new_callable=AsyncMock) as mock_process:
+            mock_process.return_value = {
+                "answer": "88米",
+                "source": "faq",
+                "is_faq": True,
+                "latency_ms": 10,
+            }
+
+            response = client.post("/api/chat/stream", json={
+                "session_id": "test",
+                "question": "它是什么材质？",
+                "stream": True,
+                "history": [
+                    {"role": "user", "content": "灵山大佛有多高？"},
+                    {"role": "assistant", "content": "灵山大佛高88米。"},
+                ],
+            })
+
+            assert response.status_code == 200
+            # Verify process_chat was called with history
+            call_kwargs = mock_process.call_args.kwargs
+            assert "history" in call_kwargs
+            assert len(call_kwargs["history"]) == 2
         """Should return 503 when all LLM providers fail (non-streaming)."""
         with patch("app.api.chat.search_faq", new_callable=AsyncMock, return_value=None), \
              patch("app.api.chat.retrieve", new_callable=AsyncMock, return_value=[]), \
