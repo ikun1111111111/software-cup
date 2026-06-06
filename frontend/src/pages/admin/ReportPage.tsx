@@ -1,11 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { DownloadOutlined, FileTextOutlined, WarningOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { DownloadOutlined, FileTextOutlined } from '@ant-design/icons';
 import { message } from 'antd';
 import { Document, Paragraph, TextRun, HeadingLevel, Packer, AlignmentType } from 'docx';
 import { saveAs } from 'file-saver';
 import SentimentChart from '../../components/admin/SentimentChart';
 import MarkdownRenderer from '../../components/admin/MarkdownRenderer';
-import SealCard from '../../components/admin/SealCard';
 import PaperPanel from '../../components/admin/PaperPanel';
 import InscriptionList from '../../components/admin/InscriptionList';
 import StampCloud from '../../components/admin/StampCloud';
@@ -292,7 +291,9 @@ const ReportPage: React.FC = () => {
 
   return (
     <div data-testid="report-page" className="animate-scroll-unfold" style={{
-      padding: isMobile ? '16px' : '28px',
+      paddingTop: isMobile ? '16px' : '28px',
+      paddingRight: isMobile ? '16px' : '28px',
+      paddingBottom: isMobile ? '16px' : '28px',
       paddingLeft: 64,
     }}>
       <PageTransition>
