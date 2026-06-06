@@ -9,11 +9,18 @@ import {
   RobotOutlined,
   LineChartOutlined,
   DashboardOutlined,
+  HistoryOutlined,
+  TrophyOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons';
 
 import ChatPage from './pages/tourist/ChatPage';
 import RecommendPage from './pages/tourist/RecommendPage';
 import TouristDashboard from './pages/tourist/TouristDashboard';
+import AttractionList from './pages/tourist/AttractionList';
+import AttractionDetail from './pages/tourist/AttractionDetail';
+import HistoryExplore from './pages/tourist/HistoryExplore';
+import Leaderboard from './pages/tourist/Leaderboard';
 import KnowledgePage from './pages/admin/KnowledgePage';
 import AvatarPage from './pages/admin/AvatarPage';
 import ReportPage from './pages/admin/ReportPage';
@@ -126,7 +133,10 @@ function TouristNav() {
   const links = [
     { to: '/', label: '对话', icon: <MessageOutlined /> },
     { to: '/explore', label: '探索导览', icon: <CompassOutlined /> },
+    { to: '/attractions', label: '景点', icon: <EnvironmentOutlined /> },
     { to: '/recommend', label: '推荐路线', icon: <CompassOutlined /> },
+    { to: '/history', label: '时空穿越', icon: <HistoryOutlined /> },
+    { to: '/leaderboard', label: '排行榜', icon: <TrophyOutlined /> },
   ];
 
   return (
@@ -272,6 +282,30 @@ function App() {
             <>
               <TouristNav />
               <TouristDashboard />
+            </>
+          } />
+          <Route path="/attractions" element={
+            <>
+              <TouristNav />
+              <AttractionList />
+            </>
+          } />
+          <Route path="/attractions/:spotId" element={
+            <>
+              <TouristNav />
+              <AttractionDetail />
+            </>
+          } />
+          <Route path="/history" element={
+            <>
+              <TouristNav />
+              <HistoryExplore />
+            </>
+          } />
+          <Route path="/leaderboard" element={
+            <>
+              <TouristNav />
+              <Leaderboard />
             </>
           } />
 
