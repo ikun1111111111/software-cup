@@ -35,8 +35,19 @@ const RecommendEngine: React.FC<RecommendEngineProps> = ({
     try {
       const interests = selectedInterest ? [selectedInterest] : undefined;
       const result = await getRecommendations({ interests });
-      if (Array.isArray(result)) {
-        setRecommendations(result);
+      // Backend returns { recommendations: [...], strategy, cached }
+      const data = (result as any)?.data ?? result;
+      const recs = Array.isArray(data) ? data : (data?.recommendations || []);
+      if (Array.isArray(recs)) {
+        // Map backend RecommendItem to frontend RecommendationResult
+        const mapped: RecommendationResult[] = recs.map((r: any, i: number) => ({
+          route_id: r.spot_name || r.route_id || `rec-${i}`,
+          route_name: r.spot_name || r.route_name || '推荐景点',
+          score: r.score ?? (r.rank ? 1 - r.rank * 0.1 : 0.7),
+          reason: r.reason || 'AI 推荐',
+          matched_interests: r.tags || r.matched_interests || [],
+        }));
+        setRecommendations(mapped);
       }
       // Determine user type based on interest
       if (!selectedInterest) {

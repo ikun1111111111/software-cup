@@ -16,7 +16,7 @@ export interface SpotDetail extends Spot {
 
 export const listSpots = (category?: string) => {
   const params = category ? { category } : {};
-  return request.get<Spot[]>('/spots', params);
+  return request.get<Spot[]>('/spots', { params });
 };
 
 export const getSpotById = (id: string) => {
