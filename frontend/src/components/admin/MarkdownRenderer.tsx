@@ -60,7 +60,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content }) => {
           key={`hr-${elements.length}`}
           style={{
             border: 'none',
-            borderTop: '1px solid var(--border-light)',
+            borderTop: '1px solid var(--border-ink)',
             margin: '16px 0',
           }}
         />

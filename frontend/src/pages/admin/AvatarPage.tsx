@@ -180,7 +180,7 @@ const AvatarPage: React.FC = () => {
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             {saved && (
               <span data-testid="saved-msg" style={{
-                color: 'var(--color-success)',
+                color: 'var(--mountain-mid)',
                 fontSize: '13px',
                 display: 'flex',
                 alignItems: 'center',
@@ -196,7 +196,7 @@ const AvatarPage: React.FC = () => {
               disabled={saving || loading}
               style={{
                 padding: '8px 22px',
-                backgroundColor: saving || loading ? 'var(--gray-300)' : '#A83828',
+                backgroundColor: '#A83828',
                 color: '#fff',
                 border: 'none',
                 borderRadius: 'var(--radius-sm)',
@@ -207,6 +207,7 @@ const AvatarPage: React.FC = () => {
                 alignItems: 'center',
                 gap: '6px',
                 transition: 'all 200ms',
+                opacity: saving || loading ? 0.45 : 1,
                 boxShadow: saving || loading ? 'none' : '0 2px 8px rgba(168, 56, 40, 0.25)',
               }}
               onMouseEnter={(e) => {

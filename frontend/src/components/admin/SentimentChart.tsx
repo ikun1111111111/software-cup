@@ -156,7 +156,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
             value={startDate}
             onChange={(e) => handleDateChange(e.target.value, endDate)}
             className="input-base"
-            style={{ padding: '4px 8px', fontSize: '12px', width: 'auto', background: 'var(--surface-solid)', border: '1px solid var(--surface-border)', color: 'var(--text-primary)', borderRadius: 6 }}
+            style={{ padding: '4px 8px', fontSize: '12px', width: 'auto', background: 'var(--paper-texture)', border: '1px solid var(--border-ink)', color: 'var(--text-primary)', borderRadius: 6 }}
           />
           <span style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>至</span>
           <input
@@ -165,7 +165,7 @@ const SentimentChart: React.FC<SentimentChartProps> = ({
             value={endDate}
             onChange={(e) => handleDateChange(startDate, e.target.value)}
             className="input-base"
-            style={{ padding: '4px 8px', fontSize: '12px', width: 'auto', background: 'var(--surface-solid)', border: '1px solid var(--surface-border)', color: 'var(--text-primary)', borderRadius: 6 }}
+            style={{ padding: '4px 8px', fontSize: '12px', width: 'auto', background: 'var(--paper-texture)', border: '1px solid var(--border-ink)', color: 'var(--text-primary)', borderRadius: 6 }}
           />
         </div>
       </div>

@@ -20,10 +20,7 @@ function getThemeByHour(hour: number): ThemeName {
 }
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [theme, setThemeState] = useState<ThemeName>(() => {
-    const hour = new Date().getHours();
-    return getThemeByHour(hour);
-  });
+  const [theme, setThemeState] = useState<ThemeName>('dawn');
 
   const setTheme = useCallback((t: ThemeName) => {
     setThemeState(t);
@@ -32,17 +29,6 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-
-    const interval = setInterval(() => {
-      const hour = new Date().getHours();
-      const expected = getThemeByHour(hour);
-      if (expected !== theme) {
-        setThemeState(expected);
-        document.documentElement.setAttribute('data-theme', expected);
-      }
-    }, 3600000);
-
-    return () => clearInterval(interval);
   }, [theme]);
 
   return (

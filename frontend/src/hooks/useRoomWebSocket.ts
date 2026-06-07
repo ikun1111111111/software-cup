@@ -60,7 +60,7 @@ export function useRoomWebSocket(options: UseRoomWebSocketOptions) {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/room/${roomId}/ws`;
+    const wsUrl = `${protocol}//${window.location.host}/api/room/ws/${roomId}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -165,6 +165,13 @@ export function useRoomWebSocket(options: UseRoomWebSocketOptions) {
       wsRef.current.send(JSON.stringify({ type: 'itinerary_update', itinerary: newItinerary }));
     }
   }, []);
+
+  // Auto-connect when roomId becomes available
+  useEffect(() => {
+    if (!roomId || !memberName) return;
+    connect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, memberName]);
 
   useEffect(() => {
     return () => {

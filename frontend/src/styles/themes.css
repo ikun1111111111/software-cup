@@ -80,10 +80,6 @@ body {
   transition: background 2s ease-in-out;
 }
 
-* {
-  transition: color 1.5s ease, border-color 1.5s ease, background-color 1.5s ease;
-}
-
 /* ── 字体覆盖 ── */
 .font-serif {
   font-family: 'Noto Serif SC', 'Songti SC', serif;

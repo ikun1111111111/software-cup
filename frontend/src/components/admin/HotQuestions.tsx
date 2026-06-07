@@ -58,7 +58,7 @@ const HotQuestions: React.FC<HotQuestionsProps> = ({
         alignItems: 'center',
         gap: '6px',
       }}>
-        <FireOutlined style={{ color: 'var(--color-accent)' }} />
+        <FireOutlined style={{ color: 'var(--vermilion)' }} />
         热门问答 Top10
       </h3>
       <div data-testid="questions-list">

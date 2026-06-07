@@ -53,7 +53,7 @@ const MetricsCard: React.FC<MetricsCardProps> = ({
   trend,
   trendValue,
   icon,
-  color = 'var(--color-primary)',
+  color = 'var(--accent)',
 }) => {
   const isPrimitive = typeof value === 'number' || typeof value === 'string';
 
@@ -79,9 +79,10 @@ const MetricsCard: React.FC<MetricsCardProps> = ({
       data-testid="metrics-card"
       style={{
         padding: '20px',
-        border: '1px solid var(--border-light)',
-        borderRadius: 'var(--radius-lg)',
-        backgroundColor: 'var(--surface-card)',
+        border: '1px solid var(--border-ink)',
+        borderRadius: 'var(--radius-md)',
+        backgroundColor: 'var(--paper-texture)',
+        boxShadow: 'var(--shadow-soft)',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -111,7 +112,7 @@ const MetricsCard: React.FC<MetricsCardProps> = ({
             height: 44,
             backgroundColor: typeof color === 'string' && color.startsWith('#')
               ? `${color}12`
-              : 'var(--color-primary-bg)',
+              : 'rgba(200, 75, 49, 0.08)',
             borderRadius: 'var(--radius-md)',
             display: 'flex',
             alignItems: 'center',
@@ -134,9 +135,9 @@ const MetricsCard: React.FC<MetricsCardProps> = ({
             fontSize: '12px',
             fontWeight: 500,
             color: trend === 'up'
-              ? 'var(--color-success)'
+              ? 'var(--mountain-mid)'
               : trend === 'down'
-                ? 'var(--color-error)'
+                ? 'var(--vermilion)'
                 : 'var(--text-tertiary)',
           }}
         >

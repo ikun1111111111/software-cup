@@ -58,129 +58,17 @@ class RoomResponse(BaseModel):
     members: list[dict] = []
 
 
-@router.post("/create", response_model=RoomResponse)
-async def create_new_room(request: CreateRoomRequest):
-    """Create a new collaborative tour room."""
-    if not request.creator_name.strip():
-        raise HTTPException(status_code=400, detail="创建者名称不能为空")
-    try:
-        room = await create_room(request.creator_name.strip())
-        room["members"] = await get_members(room["room_id"])
-        return RoomResponse(**room)
-    except Exception as e:
-        logger.error("Room creation failed: %s", e)
-        raise HTTPException(status_code=500, detail="房间创建失败")
+async def room_websocket(websocket: WebSocket):
+    """WebSocket endpoint for room real-time communication.
 
-
-@router.post("/{room_id}/join", response_model=RoomResponse)
-async def join_existing_room(room_id: str, request: JoinRoomRequest):
-    """Join an existing room by room ID."""
-    if not request.member_name.strip():
-        raise HTTPException(status_code=400, detail="成员名称不能为空")
-    try:
-        room = await join_room(room_id, request.member_name.strip())
-        return RoomResponse(**room)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error("Join room failed: %s", e)
-        raise HTTPException(status_code=500, detail="加入房间失败")
-
-
-@router.get("/{room_id}", response_model=RoomResponse)
-async def get_room_info(room_id: str):
-    """Get room information."""
-    room = await get_room(room_id)
-    if not room:
-        raise HTTPException(status_code=404, detail="房间不存在或已过期")
-    return RoomResponse(**room)
-
-
-@router.put("/{room_id}/itinerary")
-async def sync_itinerary(room_id: str, request: ItineraryUpdateRequest):
-    """Update shared itinerary for a room."""
-    try:
-        await update_itinerary(room_id, request.itinerary)
-        await _broadcast_to_room(room_id, {
-            "type": "itinerary_update",
-            "itinerary": request.itinerary,
-            "timestamp": int(time.time()),
-        })
-        return {"status": "ok", "itinerary": request.itinerary}
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error("Itinerary update failed: %s", e)
-        raise HTTPException(status_code=500, detail="行程更新失败")
-
-
-@router.post("/{room_id}/itinerary/add-spot", response_model=AddSpotResponse)
-async def add_spot_to_room_itinerary(room_id: str, request: AddSpotRequest):
-    """Add a single scenic spot to the room's shared itinerary.
-
-    Automatically broadcasts `spot_added` to all room members via WebSocket.
-    Sources: "vision" (photo recognition), "recommend" (AI recommendation), "manual".
+    Registered via Starlette native WebSocketRoute in main.py
+    to work around FastAPI APIWebSocketRoute incompatibility.
+    Path parameter `room_id` is extracted from websocket.path_params.
     """
-    try:
-        room = await add_spot_to_itinerary(
-            room_id=room_id,
-            spot_name=request.spot_name,
-            source=request.source,
-            confidence=request.confidence,
-            note=request.note,
-        )
-        itinerary = room.get("itinerary", [])
-
-        # Broadcast to all room members
-        await _broadcast_to_room(room_id, {
-            "type": "spot_added",
-            "spot_name": request.spot_name,
-            "source": request.source,
-            "confidence": request.confidence,
-            "note": request.note,
-            "itinerary": itinerary,
-            "timestamp": int(time.time()),
-        })
-
-        return AddSpotResponse(
-            status="ok",
-            spot_name=request.spot_name,
-            itinerary_count=len(itinerary),
-            itinerary=itinerary,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error("Add spot to itinerary failed: %s", e)
-        raise HTTPException(status_code=500, detail="添加景点失败")
-
-
-@router.delete("/{room_id}")
-async def remove_room(room_id: str):
-    """Delete a room."""
-    deleted = await delete_room(room_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="房间不存在")
-    _active_connections.pop(room_id, None)
-    return {"status": "ok"}
-
-
-async def _broadcast_to_room(room_id: str, message: dict):
-    """Broadcast a message to all WebSocket connections in a room."""
-    connections = _active_connections.get(room_id, {})
-    dead = []
-    for name, ws in connections.items():
-        try:
-            await ws.send_json(message)
-        except Exception:
-            dead.append(name)
-    for name in dead:
-        connections.pop(name, None)
-
-
-@router.websocket("/{room_id}/ws")
-async def room_websocket(websocket: WebSocket, room_id: str):
-    """WebSocket endpoint for room real-time communication."""
+    room_id = websocket.path_params.get("room_id", "")
+    if not room_id:
+        await websocket.close()
+        return
     await websocket.accept()
     member_name = ""
 
@@ -302,3 +190,125 @@ async def room_websocket(websocket: WebSocket, room_id: str):
             await websocket.close()
         except Exception:
             pass
+
+
+@router.post("/create", response_model=RoomResponse)
+async def create_new_room(request: CreateRoomRequest):
+    """Create a new collaborative tour room."""
+    if not request.creator_name.strip():
+        raise HTTPException(status_code=400, detail="创建者名称不能为空")
+    try:
+        room = await create_room(request.creator_name.strip())
+        room["members"] = await get_members(room["room_id"])
+        return RoomResponse(**room)
+    except Exception as e:
+        logger.error("Room creation failed: %s", e)
+        raise HTTPException(status_code=500, detail="房间创建失败")
+
+
+@router.post("/{room_id}/join", response_model=RoomResponse)
+async def join_existing_room(room_id: str, request: JoinRoomRequest):
+    """Join an existing room by room ID."""
+    if not request.member_name.strip():
+        raise HTTPException(status_code=400, detail="成员名称不能为空")
+    try:
+        room = await join_room(room_id, request.member_name.strip())
+        return RoomResponse(**room)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("Join room failed: %s", e)
+        raise HTTPException(status_code=500, detail="加入房间失败")
+
+
+@router.get("/{room_id}", response_model=RoomResponse)
+async def get_room_info(room_id: str):
+    """Get room information."""
+    room = await get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="房间不存在或已过期")
+    return RoomResponse(**room)
+
+
+@router.put("/{room_id}/itinerary")
+async def sync_itinerary(room_id: str, request: ItineraryUpdateRequest):
+    """Update shared itinerary for a room."""
+    try:
+        await update_itinerary(room_id, request.itinerary)
+        await _broadcast_to_room(room_id, {
+            "type": "itinerary_update",
+            "itinerary": request.itinerary,
+            "timestamp": int(time.time()),
+        })
+        return {"status": "ok", "itinerary": request.itinerary}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("Itinerary update failed: %s", e)
+        raise HTTPException(status_code=500, detail="行程更新失败")
+
+
+@router.post("/{room_id}/itinerary/add-spot", response_model=AddSpotResponse)
+async def add_spot_to_room_itinerary(room_id: str, request: AddSpotRequest):
+    """Add a single scenic spot to the room's shared itinerary.
+
+    Automatically broadcasts `spot_added` to all room members via WebSocket.
+    Sources: "vision" (photo recognition), "recommend" (AI recommendation), "manual".
+    """
+    try:
+        room = await add_spot_to_itinerary(
+            room_id=room_id,
+            spot_name=request.spot_name,
+            source=request.source,
+            confidence=request.confidence,
+            note=request.note,
+        )
+        itinerary = room.get("itinerary", [])
+
+        # Broadcast to all room members
+        await _broadcast_to_room(room_id, {
+            "type": "spot_added",
+            "spot_name": request.spot_name,
+            "source": request.source,
+            "confidence": request.confidence,
+            "note": request.note,
+            "itinerary": itinerary,
+            "timestamp": int(time.time()),
+        })
+
+        return AddSpotResponse(
+            status="ok",
+            spot_name=request.spot_name,
+            itinerary_count=len(itinerary),
+            itinerary=itinerary,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Add spot to itinerary failed: %s", e)
+        raise HTTPException(status_code=500, detail="添加景点失败")
+
+
+@router.delete("/{room_id}")
+async def remove_room(room_id: str):
+    """Delete a room."""
+    deleted = await delete_room(room_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="房间不存在")
+    _active_connections.pop(room_id, None)
+    return {"status": "ok"}
+
+
+async def _broadcast_to_room(room_id: str, message: dict):
+    """Broadcast a message to all WebSocket connections in a room."""
+    connections = _active_connections.get(room_id, {})
+    dead = []
+    for name, ws in connections.items():
+        try:
+            await ws.send_json(message)
+        except Exception:
+            dead.append(name)
+    for name in dead:
+        connections.pop(name, None)
+
+

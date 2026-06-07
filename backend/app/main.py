@@ -2,6 +2,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.routing import WebSocketRoute
 from app.core.config import get_settings
 from app.core.database import init_db
 # from app.core.rag import init_collection  # replaced by vector_store
@@ -43,7 +44,7 @@ app = FastAPI(
 # CORS — allow frontend dev server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:8000", "http://localhost:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -68,6 +69,11 @@ app.include_router(push.router)
 app.include_router(spots.router)
 app.include_router(routes_api.router)
 app.include_router(vision_room.router)
+
+# Register room WebSocket via Starlette native WebSocketRoute
+# to avoid FastAPI APIWebSocketRoute + Starlette 1.2.1 incompatibility
+from app.api.room import room_websocket  # noqa: E402
+app.router.routes.append(WebSocketRoute("/api/room/ws/{room_id}", room_websocket))
 
 
 @app.get("/health")

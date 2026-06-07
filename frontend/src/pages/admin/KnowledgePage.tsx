@@ -30,9 +30,9 @@ interface Document {
 }
 
 const STATUS_MAP: Record<string, { label: string; bg: string; color: string }> = {
-  ready: { label: '就绪', bg: 'var(--color-success-bg)', color: 'var(--color-success)' },
-  processing: { label: '处理中', bg: 'var(--color-warning-bg)', color: 'var(--color-accent)' },
-  error: { label: '错误', bg: 'var(--color-error-bg)', color: 'var(--color-error)' },
+  ready: { label: '就绪', bg: 'rgba(74, 124, 111, 0.1)', color: 'var(--mountain-mid)' },
+  processing: { label: '处理中', bg: 'rgba(201, 169, 110, 0.1)', color: 'var(--gold-leaf)' },
+  error: { label: '错误', bg: 'rgba(200, 75, 49, 0.1)', color: 'var(--vermilion)' },
 };
 
 const backendStatusToLocal = (s: string): Document['status'] => {
@@ -304,7 +304,7 @@ const KnowledgePage: React.FC = () => {
                   onClick={() => setShowUpload(!showUpload)}
                   style={{
                     padding: '8px 18px',
-                    backgroundColor: showUpload ? 'var(--surface)' : 'var(--accent)',
+                    backgroundColor: showUpload ? 'var(--paper-texture)' : 'var(--accent)',
                     color: showUpload ? 'var(--text-secondary)' : '#fff',
                     border: 'none',
                     borderRadius: 'var(--radius-sm)',
@@ -369,7 +369,7 @@ const KnowledgePage: React.FC = () => {
                             style={{
                               padding: '4px 8px',
                               background: 'transparent',
-                              border: '1px solid var(--surface-border)',
+                              border: '1px solid var(--border-ink)',
                               borderRadius: '6px',
                               cursor: 'pointer',
                               color: 'var(--text-tertiary)',
@@ -386,10 +386,10 @@ const KnowledgePage: React.FC = () => {
                             style={{
                               padding: '4px 8px',
                               background: 'transparent',
-                              border: '1px solid var(--color-error-bg)',
+                              border: '1px solid rgba(200, 75, 49, 0.2)',
                               borderRadius: '6px',
                               cursor: 'pointer',
-                              color: 'var(--color-error)',
+                              color: 'var(--vermilion)',
                               fontSize: '12px',
                               display: 'flex',
                               alignItems: 'center',

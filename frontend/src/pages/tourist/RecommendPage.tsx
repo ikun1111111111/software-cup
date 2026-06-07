@@ -140,6 +140,10 @@ const RecommendPage: React.FC = () => {
     [expandedRoute],
   );
 
+  const handleRecommendations = useCallback((recs: RecommendationResult[]) => {
+    setAiRecs(recs);
+  }, []);
+
   const handleInterestChange = useCallback((value: string) => {
     setSelectedType(value);
   }, []);
@@ -407,21 +411,33 @@ const RecommendPage: React.FC = () => {
         <RecommendEngine
           selectedInterest={selectedType}
           onSelectRoute={handleSelectRec}
+          onRecommendations={handleRecommendations}
         />
       </div>
 
-      {/* Push to Room button */}
-      {roomId && aiRecs.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
-          <RoutePushButton
-            roomId={roomId}
-            recommendations={aiRecs}
-            onPushComplete={(count) => {
-              message.success(`成功推送 ${count} 个推荐到房间`);
-            }}
-          />
-        </div>
-      )}
+      {/* Push to Room button — supports both AI recs and DNA recs */}
+      {(() => {
+        const pushable: RecommendationResult[] = aiRecs.length > 0
+          ? aiRecs
+          : (dnaRecs?.recommendations || []).map((d) => ({
+              route_id: d.spot_name,
+              route_name: d.spot_name,
+              score: d.dna_similarity || 0.8,
+              reason: d.reason,
+              matched_interests: d.tags,
+            }));
+        return roomId && pushable.length > 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+            <RoutePushButton
+              roomId={roomId}
+              recommendations={pushable}
+              onPushComplete={(count) => {
+                message.success(`成功推送 ${count} 个推荐到房间`);
+              }}
+            />
+          </div>
+        ) : null;
+      })()}
 
       {/* Static Route List */}
       <div>

@@ -248,13 +248,14 @@ const ReportPage: React.FC = () => {
     parseSection(
       content,
       [
-        /###?\s*3?[.．、]?\s*知识库盲区发现/i,
-        /###?\s*3?[.．、]?\s*盲区发现/i,
+        /#{0,3}\s*3?[.．、]?\s*知识库盲区发现/i,
+        /#{0,3}\s*3?[.．、]?\s*盲区发现/i,
+        /知识库盲区/i,
         /盲区发现/i,
       ],
       [
-        /###?\s*4?[.．、]?\s*服务改进建议/i,
-        /###?\s*4?[.．、]?\s*改进建议/i,
+        /#{0,3}\s*4?[.．、]?\s*服务改进建议/i,
+        /#{0,3}\s*4?[.．、]?\s*改进建议/i,
         /服务改进建议/i,
         /改进建议/i,
       ]
@@ -264,8 +265,8 @@ const ReportPage: React.FC = () => {
     parseSection(
       content,
       [
-        /###?\s*4?[.．、]?\s*服务改进建议/i,
-        /###?\s*4?[.．、]?\s*改进建议/i,
+        /#{0,3}\s*4?[.．、]?\s*服务改进建议/i,
+        /#{0,3}\s*4?[.．、]?\s*改进建议/i,
         /服务改进建议/i,
         /改进建议/i,
       ],
@@ -327,7 +328,7 @@ const ReportPage: React.FC = () => {
               disabled={generating || loading}
               style={{
                 padding: '8px 22px',
-                backgroundColor: generating || loading ? 'var(--gray-300)' : 'var(--accent)',
+                backgroundColor: 'var(--accent)',
                 color: '#fff',
                 border: 'none',
                 borderRadius: 'var(--radius-sm)',
@@ -338,7 +339,8 @@ const ReportPage: React.FC = () => {
                 alignItems: 'center',
                 gap: '6px',
                 transition: 'all 200ms',
-                boxShadow: generating || loading ? 'none' : '0 2px 8px rgba(0,0,0,0.1)',
+                opacity: generating || loading ? 0.45 : 1,
+                boxShadow: generating || loading ? 'none' : '0 2px 8px rgba(200,75,49,0.25)',
               }}
             >
               <FileTextOutlined />
@@ -350,7 +352,7 @@ const ReportPage: React.FC = () => {
               disabled={!report?.content}
               style={{
                 padding: '8px 22px',
-                backgroundColor: !report?.content ? 'var(--gray-300)' : 'var(--color-success)',
+                backgroundColor: 'var(--mountain-mid)',
                 color: '#fff',
                 border: 'none',
                 borderRadius: 'var(--radius-sm)',
@@ -361,6 +363,7 @@ const ReportPage: React.FC = () => {
                 alignItems: 'center',
                 gap: '6px',
                 transition: 'all 200ms',
+                opacity: !report?.content ? 0.45 : 1,
               }}
             >
               <DownloadOutlined />

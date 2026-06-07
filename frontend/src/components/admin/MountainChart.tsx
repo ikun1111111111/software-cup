@@ -62,5 +62,5 @@ export function inkAreaStyle(color: string) {
   };
 }
 
-/** 热力图配色 — 石青 → 石绿 → 朱砂 */
-export const heatmapColors = ['#1B4D3E', '#4A7C6F', '#8FB8AA', '#C9A96E', '#C84B31'];
+/** 热力图配色 — 浅米 → 暖金 → 朱砂，更适合浅色背景 */
+export const heatmapColors = ['#F3EFE6', '#E0D5C1', '#D4B896', '#D4896E', '#C84B31'];

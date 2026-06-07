@@ -388,6 +388,10 @@ const ChatPage: React.FC = () => {
       setError('连接错误，请重试');
       setStreaming(false);
     },
+    onClose: () => {
+      // Safety net: if stream ends without a terminal event, reset streaming
+      setStreaming(false);
+    },
   });
 
   useEffect(() => {
@@ -992,9 +996,6 @@ const ChatPage: React.FC = () => {
 
         {/* 消息列表 */}
         {!isEmpty && renderMessages()}
-
-        {/* 思考中指示器 */}
-        {isStreaming && <ThinkingIndicator />}
 
         <div ref={messagesEndRef} />
       </div>

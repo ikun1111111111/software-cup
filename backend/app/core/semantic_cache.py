@@ -145,6 +145,11 @@ async def get_similar(question: str, threshold: float | None = None, max_scan: i
     if not question:
         return None
 
+    # Skip cache for very short or generic greetings to avoid false hits
+    stripped = question.strip()
+    if len(stripped) <= 6:
+        return None
+
     threshold = threshold if threshold is not None else _SIMILARITY_THRESHOLD
 
     try:

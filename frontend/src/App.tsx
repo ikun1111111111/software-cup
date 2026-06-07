@@ -167,9 +167,24 @@ function TouristNav() {
   );
 }
 
+function getThemeByHour(hour: number): string {
+  if (hour >= 6 && hour < 10) return 'dawn';
+  if (hour >= 10 && hour < 16) return 'day';
+  if (hour >= 16 && hour < 19) return 'dusk';
+  return 'night';
+}
+
 function App() {
   const location = useLocation();
   const isAdmin = location.pathname.startsWith('/admin');
+
+  useEffect(() => {
+    if (isAdmin) {
+      document.documentElement.setAttribute('data-theme', 'dawn');
+    } else {
+      document.documentElement.setAttribute('data-theme', getThemeByHour(new Date().getHours()));
+    }
+  }, [isAdmin]);
 
   const { notification: pushNotification, handleListen, handleNavigate, dismiss: dismissPush } = usePushNotification({
     userId: 'guest',

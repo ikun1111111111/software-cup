@@ -90,10 +90,10 @@ const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
   }, [fetchData, onDisconnect]);
 
   const metrics = [
-    { label: '活跃用户', value: data.activeUsers, color: 'var(--color-primary)', testId: 'metric-active-users' },
-    { label: '消息/分钟', value: data.messagesPerMinute, color: 'var(--color-success)', testId: 'metric-messages' },
-    { label: '响应时间(ms)', value: data.avgResponseTime, color: 'var(--color-warning)', testId: 'metric-response-time' },
-    { label: '情感分数', value: data.sentimentScore.toFixed(2), color: '#8B5CF6', testId: 'metric-sentiment' },
+    { label: '活跃用户', value: data.activeUsers, color: 'var(--accent)', testId: 'metric-active-users' },
+    { label: '消息/分钟', value: data.messagesPerMinute, color: 'var(--mountain-mid)', testId: 'metric-messages' },
+    { label: '响应时间(ms)', value: data.avgResponseTime, color: 'var(--gold-leaf)', testId: 'metric-response-time' },
+    { label: '情感分数', value: data.sentimentScore.toFixed(2), color: 'var(--mountain-deep)', testId: 'metric-sentiment' },
   ];
 
   return (
@@ -108,15 +108,15 @@ const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
           alignItems: 'center',
           gap: '6px',
         }}>
-          <SyncOutlined style={{ color: 'var(--color-primary)' }} />
+          <SyncOutlined style={{ color: 'var(--accent)' }} />
           实时监控
         </h3>
         <span
           data-testid="connection-status"
           className="badge"
           style={{
-            backgroundColor: connected ? 'var(--color-success-bg)' : 'var(--color-error-bg)',
-            color: connected ? 'var(--color-success)' : 'var(--color-error)',
+            backgroundColor: connected ? 'rgba(74, 124, 111, 0.1)' : 'rgba(200, 75, 49, 0.1)',
+            color: connected ? 'var(--mountain-mid)' : 'var(--vermilion)',
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
@@ -128,7 +128,7 @@ const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
               width: 6,
               height: 6,
               borderRadius: '50%',
-              backgroundColor: connected ? 'var(--color-success)' : 'var(--color-error)',
+              backgroundColor: connected ? 'var(--mountain-mid)' : 'var(--vermilion)',
             }}
           />
           {connected ? '已连接' : '未连接'}
@@ -143,7 +143,7 @@ const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
         {metrics.map((m) => (
           <div key={m.testId} data-testid={m.testId} style={{
             padding: '14px',
-            border: '1px solid var(--border-light)',
+            border: '1px solid var(--border-ink)',
             borderRadius: 'var(--radius-md)',
             backgroundColor: 'transparent',
           }}>

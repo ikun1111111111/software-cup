@@ -59,15 +59,15 @@ const HeatmapChart: React.FC<HeatmapChartProps> = ({ data: propData }) => {
       xAxis: {
         type: 'category',
         data: DAYS,
-        splitArea: { show: true },
+        splitArea: { show: false },
         axisLine: { show: false },
         axisTick: { show: false },
-        axisLabel: { color: 'var(--text-secondary)' },
+        axisLabel: { color: 'var(--text-secondary)', fontSize: 11 },
       },
       yAxis: {
         type: 'category',
         data: HOURS,
-        splitArea: { show: true },
+        splitArea: { show: false },
         axisLine: { show: false },
         axisTick: { show: false },
         axisLabel: { color: 'var(--text-secondary)', fontSize: 10 },
@@ -90,14 +90,14 @@ const HeatmapChart: React.FC<HeatmapChartProps> = ({ data: propData }) => {
           data: chartData,
           label: { show: false },
           itemStyle: {
-            borderRadius: 3,
-            borderColor: 'var(--surface)',
-            borderWidth: 1,
+            borderRadius: 4,
+            borderColor: 'var(--paper-texture)',
+            borderWidth: 2,
           },
           emphasis: {
             itemStyle: {
-              shadowBlur: 8,
-              shadowColor: 'rgba(0,0,0,0.2)',
+              shadowBlur: 10,
+              shadowColor: 'rgba(27, 77, 62, 0.3)',
             },
           },
         },
@@ -116,7 +116,7 @@ const HeatmapChart: React.FC<HeatmapChartProps> = ({ data: propData }) => {
         alignItems: 'center',
         gap: '6px',
       }}>
-        <FireOutlined style={{ color: 'var(--color-vermilion)' }} />
+        <FireOutlined style={{ color: 'var(--vermilion)' }} />
         交互时段热力图
       </h3>
       <div data-testid="heatmap-container" style={{ height: '360px' }}>
