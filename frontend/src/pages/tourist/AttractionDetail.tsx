@@ -25,25 +25,45 @@ const AttractionDetail: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: 80, color: 'var(--text-tertiary)' }}>
-        加载中...
+      <div className="paper-texture" style={{ minHeight: 'calc(100vh - 120px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', color: 'var(--text-tertiary)' }}>
+          <div style={{
+            width: 48, height: 48, margin: '0 auto 16px',
+            border: '2px solid var(--gray-200)',
+            borderTopColor: 'var(--color-primary)',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+          }} />
+          <p style={{ fontFamily: 'var(--font-serif)', fontSize: 16, letterSpacing: 2 }}>墨韵渐染...</p>
+        </div>
       </div>
     );
   }
 
   if (!spot) {
     return (
-      <div style={{ textAlign: 'center', padding: 80 }}>
-        <p style={{ color: 'var(--text-tertiary)', fontSize: 16 }}>景点未找到</p>
-        <button onClick={() => navigate('/explore')} style={{
-          padding: '10px 24px', background: 'var(--color-primary)', color: '#fff',
-          border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14,
-        }}>
-          返回景点列表
-        </button>
+      <div className="paper-texture" style={{ minHeight: 'calc(100vh - 120px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', padding: 60 }}>
+          <div style={{
+            width: 80, height: 80, margin: '0 auto 24px',
+            border: '2px solid var(--gray-200)', borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: 'var(--font-calligraphy)', fontSize: 32, color: 'var(--gray-300)',
+          }}>
+            寻
+          </div>
+          <p style={{ color: 'var(--text-tertiary)', fontSize: 16, fontFamily: 'var(--font-serif)', marginBottom: 24 }}>
+            景点未找到
+          </p>
+          <button onClick={() => navigate('/explore')} className="btn-seal btn-seal--filled">
+            返回景点列表
+          </button>
+        </div>
       </div>
     );
   }
+
+  const isCore = spot.category === '核心景点';
 
   return (
     <div className="paper-texture" style={{ minHeight: 'calc(100vh - 120px)', paddingBottom: 40 }}>
@@ -55,58 +75,124 @@ const AttractionDetail: React.FC = () => {
             display: 'flex', alignItems: 'center', gap: 6,
             background: 'none', border: 'none', color: 'var(--color-primary)',
             fontSize: 14, cursor: 'pointer', marginBottom: 16, padding: '6px 0',
+            fontFamily: 'var(--font-serif)',
           }}
         >
           <ArrowLeftOutlined /> 返回
         </button>
 
-        {/* Hero card */}
-        <div className="section-card" style={{ overflow: 'hidden', padding: 0, marginBottom: 20 }}>
+        {/* Hero card - 水墨遮罩 */}
+        <div className="section-card" style={{ overflow: 'hidden', padding: 0, marginBottom: 24, position: 'relative' }}>
+          {/* 顶部渐变条 */}
           <div style={{
             height: 6,
-            background: spot.category === '核心景点'
-              ? 'linear-gradient(90deg, #C8882E, #E8A838, #F59E0B)'
-              : 'linear-gradient(90deg, #2D8B57, #4ADE80, #34D399)',
+            background: isCore
+              ? 'linear-gradient(90deg, #C8A951, #D4B876, #E8CF7A)'
+              : 'linear-gradient(90deg, #6A9C89, #8CBFAD, #A8D4C4)',
           }} />
-          <div style={{ padding: '28px 32px' }}>
+
+          {/* 水墨遮罩背景 */}
+          <div style={{
+            position: 'absolute',
+            top: 6, left: 0, right: 0, bottom: 0,
+            background: 'linear-gradient(180deg, rgba(106,156,137,0.04) 0%, transparent 30%, rgba(247,245,240,0) 100%)',
+            pointerEvents: 'none',
+            zIndex: 1,
+          }} />
+
+          <div style={{ padding: '32px 36px', position: 'relative', zIndex: 2 }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-              <div>
-                <h1 style={{ margin: '0 0 8px', fontSize: 28, fontWeight: 700, color: 'var(--text-primary)' }}>
-                  <EnvironmentOutlined style={{ marginRight: 10, color: 'var(--color-primary)' }} />
-                  {spot.name}
-                </h1>
-                <span style={{
-                  display: 'inline-block', fontSize: 13, padding: '3px 12px', borderRadius: 12,
-                  background: spot.category === '核心景点' ? 'rgba(200,136,46,0.12)' : 'rgba(45,139,87,0.12)',
-                  color: spot.category === '核心景点' ? '#B45309' : '#166534', fontWeight: 500,
+              <div style={{ flex: 1 }}>
+                {/* 竖线装饰 + 标题 */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+                  <div style={{
+                    width: 3, height: 60,
+                    background: isCore
+                      ? 'linear-gradient(to bottom, #C8A951, #D4B876, transparent)'
+                      : 'linear-gradient(to bottom, #6A9C89, #8CBFAD, transparent)',
+                    borderRadius: 2,
+                    flexShrink: 0,
+                    marginTop: 8,
+                  }} />
+                  <div style={{ flex: 1 }}>
+                    <h1 style={{
+                      margin: '0 0 10px',
+                      fontSize: 'var(--font-size-h1)',
+                      fontWeight: 700,
+                      color: 'var(--text-primary)',
+                      fontFamily: 'var(--font-calligraphy)',
+                      letterSpacing: 2,
+                      lineHeight: 1.3,
+                    }}>
+                      {spot.name}
+                    </h1>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span className="badge-seal" style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        padding: '3px 10px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        borderRadius: 'var(--radius-seal)',
+                        background: isCore ? 'rgba(200,169,81,0.1)' : 'rgba(106,156,137,0.1)',
+                        color: isCore ? '#9E8A3A' : 'var(--color-primary)',
+                        border: isCore ? '1px solid rgba(200,169,81,0.2)' : '1px solid rgba(106,156,137,0.2)',
+                      }}>
+                        {spot.category}
+                      </span>
+                      <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                        fontSize: 13, color: 'var(--text-tertiary)', fontFamily: 'var(--font-serif)',
+                      }}>
+                        <EnvironmentOutlined /> 灵山胜境
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 概述 - 古籍引言风格 */}
+                <div style={{
+                  marginTop: 20,
+                  padding: '16px 20px',
+                  background: 'linear-gradient(135deg, #FDFBF7 0%, #F7F5F0 100%)',
+                  borderLeft: '3px solid ' + (isCore ? '#C8A951' : 'var(--color-primary)'),
+                  borderRadius: '0 var(--radius-md) var(--radius-md) 0',
+                  position: 'relative',
                 }}>
-                  {spot.category}
-                </span>
+                  <p style={{
+                    fontSize: 16, color: 'var(--text-secondary)', lineHeight: 1.9,
+                    margin: 0, fontFamily: 'var(--font-serif)', fontStyle: 'italic',
+                  }}>
+                    {spot.overview}
+                  </p>
+                </div>
               </div>
             </div>
-
-            <p style={{
-              fontSize: 17, color: 'var(--text-secondary)', lineHeight: 1.8,
-              margin: '16px 0 0', fontStyle: 'italic',
-            }}>
-              {spot.overview}
-            </p>
           </div>
+
+          {/* 角落装饰 */}
+          <div className="corner-deco corner-deco--tl" style={{ borderColor: isCore ? 'rgba(200,169,81,0.15)' : 'rgba(106,156,137,0.15)' }} />
+          <div className="corner-deco corner-deco--tr" style={{ borderColor: isCore ? 'rgba(200,169,81,0.15)' : 'rgba(106,156,137,0.15)' }} />
         </div>
 
-        {/* Tags */}
+        {/* Tags - 印章式标签 */}
         {spot.tags && spot.tags.length > 0 && (
-          <div className="section-card" style={{ padding: '18px 24px', marginBottom: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <div className="section-card" style={{ padding: '20px 24px', marginBottom: 24, position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
               <TagOutlined style={{ color: 'var(--color-primary)' }} />
-              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>景点标签</span>
+              <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'var(--font-serif)' }}>
+                景点标签
+              </span>
+              <div style={{ flex: 1, height: 1, background: 'linear-gradient(to right, var(--gray-200), transparent)' }} />
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {spot.tags.map((tag) => (
                 <span key={tag} style={{
-                  fontSize: 13, padding: '5px 14px', borderRadius: 16,
-                  background: 'rgba(26,95,180,0.08)',
-                  color: 'var(--color-primary)', fontWeight: 500,
+                  fontSize: 13, padding: '5px 14px', borderRadius: 4,
+                  background: 'rgba(106,156,137,0.06)',
+                  color: 'var(--color-primary-dark)', fontWeight: 500,
+                  fontFamily: 'var(--font-serif)',
+                  border: '1px solid rgba(106,156,137,0.12)',
                 }}>
                   {tag}
                 </span>
@@ -115,46 +201,76 @@ const AttractionDetail: React.FC = () => {
           </div>
         )}
 
-        {/* Detail content */}
-        <div className="section-card" style={{ padding: '24px 32px', marginBottom: 20 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 16px' }}>
-            详细介绍
-          </h2>
+        {/* Detail content - 古籍排版 */}
+        <div className="section-card" style={{ padding: '28px 32px', marginBottom: 24, position: 'relative' }}>
+          {/* 古籍标题栏 */}
           <div style={{
-            fontSize: 15, color: 'var(--text-secondary)', lineHeight: 2,
-            whiteSpace: 'pre-wrap',
+            display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20,
           }}>
-            {spot.detail}
+            <div style={{
+              width: 4, height: 20, background: 'var(--color-primary)', borderRadius: 2,
+            }} />
+            <h2 style={{
+              fontSize: 18, fontWeight: 700, color: 'var(--text-primary)',
+              margin: 0, fontFamily: 'var(--font-calligraphy)', letterSpacing: 1,
+            }}>
+              详细介绍
+            </h2>
+            <div style={{ flex: 1, height: 1, background: 'linear-gradient(to right, var(--gray-200), transparent)' }} />
+          </div>
+
+          {/* 古籍内容 */}
+          <div style={{
+            fontSize: 15, color: 'var(--text-secondary)', lineHeight: 2.2,
+            whiteSpace: 'pre-wrap',
+            fontFamily: 'var(--font-serif)',
+            textAlign: 'justify',
+            textIndent: '2em',
+          }}>
+            {spot.detail || spot.overview || '暂无详细介绍，敬请期待。'}
+          </div>
+
+          {/* 底部印章装饰 */}
+          <div style={{
+            position: 'absolute', bottom: 16, right: 24,
+            width: 40, height: 40,
+            border: '2px solid rgba(200,75,49,0.15)',
+            borderRadius: 4,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'rgba(200,75,49,0.2)',
+            fontFamily: 'var(--font-calligraphy)',
+            fontSize: 18,
+            transform: 'rotate(-8deg)',
+            pointerEvents: 'none',
+          }}>
+            胜境
           </div>
         </div>
 
         {/* Related spots */}
         {spot.related_spots && spot.related_spots.length > 0 && (
-          <div className="section-card" style={{ padding: '20px 24px', marginBottom: 20 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 14px' }}>
-              周边景点
-            </h2>
+          <div className="section-card" style={{ padding: '24px 28px', marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{
+                width: 4, height: 20, background: 'var(--color-gold)', borderRadius: 2,
+              }} />
+              <h2 style={{
+                fontSize: 18, fontWeight: 700, color: 'var(--text-primary)',
+                margin: 0, fontFamily: 'var(--font-calligraphy)', letterSpacing: 1,
+              }}>
+                周边景点
+              </h2>
+              <div style={{ flex: 1, height: 1, background: 'linear-gradient(to right, var(--gray-200), transparent)' }} />
+            </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
               {spot.related_spots.map((relId) => (
                 <button
                   key={relId}
                   onClick={() => navigate(`/attractions/${relId}`)}
+                  className="btn-tag"
                   style={{
-                    padding: '8px 18px', borderRadius: 20,
-                    border: '1px solid var(--border-light)',
-                    background: 'rgba(255,255,255,0.6)',
-                    color: 'var(--text-secondary)', fontSize: 14,
-                    cursor: 'pointer', transition: 'all 200ms ease',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'var(--color-primary-bg)';
-                    e.currentTarget.style.color = 'var(--color-primary)';
-                    e.currentTarget.style.borderColor = 'rgba(26,95,180,0.3)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(255,255,255,0.6)';
-                    e.currentTarget.style.color = 'var(--text-secondary)';
-                    e.currentTarget.style.borderColor = 'var(--border-light)';
+                    padding: '8px 18px',
+                    fontFamily: 'var(--font-serif)',
                   }}
                 >
                   {relId.replace(/-/g, ' ')}
@@ -164,35 +280,25 @@ const AttractionDetail: React.FC = () => {
           </div>
         )}
 
-        {/* Action buttons */}
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 8 }}>
+        {/* Action buttons - 东方风格 */}
+        <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 8, flexWrap: 'wrap' }}>
           <button
             onClick={() => navigate('/', { state: { fromQR: true, spotId: spot.id, spotName: spot.name } })}
+            className="btn-seal btn-seal--filled"
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
-              padding: '12px 28px', borderRadius: 24,
-              background: 'linear-gradient(135deg, #1A5FB4, #3584E4)',
-              color: '#fff', border: 'none', fontSize: 15, fontWeight: 600,
-              cursor: 'pointer', boxShadow: '0 4px 12px rgba(26,95,180,0.25)',
-              transition: 'transform 150ms ease',
+              padding: '12px 28px', fontSize: 15, fontWeight: 600,
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
           >
             <MessageOutlined /> 问数字人导游
           </button>
           <button
             onClick={() => navigate('/', { state: { fromQR: true, spotId: spot.id, spotName: spot.name } })}
+            className="btn-seal btn-seal--filled"
             style={{
               display: 'flex', alignItems: 'center', gap: 8,
-              padding: '12px 28px', borderRadius: 24,
-              background: 'linear-gradient(135deg, #C8882E, #E8A838)',
-              color: '#fff', border: 'none', fontSize: 15, fontWeight: 600,
-              cursor: 'pointer', boxShadow: '0 4px 12px rgba(200,136,46,0.25)',
-              transition: 'transform 150ms ease',
+              padding: '12px 28px', fontSize: 15, fontWeight: 600,
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
           >
             <SoundOutlined /> 听故事讲解
           </button>

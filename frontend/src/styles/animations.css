@@ -1,0 +1,196 @@
+/* ============================================
+   东方美学 · 动画关键帧集合
+   ============================================ */
+
+/* ── 水墨入场 ── */
+@keyframes inkReveal {
+  0% { opacity: 0; filter: blur(8px); }
+  30% { opacity: 0.5; filter: blur(4px); }
+  100% { opacity: 1; filter: blur(0); }
+}
+
+/* ── 卷轴展开 ── */
+@keyframes scrollUnfold {
+  0% { transform: scaleY(0); transform-origin: top; opacity: 0; }
+  60% { transform: scaleY(1.02); }
+  100% { transform: scaleY(1); opacity: 1; }
+}
+
+/* ── 落墨浮现 ── */
+@keyframes inkDrop {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.96);
+    filter: blur(2px);
+  }
+  50% { filter: blur(0); }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── 水墨涟漪 ── */
+@keyframes inkRipple {
+  0% { transform: scale(0.8); opacity: 0.6; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* ── 朱红脉冲 ── */
+@keyframes pulseVermilion {
+  0% { box-shadow: 0 0 0 0 rgba(200, 75, 49, 0.4); }
+  70% { box-shadow: 0 0 0 16px rgba(200, 75, 49, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(200, 75, 49, 0); }
+}
+
+/* ── 呼吸动画 ── */
+@keyframes breathe {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+
+/* ── 声波条 ── */
+@keyframes soundBar {
+  from { transform: scaleY(0.5); }
+  to { transform: scaleY(1); }
+}
+
+/* ── 飘落 ── */
+@keyframes particleFall {
+  0% {
+    transform: translateY(-10vh) translateX(0) rotate(0deg);
+    opacity: 0;
+  }
+  10% { opacity: 0.4; }
+  90% { opacity: 0.4; }
+  100% {
+    transform: translateY(110vh) translateX(20px) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* ── 雾气流动 ── */
+@keyframes mistFlow {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-10%); }
+}
+
+/* ── 背景缓慢放大 ── */
+@keyframes bgZoom {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.05); }
+}
+
+/* ── 向下弹跳提示 ── */
+@keyframes bounceDown {
+  0%, 100% { transform: translateX(-50%) translateY(0); }
+  50% { transform: translateX(-50%) translateY(8px); }
+}
+
+/* ── 墨迹扩散点击 ── */
+@keyframes rippleExpand {
+  to {
+    transform: translate(-50%, -50%) scale(50);
+    opacity: 0;
+  }
+}
+
+/* ── 毛笔书写光标 ── */
+@keyframes brushWrite {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ── 元素浮现 ── */
+@keyframes revealUp {
+  0% { opacity: 0; transform: translateY(24px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ── 淡墨骨架屏 ── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* ============================================
+   Animation Utility Classes
+   ============================================ */
+
+.animate-ink-reveal {
+  animation: inkReveal 800ms var(--ease-ink) both;
+}
+
+.animate-scroll-unfold {
+  animation: scrollUnfold 600ms var(--ease-ink) both;
+}
+
+.animate-ink-drop {
+  animation: inkDrop 400ms var(--ease-out-quart) both;
+}
+
+.animate-ink-ripple {
+  animation: inkRipple 1.5s var(--ease-in-out-sine) infinite;
+}
+
+.animate-pulse-vermilion {
+  animation: pulseVermilion 0.6s ease;
+}
+
+.animate-breathe {
+  animation: breathe 2s ease-in-out infinite;
+}
+
+.animate-sound-bar {
+  animation: soundBar 0.5s ease-in-out infinite alternate;
+}
+
+.animate-particle-fall {
+  animation: particleFall linear infinite;
+}
+
+.animate-mist-flow {
+  animation: mistFlow 20s linear infinite;
+}
+
+.animate-bg-zoom {
+  animation: bgZoom 10s ease-out forwards;
+}
+
+.animate-bounce-down {
+  animation: bounceDown 2s ease-in-out infinite;
+}
+
+.animate-brush-write {
+  animation: brushWrite 1s step-end infinite;
+}
+
+.animate-reveal-up {
+  animation: revealUp 500ms var(--ease-out-quart) both;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, var(--gray-100) 25%, var(--gray-200) 50%, var(--gray-100) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+/* ── Staggered ink drop delays ── */
+.stagger-1 { animation-delay: 0ms; }
+.stagger-2 { animation-delay: 60ms; }
+.stagger-3 { animation-delay: 120ms; }
+.stagger-4 { animation-delay: 180ms; }
+.stagger-5 { animation-delay: 240ms; }
+.stagger-6 { animation-delay: 300ms; }
+
+/* ── Scroll reveal ── */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 500ms var(--ease-out-quart), transform 500ms var(--ease-out-quart);
+}
+
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}

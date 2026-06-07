@@ -16,7 +16,7 @@ export interface TourRouteDetail extends TourRoute {
 
 export const listRoutes = (routeType?: string) => {
   const params = routeType ? { route_type: routeType } : {};
-  return request.get<TourRoute[]>('/routes', params);
+  return request.get<TourRoute[]>('/routes', { params });
 };
 
 export const getRouteById = (id: string) => {
@@ -40,14 +40,21 @@ export interface RecommendRequest {
 
 /**
  * Get AI-powered personalized route recommendations.
+ * Maps to backend GET /api/recommend?session_id=xxx&limit=N
  */
 export const getRecommendations = (params?: RecommendRequest) => {
-  return request.post<RecommendationResult[]>('/recommend/routes', params || {});
+  const sessionId = params?.session_id || 'web-' + Date.now().toString(36);
+  return request.get('/recommend', { params: { session_id: sessionId, limit: 5 } });
 };
 
 /**
  * Submit recommendation feedback for model improvement.
+ * Maps to backend POST /api/recommend/feedback
  */
-export const submitRecommendFeedback = (routeId: string, rating: number) => {
-  return request.post('/recommend/feedback', { route_id: routeId, rating });
+export const submitRecommendFeedback = (spotName: string, liked: boolean) => {
+  return request.post('/recommend/feedback', {
+    session_id: 'web-' + Date.now().toString(36),
+    spot_name: spotName,
+    feedback: liked ? 'like' : 'dislike',
+  });
 };

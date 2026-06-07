@@ -159,6 +159,12 @@ const InkEntryOverlay: React.FC = () => {
     return () => cancelAnimationFrame(animRef.current);
   }, [visibleDrops]);
 
+  /* ── 跳过机制 ── */
+  const skipToExit = () => {
+    setPhase('exit');
+    setTimeout(() => setPhase('done'), 1000);
+  };
+
   useEffect(() => {
     if (sessionStorage.getItem('inkEntryShown')) {
       setPhase('done');
@@ -183,9 +189,23 @@ const InkEntryOverlay: React.FC = () => {
       }, drop.delay)
     );
 
+    /* ESC / 空格跳过 */
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === ' ') {
+        e.preventDefault();
+        skipToExit();
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+
+    /* 10 秒自动跳过 */
+    const autoSkip = setTimeout(() => skipToExit(), 10000);
+
     return () => {
       phaseTimers.forEach(clearTimeout);
       dropTimers.forEach(clearTimeout);
+      clearTimeout(autoSkip);
+      window.removeEventListener('keydown', handleKey);
       cancelAnimationFrame(animRef.current);
     };
   }, []);
@@ -215,13 +235,13 @@ const InkEntryOverlay: React.FC = () => {
     return order.indexOf(phase) >= order.indexOf(p);
   };
 
-  const visible = phase !== 'exit' && phase !== 'done';
+  const visible = phase !== 'exit';
 
   return (
     <div style={{
       position: 'fixed', inset: 0,
       zIndex: 9999, overflow: 'hidden', pointerEvents: 'none',
-      clipPath: phase === 'exit' || phase === 'done'
+      clipPath: phase === 'exit'
         ? 'inset(0 0 100% 0)'
         : 'inset(0 0 0 0)',
       transition: 'clip-path 800ms cubic-bezier(0.4, 0, 0.2, 1)',
@@ -328,6 +348,40 @@ const InkEntryOverlay: React.FC = () => {
           textShadow: '0 0 8px rgba(200,75,49,0.3)',
         }}>灵</div>
       </div>
+
+      {/* ═══ 跳过按钮 ═══ */}
+      {phase !== 'exit' && (
+        <button
+          onClick={skipToExit}
+          style={{
+            position: 'absolute',
+            bottom: 24,
+            right: 24,
+            zIndex: 20,
+            padding: '6px 14px',
+            background: 'rgba(26,22,20,0.3)',
+            color: 'rgba(255,255,255,0.7)',
+            fontSize: 12,
+            border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: 6,
+            cursor: 'pointer',
+            backdropFilter: 'blur(4px)',
+            pointerEvents: 'auto',
+            letterSpacing: 2,
+            transition: 'all 200ms ease',
+          }}
+          onMouseEnter={e => {
+            (e.target as HTMLElement).style.background = 'rgba(26,22,20,0.5)';
+            (e.target as HTMLElement).style.color = '#fff';
+          }}
+          onMouseLeave={e => {
+            (e.target as HTMLElement).style.background = 'rgba(26,22,20,0.3)';
+            (e.target as HTMLElement).style.color = 'rgba(255,255,255,0.7)';
+          }}
+        >
+          跳过
+        </button>
+      )}
 
       <style>{`
         @keyframes inkDropAppear {

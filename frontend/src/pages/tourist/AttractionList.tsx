@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { EnvironmentOutlined, SearchOutlined, TagOutlined } from '@ant-design/icons';
+import { SearchOutlined, TagOutlined } from '@ant-design/icons';
 import { listSpots, type Spot } from '../../api/spots';
+import { RevealOnScroll } from '../../components/ui';
 
 const CATEGORIES = [
-  { key: '', label: '全部景点' },
+  { key: '', label: '全部' },
   { key: '核心景点', label: '核心景点' },
   { key: '特色景点', label: '特色景点' },
   { key: '文化设施', label: '文化设施' },
@@ -25,12 +26,19 @@ const tagColorMap: Record<string, string> = {
   '禅意酒店': '#059669',
 };
 
+const PAGE_SIZE = 9;
+
 const AttractionList: React.FC = () => {
   const navigate = useNavigate();
   const [spots, setSpots] = useState<Spot[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState('');
   const [searchText, setSearchText] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeCategory, searchText]);
 
   useEffect(() => {
     setLoading(true);
@@ -51,35 +59,52 @@ const AttractionList: React.FC = () => {
       (s.tags ?? []).some((t) => t.includes(searchText)),
   );
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paged = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
   return (
-    <div className="paper-texture" style={{ minHeight: 'calc(100vh - 120px)', paddingBottom: 40 }}>
+    <div style={{ minHeight: 'calc(100vh - 120px)', paddingBottom: 40 }}>
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '20px 24px' }}>
-        {/* Header */}
-        <div style={{ marginBottom: 24 }}>
+        {/* Header — 书法体标题 + 朱红短线 */}
+        <RevealOnScroll>
+        <div style={{ marginBottom: 32, textAlign: 'center' }}>
           <h1 style={{
-            fontSize: 26, fontWeight: 700, color: 'var(--text-primary)',
-            margin: 0, display: 'flex', alignItems: 'center', gap: 10,
+            fontSize: 'var(--font-size-display)',
+            fontWeight: 700,
+            color: 'var(--text-primary)',
+            margin: 0,
+            fontFamily: 'var(--font-calligraphy)',
+            letterSpacing: '0.05em',
           }}>
-            <EnvironmentOutlined style={{ fontSize: 28, color: 'var(--color-primary)' }} />
-            灵山胜境 · 景点导览
+            灵山胜境
           </h1>
-          <p style={{ color: 'var(--text-tertiary)', margin: '6px 0 0', fontSize: 15 }}>
-            探索 {spots.length} 个景点，感受千年佛教文化与现代艺术的交融
+          <div style={{
+            width: 40,
+            height: 3,
+            background: 'var(--color-accent)',
+            borderRadius: 2,
+            margin: '12px auto',
+          }} />
+          <p style={{ color: 'var(--text-tertiary)', margin: 0, fontSize: 15 }}>
+            探索景点，感受千年佛教文化与现代艺术的交融
           </p>
         </div>
+        </RevealOnScroll>
 
-        {/* Search */}
+        {/* Search — 水墨输入框 */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          background: 'rgba(255,255,255,0.7)', borderRadius: 12,
-          padding: '10px 16px', marginBottom: 16,
-          border: '1px solid var(--border-light)',
+          background: 'var(--surface-card)', borderRadius: 'var(--radius-md)',
+          padding: '10px 16px', marginBottom: 20,
+          border: '1px solid var(--gray-200)',
+          boxShadow: 'var(--shadow-sm)',
         }}>
           <SearchOutlined style={{ color: 'var(--text-tertiary)', fontSize: 16 }} />
           <input
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            placeholder="搜索景点名称、标签..."
+            placeholder="寻一处胜地..."
             style={{
               flex: 1, border: 'none', outline: 'none', background: 'transparent',
               fontSize: 15, color: 'var(--text-primary)',
@@ -87,23 +112,24 @@ const AttractionList: React.FC = () => {
           />
         </div>
 
-        {/* Category Tabs */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        {/* Category Tabs — 印章式 */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
           {CATEGORIES.map((cat) => (
             <button
               key={cat.key}
               onClick={() => setActiveCategory(cat.key)}
               style={{
                 padding: '8px 20px',
-                borderRadius: 20,
-                border: activeCategory === cat.key ? 'none' : '1px solid var(--border-light)',
+                borderRadius: 'var(--radius-seal)',
+                border: activeCategory === cat.key ? 'none' : '1px solid var(--gray-300)',
                 background: activeCategory === cat.key
-                  ? 'linear-gradient(135deg, #1A5FB4, #3584E4)'
-                  : 'rgba(255,255,255,0.6)',
-                color: activeCategory === cat.key ? '#fff' : 'var(--text-secondary)',
+                  ? 'linear-gradient(135deg, #C84B31, #E85D3A)'
+                  : 'var(--surface-card)',
+                color: activeCategory === cat.key ? '#fff' : 'var(--gray-500)',
                 fontWeight: activeCategory === cat.key ? 600 : 400,
                 fontSize: 14, cursor: 'pointer',
                 transition: 'all 200ms ease',
+                boxShadow: activeCategory === cat.key ? '0 2px 8px rgba(200,75,49,0.25)' : 'none',
               }}
             >
               {cat.label}
@@ -111,9 +137,15 @@ const AttractionList: React.FC = () => {
           ))}
         </div>
 
-        {/* Spot Grid */}
+        {/* Spot Grid — 画卷卡片 */}
         {loading ? (
           <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-tertiary)' }}>
+            <div style={{
+              width: 48, height: 48, borderRadius: '50%',
+              background: 'var(--color-primary)',
+              animation: 'inkRipple 1.5s ease-in-out infinite',
+              margin: '0 auto 16px',
+            }} />
             加载中...
           </div>
         ) : filtered.length === 0 ? (
@@ -123,55 +155,29 @@ const AttractionList: React.FC = () => {
         ) : (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-            gap: 18,
+            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+            gap: 24,
           }}>
-            {filtered.map((spot) => (
+            {paged.map((spot, i) => (
+              <RevealOnScroll key={spot.id} delay={i * 80}>
               <div
-                key={spot.id}
                 onClick={() => navigate(`/attractions/${spot.id}`)}
-                className="section-card"
-                style={{
-                  cursor: 'pointer',
-                  transition: 'transform 200ms ease, box-shadow 200ms ease',
-                  overflow: 'hidden',
-                  padding: 0,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-3px)';
-                  e.currentTarget.style.boxShadow = '0 8px 24px rgba(26,22,20,0.12)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '';
-                }}
+                className="scroll-card"
+                style={{ cursor: 'pointer' }}
               >
-                {/* Category stripe */}
-                <div style={{
-                  height: 4,
-                  background: spot.category === '核心景点'
-                    ? 'linear-gradient(90deg, #C8882E, #E8A838)'
-                    : spot.category === '特色景点'
-                    ? 'linear-gradient(90deg, #2D8B57, #4ADE80)'
-                    : 'linear-gradient(90deg, #1A5FB4, #3584E4)',
-                }} />
                 <div style={{ padding: '18px 22px' }}>
                   <div style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     marginBottom: 8,
                   }}>
                     <h3 style={{
-                      margin: 0, fontSize: 18, fontWeight: 600, color: 'var(--text-primary)',
+                      margin: 0, fontSize: 18, fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      fontFamily: 'var(--font-serif)',
                     }}>
                       {spot.name}
                     </h3>
-                    <span style={{
-                      fontSize: 12, padding: '2px 10px', borderRadius: 10,
-                      background: spot.category === '核心景点'
-                        ? 'rgba(200,136,46,0.12)' : 'rgba(45,139,87,0.12)',
-                      color: spot.category === '核心景点' ? '#B45309' : '#166534',
-                      fontWeight: 500,
-                    }}>
+                    <span className="badge-seal">
                       {spot.category}
                     </span>
                   </div>
@@ -184,15 +190,10 @@ const AttractionList: React.FC = () => {
                     {spot.overview}
                   </p>
                   {spot.tags && spot.tags.length > 0 && (
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                       <TagOutlined style={{ color: 'var(--text-tertiary)', fontSize: 13 }} />
                       {spot.tags.slice(0, 4).map((tag) => (
-                        <span key={tag} style={{
-                          fontSize: 12, padding: '2px 8px', borderRadius: 6,
-                          background: `${tagColorMap[tag] ?? '#6B7280'}15`,
-                          color: tagColorMap[tag] ?? '#6B7280',
-                          fontWeight: 500,
-                        }}>
+                        <span key={tag} className="btn-tag" style={{ cursor: 'default', pointerEvents: 'none' }}>
                           {tag}
                         </span>
                       ))}
@@ -200,7 +201,52 @@ const AttractionList: React.FC = () => {
                   )}
                 </div>
               </div>
+              </RevealOnScroll>
             ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{
+            display: 'flex', justifyContent: 'center', alignItems: 'center',
+            gap: 8, marginTop: 28,
+          }}>
+            <button
+              disabled={safePage <= 1}
+              onClick={() => setCurrentPage(safePage - 1)}
+              className="btn-outline"
+              style={{ padding: '6px 14px', fontSize: 14 }}
+            >
+              上一页
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+              <button
+                key={p}
+                onClick={() => setCurrentPage(p)}
+                style={{
+                  width: 36, height: 36, borderRadius: 'var(--radius-seal)',
+                  border: p === safePage ? 'none' : '1px solid var(--gray-200)',
+                  background: p === safePage
+                    ? 'linear-gradient(135deg, #6A9C89, #8CBFAD)'
+                    : 'var(--surface-card)',
+                  color: p === safePage ? '#fff' : 'var(--text-secondary)',
+                  fontWeight: p === safePage ? 600 : 400,
+                  cursor: 'pointer', fontSize: 14,
+                  transition: 'all 200ms ease',
+                }}
+              >
+                {p}
+              </button>
+            ))}
+            <button
+              disabled={safePage >= totalPages}
+              onClick={() => setCurrentPage(safePage + 1)}
+              className="btn-outline"
+              style={{ padding: '6px 14px', fontSize: 14 }}
+            >
+              下一页
+            </button>
           </div>
         )}
       </div>

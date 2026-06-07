@@ -4,6 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.core.database import init_db
+# Import all models so they register with Base.metadata before init_db()
+import app.models  # noqa: F401
 # from app.core.rag import init_collection  # replaced by vector_store
 
 settings = get_settings()
@@ -12,8 +14,11 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
-    # 1. Database tables
-    await init_db()
+    # 1. Database tables (skip if PG not available in dev)
+    try:
+        await init_db()
+    except Exception:
+        pass  # PostgreSQL may not be ready during dev
 
     # 2. Milvus collection
     try:
