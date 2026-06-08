@@ -292,9 +292,7 @@ const ReportPage: React.FC = () => {
 
   return (
     <div data-testid="report-page" className="animate-scroll-unfold" style={{
-      paddingTop: isMobile ? '16px' : '28px',
-      paddingRight: isMobile ? '16px' : '28px',
-      paddingBottom: isMobile ? '16px' : '28px',
+      padding: isMobile ? '16px' : '28px',
     }}>
       <PageTransition>
         <div style={{
