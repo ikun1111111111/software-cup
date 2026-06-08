@@ -87,6 +87,8 @@ export interface Live2DStageProps {
   modelPath: string;
   /** Optional costume texture PNG path. When changed, the model reloads with the new texture. */
   texturePath?: string;
+  /** CSS filter applied to the canvas for costume visual variation. */
+  cssFilter?: string;
   width?: number;
   height?: number;
   scale?: number;
@@ -102,6 +104,7 @@ const LAYOUT_TIMEOUT_MS = 3000;
 const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
   modelPath,
   texturePath,
+  cssFilter,
   width = 300,
   height = 400,
   scale = 0.15,
@@ -423,6 +426,8 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
           minWidth: typeof width === 'number' ? width : 200,
           minHeight: typeof height === 'number' ? height : 300,
           cursor: 'pointer',
+          filter: cssFilter || 'none',
+          transition: 'filter 0.6s ease',
         }}
       />
       {isLoading && (

@@ -9,6 +9,8 @@ export interface DigitalHumanProps {
   modelPath?: string;
   /** Costume texture path from useCostume hook. */
   texturePath?: string;
+  /** CSS filter for costume visual variation. */
+  cssFilter?: string;
   width?: number;
   height?: number;
   emotion?: Emotion;
@@ -28,6 +30,7 @@ const DEFAULT_MODEL = '/models/haru/haru_greeter_t03.model3.json';
 const DigitalHuman: React.FC<DigitalHumanProps> = ({
   modelPath = DEFAULT_MODEL,
   texturePath,
+  cssFilter,
   width = 280,
   height = 380,
   emotion = 'neutral',
@@ -138,6 +141,7 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
       <Live2DStage
         modelPath={modelPath}
         texturePath={texturePath}
+        cssFilter={cssFilter}
         width={width}
         height={height}
         scale={0.18}

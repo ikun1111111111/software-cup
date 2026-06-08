@@ -16,6 +16,8 @@ export interface CostumeDef {
   texturePath: string;
   /** Live2D expression to pair with this costume */
   expression: string;
+  /** CSS filter applied to the Live2D canvas for visual costume variation */
+  cssFilter: string;
   /** Short description shown in UI */
   description: string;
   /** Festival month (1-12) for auto-detection. null for daily costumes. */
@@ -32,6 +34,7 @@ export const COSTUMES: Record<string, CostumeDef> = {
     category: 'daily',
     texturePath: '/models/haru/textures/daily_classic.png',
     expression: 'f00',
+    cssFilter: 'none',
     description: '米白浅灰汉服，简约禅意',
     festivalMonth: null,
     festivalDayRange: null,
@@ -42,6 +45,7 @@ export const COSTUMES: Record<string, CostumeDef> = {
     category: 'daily',
     texturePath: '/models/haru/textures/daily_modern.png',
     expression: 'f01',
+    cssFilter: 'brightness(1.08) saturate(1.15) hue-rotate(-10deg)',
     description: '改良旗袍元素，现代感',
     festivalMonth: null,
     festivalDayRange: null,
@@ -52,6 +56,7 @@ export const COSTUMES: Record<string, CostumeDef> = {
     category: 'daily',
     texturePath: '/models/haru/textures/daily_artistic.png',
     expression: 'f02',
+    cssFilter: 'saturate(0.6) brightness(1.05) contrast(1.1)',
     description: '水墨风印花，飘逸感',
     festivalMonth: null,
     festivalDayRange: null,
@@ -64,6 +69,7 @@ export const COSTUMES: Record<string, CostumeDef> = {
     category: 'festival',
     texturePath: '/models/haru/textures/festival_spring.png',
     expression: 'f03',
+    cssFilter: 'hue-rotate(-30deg) saturate(1.5) brightness(1.05)',
     description: '红色旗袍/汉服，金线刺绣',
     festivalMonth: 1,
     festivalDayRange: [20, 10], // Jan 20 – Feb 10 (cross-month)
@@ -74,6 +80,7 @@ export const COSTUMES: Record<string, CostumeDef> = {
     category: 'festival',
     texturePath: '/models/haru/textures/festival_lantern.png',
     expression: 'f04',
+    cssFilter: 'sepia(0.3) saturate(1.4) brightness(1.1) hue-rotate(-15deg)',
     description: '彩灯元素，暖色调',
     festivalMonth: 2,
     festivalDayRange: [14, 16],
@@ -84,6 +91,7 @@ export const COSTUMES: Record<string, CostumeDef> = {
     category: 'festival',
     texturePath: '/models/haru/textures/festival_qingming.png',
     expression: 'f05',
+    cssFilter: 'hue-rotate(60deg) saturate(0.9) brightness(1.08)',
     description: '青绿色，春意盎然',
     festivalMonth: 4,
     festivalDayRange: [3, 6],
@@ -94,6 +102,7 @@ export const COSTUMES: Record<string, CostumeDef> = {
     category: 'festival',
     texturePath: '/models/haru/textures/festival_dragon.png',
     expression: 'f06',
+    cssFilter: 'hue-rotate(180deg) saturate(0.8) brightness(1.1) contrast(1.05)',
     description: '蓝白配色，龙纹点缀',
     festivalMonth: 6,
     festivalDayRange: [1, 10],
@@ -104,6 +113,7 @@ export const COSTUMES: Record<string, CostumeDef> = {
     category: 'festival',
     texturePath: '/models/haru/textures/festival_midautumn.png',
     expression: 'f07',
+    cssFilter: 'sepia(0.15) hue-rotate(20deg) saturate(1.2) brightness(1.12)',
     description: '桂花金+月白，桂花元素',
     festivalMonth: 9,
     festivalDayRange: [10, 20],
@@ -114,6 +124,7 @@ export const COSTUMES: Record<string, CostumeDef> = {
     category: 'festival',
     texturePath: '/models/haru/textures/festival_national.png',
     expression: 'f03',
+    cssFilter: 'hue-rotate(-20deg) saturate(1.6) brightness(1.08) contrast(1.05)',
     description: '中国红+金，庄重大气',
     festivalMonth: 10,
     festivalDayRange: [1, 7],
