@@ -79,20 +79,20 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
         onClick={() => handleVoiceSelect(voice.id)}
         style={{
           padding: '14px 16px',
-          border: isSelected ? '1.5px solid #1A5FB4' : '1px solid #E8E5DF',
-          borderRadius: '10px',
+          border: isSelected ? '1.5px solid var(--accent)' : '1px solid var(--border-light)',
+          borderRadius: 'var(--radius-md)',
           marginBottom: '8px',
           cursor: 'pointer',
-          backgroundColor: isSelected ? '#E8F0FE' : '#FFFFFF',
+          backgroundColor: isSelected ? 'rgba(201, 169, 110, 0.08)' : 'var(--bg-panel)',
           transition: 'all 200ms',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <SoundOutlined style={{ color: isSelected ? '#1A5FB4' : '#A8A198' }} />
+            <SoundOutlined style={{ color: isSelected ? 'var(--accent)' : 'var(--text-tertiary)' }} />
             <div>
-              <span style={{ fontWeight: 600, color: '#1A1614', fontSize: '14px' }}>{voice.name}</span>
-              <span style={{ marginLeft: '10px', fontSize: '12px', color: '#A8A198' }}>
+              <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '14px' }}>{voice.name}</span>
+              <span style={{ marginLeft: '10px', fontSize: '12px', color: 'var(--text-tertiary)' }}>
                 {voice.language} | {voice.gender}
               </span>
             </div>
@@ -106,8 +106,8 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
             disabled={isPlaying}
             style={{
               padding: '5px 14px',
-              backgroundColor: isPlaying ? '#D4D0C8' : '#E6F7ED',
-              color: isPlaying ? '#fff' : '#2D8B57',
+              backgroundColor: isPlaying ? 'var(--border-ink)' : 'rgba(74, 124, 111, 0.08)',
+              color: isPlaying ? '#fff' : 'var(--mountain-mid)',
               border: 'none',
               borderRadius: '20px',
               cursor: isPlaying ? 'not-allowed' : 'pointer',
@@ -128,7 +128,7 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
 
   return (
     <div data-testid="voice-selector" style={{ padding: '20px' }}>
-      <h3 style={{ margin: '0 0 18px 0', fontSize: '15px', fontWeight: 600, color: '#1A1614' }}>声音选择</h3>
+      <h3 style={{ margin: '0 0 18px 0', fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>声音选择</h3>
       <div data-testid="voice-list">
         {voices.map(renderVoiceItem)}
       </div>

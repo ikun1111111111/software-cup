@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { SaveOutlined, CheckOutlined } from '@ant-design/icons';
+import { SaveOutlined, CheckOutlined, LoadingOutlined } from '@ant-design/icons';
 import { message } from 'antd';
 import AvatarAppearance, { MODELS, SKINS, HAIRS, OUTFITS } from '../../components/admin/AvatarAppearance';
 import VoiceSelector from '../../components/admin/VoiceSelector';
@@ -163,7 +163,9 @@ const AvatarPage: React.FC = () => {
 
   return (
     <div data-testid="avatar-page" className="animate-scroll-unfold" style={{
-      padding: isMobile ? '16px' : '28px',
+      padding: isMobile ? '16px' : '32px',
+      maxWidth: 1440,
+      margin: '0 auto',
     }}>
       <PageTransition>
         <div style={{
@@ -239,7 +241,42 @@ const AvatarPage: React.FC = () => {
         </div>
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-tertiary)' }}>加载中...</div>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '64px 24px',
+            gap: '16px',
+            textAlign: 'center',
+          }}>
+            <div style={{
+              width: 64,
+              height: 64,
+              borderRadius: '50%',
+              backgroundColor: 'rgba(201, 169, 110, 0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <LoadingOutlined style={{ fontSize: 28, color: 'var(--gold-leaf)' }} className="animate-spin" />
+            </div>
+            <div style={{
+              fontSize: '15px',
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+            }}>
+              正在加载数字人配置...
+            </div>
+            <div style={{
+              fontSize: '13px',
+              color: 'var(--text-tertiary)',
+              maxWidth: 320,
+              lineHeight: 1.6,
+            }}>
+              请稍候，系统正在从服务端获取最新的数字人形象与声音配置
+            </div>
+          </div>
         ) : (
           <div style={{
             display: 'flex',
@@ -461,6 +498,12 @@ const AvatarPage: React.FC = () => {
                       welcome={config.welcomeMessage}
                       onChange={handleWelcomeChange}
                       onSave={handleWelcomeChange}
+                      onPreview={async (text) => {
+                        const url = await previewVoice(config.voiceId, text);
+                        const audio = new Audio(url);
+                        await audio.play();
+                        audio.onended = () => URL.revokeObjectURL(url);
+                      }}
                     />
                   </div>
                 )}

@@ -45,10 +45,10 @@ const WelcomeEditor: React.FC<WelcomeEditorProps> = ({
 
   return (
     <div data-testid="welcome-editor" style={{ padding: '20px' }}>
-      <h3 style={{ margin: '0 0 18px 0', fontSize: '15px', fontWeight: 600, color: '#1A1614' }}>欢迎语编辑</h3>
+      <h3 style={{ margin: '0 0 18px 0', fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>欢迎语编辑</h3>
 
       <div style={{ marginBottom: '14px' }}>
-        <label style={{ display: 'block', marginBottom: '6px', fontWeight: 500, fontSize: '13px', color: '#5C554C' }}>
+        <label style={{ display: 'block', marginBottom: '6px', fontWeight: 500, fontSize: '13px', color: 'var(--text-secondary)' }}>
           欢迎语文本
         </label>
         <textarea
@@ -60,18 +60,18 @@ const WelcomeEditor: React.FC<WelcomeEditorProps> = ({
           style={{
             width: '100%',
             padding: '12px',
-            border: '1px solid #E8E5DF',
-            borderRadius: '10px',
+            border: '1px solid var(--border-light)',
+            borderRadius: 'var(--radius-md)',
             resize: 'vertical',
             fontSize: '14px',
-            color: '#1A1614',
-            backgroundColor: '#FFFFFF',
+            color: 'var(--text-primary)',
+            backgroundColor: 'var(--bg-panel)',
             outline: 'none',
             fontFamily: 'inherit',
             lineHeight: 1.6,
           }}
         />
-        <div data-testid="char-count" style={{ textAlign: 'right', fontSize: '12px', color: '#A8A198', marginTop: '4px' }}>
+        <div data-testid="char-count" style={{ textAlign: 'right', fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
           {text.length}/{MAX_LENGTH}
         </div>
       </div>
@@ -83,10 +83,10 @@ const WelcomeEditor: React.FC<WelcomeEditorProps> = ({
           disabled={!text.trim() || previewing}
           style={{
             padding: '8px 16px',
-            backgroundColor: text.trim() && !previewing ? '#E6F7ED' : '#F5F3EF',
-            color: text.trim() && !previewing ? '#2D8B57' : '#D4D0C8',
+            backgroundColor: text.trim() && !previewing ? 'rgba(74, 124, 111, 0.08)' : 'var(--paper-texture)',
+            color: text.trim() && !previewing ? 'var(--mountain-mid)' : 'var(--border-ink)',
             border: 'none',
-            borderRadius: '8px',
+            borderRadius: 'var(--radius-md)',
             cursor: text.trim() && !previewing ? 'pointer' : 'not-allowed',
             fontSize: '13px',
             fontWeight: 500,
@@ -104,10 +104,10 @@ const WelcomeEditor: React.FC<WelcomeEditorProps> = ({
           disabled={!text.trim()}
           style={{
             padding: '8px 16px',
-            backgroundColor: text.trim() ? '#1A5FB4' : '#D4D0C8',
+            backgroundColor: text.trim() ? 'var(--accent)' : 'var(--border-ink)',
             color: '#fff',
             border: 'none',
-            borderRadius: '8px',
+            borderRadius: 'var(--radius-md)',
             cursor: text.trim() ? 'pointer' : 'not-allowed',
             fontSize: '13px',
             fontWeight: 500,

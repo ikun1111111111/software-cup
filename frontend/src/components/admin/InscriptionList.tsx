@@ -52,7 +52,7 @@ const InscriptionList: React.FC<InscriptionListProps> = ({
               fontSize: 13,
               color: item.highlight ? 'var(--vermilion)' : 'var(--text-tertiary)',
               fontWeight: 600,
-              minWidth: 24,
+              minWidth: 26,
               flexShrink: 0,
             }}>
               {item.number <= 3 ? (
@@ -60,18 +60,32 @@ const InscriptionList: React.FC<InscriptionListProps> = ({
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: 22,
-                  height: 22,
+                  width: 24,
+                  height: 24,
                   borderRadius: '50%',
                   backgroundColor: item.highlight ? 'var(--vermilion)' : 'transparent',
                   color: item.highlight ? '#FFF' : 'var(--text-tertiary)',
                   fontSize: 12,
-                  border: item.highlight ? 'none' : '1px solid var(--border-subtle)',
+                  fontWeight: 700,
+                  border: item.highlight ? 'none' : '1.5px solid var(--border-subtle)',
+                  boxShadow: item.highlight ? '0 2px 6px rgba(200, 75, 49, 0.25)' : 'none',
                 }}>
                   {item.number}
                 </span>
               ) : (
-                item.number
+                <span style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 24,
+                  height: 24,
+                  borderRadius: '50%',
+                  border: '1.5px solid var(--border-subtle)',
+                  fontSize: 12,
+                  color: 'var(--text-tertiary)',
+                }}>
+                  {item.number}
+                </span>
               )}
             </span>
           )}

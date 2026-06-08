@@ -14,7 +14,7 @@ export interface HeatmapChartProps {
 }
 
 const DAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-const HOURS = Array.from({ length: 24 }, (_, i) => `${i}时`);
+const HOURS = Array.from({ length: 24 }, (_, i) => `${i}`);
 
 const HeatmapChart: React.FC<HeatmapChartProps> = ({ data: propData }) => {
   const chartData = useMemo(() => {
@@ -52,9 +52,9 @@ const HeatmapChart: React.FC<HeatmapChartProps> = ({ data: propData }) => {
       },
       grid: {
         top: '5%',
-        bottom: '10%',
-        left: '8%',
-        right: '5%',
+        bottom: '14%',
+        left: '6%',
+        right: '4%',
       },
       xAxis: {
         type: 'category',
@@ -62,7 +62,7 @@ const HeatmapChart: React.FC<HeatmapChartProps> = ({ data: propData }) => {
         splitArea: { show: false },
         axisLine: { show: false },
         axisTick: { show: false },
-        axisLabel: { color: 'var(--text-secondary)', fontSize: 11 },
+        axisLabel: { color: 'var(--text-secondary)', fontSize: 12, interval: 0, fontWeight: 500 },
       },
       yAxis: {
         type: 'category',
@@ -70,7 +70,7 @@ const HeatmapChart: React.FC<HeatmapChartProps> = ({ data: propData }) => {
         splitArea: { show: false },
         axisLine: { show: false },
         axisTick: { show: false },
-        axisLabel: { color: 'var(--text-secondary)', fontSize: 10 },
+        axisLabel: { color: 'var(--text-secondary)', fontSize: 10, interval: 1 },
       },
       visualMap: {
         min: 0,
@@ -78,11 +78,13 @@ const HeatmapChart: React.FC<HeatmapChartProps> = ({ data: propData }) => {
         calculable: true,
         orient: 'horizontal',
         left: 'center',
-        bottom: '0%',
+        bottom: '1%',
+        itemWidth: 14,
+        itemHeight: 120,
         inRange: {
           color: heatmapColors,
         },
-        textStyle: { color: 'var(--text-secondary)' },
+        textStyle: { color: 'var(--text-secondary)', fontSize: 11 },
       },
       series: [
         {

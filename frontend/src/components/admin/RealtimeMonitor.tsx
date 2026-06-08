@@ -115,7 +115,7 @@ const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
           data-testid="connection-status"
           className="badge"
           style={{
-            backgroundColor: connected ? 'rgba(74, 124, 111, 0.1)' : 'rgba(200, 75, 49, 0.1)',
+            backgroundColor: connected ? 'rgba(74, 124, 111, 0.15)' : 'rgba(200, 75, 49, 0.12)',
             color: connected ? 'var(--mountain-mid)' : 'var(--vermilion)',
             display: 'flex',
             alignItems: 'center',
