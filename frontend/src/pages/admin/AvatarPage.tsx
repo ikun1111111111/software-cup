@@ -45,6 +45,7 @@ const DEFAULT_CONFIG: LocalConfig = {
     accessories: [],
     costumeMode: 'auto' as const,
     costumeId: 'daily-classic',
+    expressionId: 'f00',
   },
   voiceId: 'voice-1',
   welcomeMessage: '你好！欢迎来到灵山景区，我是你的数字人导游，有什么可以帮你的吗？',
@@ -63,6 +64,7 @@ const mapBackendToLocal = (backend: Awaited<ReturnType<typeof getActiveAvatar>>)
           : DEFAULT_CONFIG.appearance.accessories,
         costumeMode: (backend.appearanceJson.costumeMode as 'auto' | 'manual') || 'auto',
         costumeId: backend.appearanceJson.costumeId || 'daily-classic',
+        expressionId: backend.appearanceJson.expressionId || 'f00',
       }
     : DEFAULT_CONFIG.appearance,
   voiceId: backend.voiceId || DEFAULT_CONFIG.voiceId,
@@ -133,6 +135,7 @@ const AvatarPage: React.FC = () => {
           accessories: config.appearance.accessories,
           costumeMode: config.appearance.costumeMode,
           costumeId: config.appearance.costumeId,
+          expressionId: config.appearance.expressionId || 'f00',
         },
         voiceId: config.voiceId,
         welcomeMessage: config.welcomeMessage,

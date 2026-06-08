@@ -1,13 +1,10 @@
 import React, { useCallback, useState } from 'react';
 import {
   COSTUMES,
-  ALL_COSTUME_IDS,
   DAILY_COSTUME_IDS,
   FESTIVAL_COSTUME_IDS,
   getCostume,
-  type CostumeDef,
 } from '../../config/costumeMap';
-import { useCostume } from '../../hooks/useCostume';
 
 export interface AppearanceConfig {
   model: string;
@@ -69,16 +66,15 @@ const DEFAULT_CONFIG: AppearanceConfig = {
 const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
   config: propConfig,
   onChange,
-  activeCostumeId: propCostumeId,
-  activeCostumeMode: propCostumeMode,
+  activeCostumeId,
+  activeCostumeMode,
   onCostumeSelect,
   onCostumeAutoToggle,
 }) => {
   const [config, setConfig] = useState<AppearanceConfig>(propConfig || DEFAULT_CONFIG);
-  const fallbackCostume = useCostume();
 
-  const liveCostumeId = propCostumeId ?? fallbackCostume.costumeId;
-  const liveCostumeMode = propCostumeMode ?? fallbackCostume.mode;
+  const liveCostumeId = activeCostumeId || config.costumeId;
+  const liveCostumeMode = activeCostumeMode || config.costumeMode;
   const expressionId = config.expressionId || 'f00';
 
   const updateConfig = useCallback((updates: Partial<AppearanceConfig>) => {
@@ -88,28 +84,19 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
   }, [config, onChange]);
 
   const handleCostumeSelect = useCallback((costumeId: string) => {
-    if (onCostumeSelect) {
-      onCostumeSelect(costumeId);
-    } else {
-      fallbackCostume.selectCostume(costumeId);
-    }
-    // Also set expression from costume default
+    onCostumeSelect?.(costumeId);
     const costume = getCostume(costumeId);
     updateConfig({ costumeId, costumeMode: 'manual', expressionId: costume.expression });
-  }, [onCostumeSelect, fallbackCostume, updateConfig]);
+  }, [onCostumeSelect, updateConfig]);
 
   const handleAutoToggle = useCallback(() => {
-    if (onCostumeAutoToggle) {
-      onCostumeAutoToggle();
+    if (liveCostumeMode === 'auto') {
+      onCostumeSelect?.(liveCostumeId);
     } else {
-      if (liveCostumeMode === 'auto') {
-        fallbackCostume.selectCostume(liveCostumeId);
-      } else {
-        fallbackCostume.resetToAuto();
-      }
+      onCostumeAutoToggle?.();
     }
     updateConfig({ costumeMode: liveCostumeMode === 'auto' ? 'manual' : 'auto', costumeId: liveCostumeId });
-  }, [onCostumeAutoToggle, liveCostumeMode, liveCostumeId, fallbackCostume, updateConfig]);
+  }, [onCostumeSelect, onCostumeAutoToggle, liveCostumeMode, liveCostumeId, updateConfig]);
 
   const handleExpressionSelect = useCallback((id: string) => {
     updateConfig({ expressionId: id });
