@@ -1,9 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ClockCircleOutlined, CompassOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
+import { message } from 'antd';
 import { listRoutes, getRouteById, type TourRoute, type TourRouteDetail } from '../../api/routes';
 import { getSpotById, type SpotDetail } from '../../api/spots';
+import { getDNAProfile, getDNARecommendations, type DNAProfile, type DNARecommendResponse } from '../../api/routes';
 import RecommendEngine from '../../components/Recommend/RecommendEngine';
 import RoutePushButton from '../../components/Recommend/RoutePushButton';
+import DNARadarChart from '../../components/tourist/DNARadarChart';
+import DNATag from '../../components/tourist/DNATag';
 import type { RecommendationResult } from '../../api/routes';
 
 const INTEREST_OPTIONS = [
@@ -24,7 +28,14 @@ const RecommendPage: React.FC = () => {
   const [roomId, setRoomId] = useState<string | null>(
     () => sessionStorage.getItem('active_room_id'),
   );
+
+  // DNA state
+  const [dnaProfile, setDnaProfile] = useState<DNAProfile | null>(null);
+  const [dnaRecs, setDnaRecs] = useState<DNARecommendResponse | null>(null);
+  const [dnaLoading, setDnaLoading] = useState(false);
+
   const isMobile = false;
+  const sessionId = sessionStorage.getItem('session_id') || 'anonymous';
 
   // Listen for room changes
   useEffect(() => {
@@ -38,6 +49,27 @@ const RecommendPage: React.FC = () => {
       window.removeEventListener('storage', handler);
     };
   }, []);
+
+  // Load DNA profile and recommendations
+  useEffect(() => {
+    const loadDNA = async () => {
+      setDnaLoading(true);
+      try {
+        const [profile, recs] = await Promise.all([
+          getDNAProfile(sessionId),
+          getDNARecommendations(sessionId, 5),
+        ]);
+        setDnaProfile(profile);
+        setDnaRecs(recs);
+      } catch (err: any) {
+        // DNA not available for new users without behavior data
+        console.log('DNA data not available:', err?.message);
+      } finally {
+        setDnaLoading(false);
+      }
+    };
+    loadDNA();
+  }, [sessionId]);
 
   // Fetch routes from backend
   useEffect(() => {
@@ -112,6 +144,10 @@ const RecommendPage: React.FC = () => {
     },
     [expandedRoute],
   );
+
+  const handleRecommendations = useCallback((recs: RecommendationResult[]) => {
+    setAiRecs(recs);
+  }, []);
 
   const handleInterestChange = useCallback((value: string) => {
     setSelectedType(value);
@@ -298,6 +334,69 @@ const RecommendPage: React.FC = () => {
         }} />
       </div>
 
+      {/* DNA Profile Section */}
+      {dnaProfile && (
+        <div className="section-card" style={{ marginBottom: '24px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
+              我的旅行DNA
+            </h3>
+            <DNATag dnaType={dnaProfile.dna_type} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '20px', alignItems: 'center' }}>
+            <DNARadarChart scores={dnaProfile.dna_scores} size={isMobile ? 240 : 280} />
+            <div style={{ flex: 1 }}>
+              <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                DNA个性化推荐
+              </h4>
+              {dnaRecs?.recommendations && dnaRecs.recommendations.length > 0 ? (
+                <div>
+                  {dnaRecs.recommendations.map((rec) => (
+                    <div
+                      key={rec.rank}
+                      style={{
+                        padding: '10px 12px',
+                        marginBottom: '8px',
+                        border: '1px solid var(--border-light)',
+                        borderRadius: 'var(--radius-md)',
+                        backgroundColor: 'var(--surface-elevated)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text-primary)' }}>
+                          {rec.spot_name}
+                        </span>
+                        {rec.dna_similarity && (
+                          <span style={{ fontSize: '12px', color: 'var(--color-primary)', fontWeight: 500 }}>
+                            相似度 {Math.round(rec.dna_similarity * 100)}%
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                        {rec.reason}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                        建议时长: {rec.suggested_duration}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>
+                  暂无DNA推荐数据
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dnaLoading && (
+        <div className="section-card" style={{ marginBottom: '24px', padding: '20px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+          正在分析您的旅行DNA...
+        </div>
+      )}
+
       {/* Interest tags */}
       <div
         className="scroll-tags"
@@ -351,21 +450,33 @@ const RecommendPage: React.FC = () => {
         <RecommendEngine
           selectedInterest={selectedType}
           onSelectRoute={handleSelectRec}
+          onRecommendations={handleRecommendations}
         />
       </div>
 
-      {/* Push to Room button */}
-      {roomId && aiRecs.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
-          <RoutePushButton
-            roomId={roomId}
-            recommendations={aiRecs}
-            onPushComplete={(count) => {
-              console.log(`Pushed ${count} spots to room`);
-            }}
-          />
-        </div>
-      )}
+      {/* Push to Room button — supports both AI recs and DNA recs */}
+      {(() => {
+        const pushable: RecommendationResult[] = aiRecs.length > 0
+          ? aiRecs
+          : (dnaRecs?.recommendations || []).map((d) => ({
+              route_id: d.spot_name,
+              route_name: d.spot_name,
+              score: d.dna_similarity || 0.8,
+              reason: d.reason,
+              matched_interests: d.tags,
+            }));
+        return roomId && pushable.length > 0 ? (
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+            <RoutePushButton
+              roomId={roomId}
+              recommendations={pushable}
+              onPushComplete={(count) => {
+                message.success(`成功推送 ${count} 个推荐到房间`);
+              }}
+            />
+          </div>
+        ) : null;
+      })()}
 
       {/* Static Route List */}
       <div>

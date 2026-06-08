@@ -43,7 +43,7 @@ const QRScanCard: React.FC<QRScanProps> = ({ onScan, onError }) => {
   useEffect(() => {
     setLoading(true);
     listSpots()
-      .then((res) => setSpots(res.data.data ?? []))
+      .then((res) => setSpots(res ?? []))
       .catch(() => setSpots([]))
       .finally(() => setLoading(false));
   }, []);
@@ -68,7 +68,7 @@ const QRScanCard: React.FC<QRScanProps> = ({ onScan, onError }) => {
       await scanner.start(
         { facingMode: 'environment' },
         { fps: 10, qrbox: { width: 200, height: 200 } },
-        (decodedText) => {
+        (decodedText: string) => {
           scanner.stop().catch(() => {});
           setScanning(false);
 

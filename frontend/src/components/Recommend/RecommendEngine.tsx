@@ -14,6 +14,7 @@ import {
 interface RecommendEngineProps {
   selectedInterest?: string;
   onSelectRoute?: (route: RecommendationResult) => void;
+  onRecommendations?: (recs: RecommendationResult[]) => void;
 }
 
 /**
@@ -23,6 +24,7 @@ interface RecommendEngineProps {
 const RecommendEngine: React.FC<RecommendEngineProps> = ({
   selectedInterest,
   onSelectRoute,
+  onRecommendations,
 }) => {
   const [recommendations, setRecommendations] = useState<RecommendationResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,6 +50,7 @@ const RecommendEngine: React.FC<RecommendEngineProps> = ({
           matched_interests: r.tags || r.matched_interests || [],
         }));
         setRecommendations(mapped);
+        onRecommendations?.(mapped);
       }
       // Determine user type based on interest
       if (!selectedInterest) {

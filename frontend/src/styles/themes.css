@@ -1,0 +1,100 @@
+/* ============================================
+   四时主题系统 — 沉浸式意境
+   ============================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600&family=Noto+Sans+SC:wght@400;500&family=Roboto+Mono&display=swap');
+
+/* ── 晨雾 Dawn (默认 06:00-10:00) ── */
+:root[data-theme="dawn"],
+:root {
+  --bg-gradient-start: #e8e4df;
+  --bg-gradient-end: #d4cbb8;
+  --text-primary: #3d352e;
+  --text-secondary: #5c534a;
+  --text-tertiary: #9a9085;
+  --surface: rgba(255, 255, 255, 0.72);
+  --surface-solid: #faf8f5;
+  --surface-border: rgba(255, 255, 255, 0.4);
+  --accent: #c9a96e;
+  --accent-hover: #b8945a;
+  --shadow-sm: 0 1px 3px rgba(61, 53, 46, 0.06);
+  --shadow-md: 0 4px 16px rgba(61, 53, 46, 0.08);
+  --shadow-lg: 0 12px 32px rgba(61, 53, 46, 0.1);
+}
+
+/* ── 白昼 Day (10:00-16:00) ── */
+:root[data-theme="day"] {
+  --bg-gradient-start: #e3f0f7;
+  --bg-gradient-end: #f7fbfd;
+  --text-primary: #1a1a1a;
+  --text-secondary: #4a4a4a;
+  --text-tertiary: #8a8a8a;
+  --surface: rgba(255, 255, 255, 0.85);
+  --surface-solid: #ffffff;
+  --surface-border: rgba(255, 255, 255, 0.5);
+  --accent: #4a90d9;
+  --accent-hover: #3a7bc8;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.1);
+}
+
+/* ── 日暮 Dusk (16:00-19:00) ── */
+:root[data-theme="dusk"] {
+  --bg-gradient-start: #f4c7a8;
+  --bg-gradient-end: #e8b4d0;
+  --text-primary: #3e2b36;
+  --text-secondary: #5c3d4a;
+  --text-tertiary: #8a6a78;
+  --surface: rgba(255, 250, 245, 0.78);
+  --surface-solid: #fff8f3;
+  --surface-border: rgba(255, 250, 245, 0.5);
+  --accent: #d4896e;
+  --accent-hover: #c27860;
+  --shadow-sm: 0 1px 3px rgba(62, 43, 54, 0.06);
+  --shadow-md: 0 4px 16px rgba(62, 43, 54, 0.08);
+  --shadow-lg: 0 12px 32px rgba(62, 43, 54, 0.1);
+}
+
+/* ── 月夜 Night (19:00-06:00) ── */
+:root[data-theme="night"] {
+  --bg-gradient-start: #1a2332;
+  --bg-gradient-end: #0d1117;
+  --text-primary: #e6edf3;
+  --text-secondary: #a0abb8;
+  --text-tertiary: #5c6678;
+  --surface: rgba(30, 40, 55, 0.65);
+  --surface-solid: #1a2332;
+  --surface-border: rgba(255, 255, 255, 0.08);
+  --accent: #6ba8f5;
+  --accent-hover: #5a98e8;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* ── 全局过渡 ── */
+body {
+  background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+  background-attachment: fixed;
+  transition: background 2s ease-in-out;
+}
+
+/* ── 字体覆盖 ── */
+.font-serif {
+  font-family: 'Noto Serif SC', 'Songti SC', serif;
+}
+
+.font-sans {
+  font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+.font-mono-data {
+  font-family: 'Roboto Mono', 'DM Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

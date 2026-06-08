@@ -2,18 +2,98 @@
    东方美学 · 动画关键帧集合
    ============================================ */
 
+/* ── 来自 HEAD 的额外动画 ── */
+@keyframes sealPress {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+
+.animate-seal-press {
+  animation: sealPress 300ms ease-out both;
+}
+
+@keyframes brushStroke {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes inkFadeIn {
+  from { opacity: 0; filter: blur(6px); }
+  to { opacity: 1; filter: blur(0); }
+}
+
+.animate-ink-fade {
+  animation: inkFadeIn 500ms ease-out both;
+}
+
+@keyframes inscriptionAppear {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-inscription {
+  animation: inscriptionAppear 400ms ease-out both;
+}
+
+@keyframes mistReveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-mist {
+  animation: mistReveal 1200ms ease-out 300ms both;
+}
+
+@keyframes vermilionPulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(200, 75, 49, 0.4);
+  }
+  50% {
+    opacity: 0.7;
+    box-shadow: 0 0 0 8px rgba(200, 75, 49, 0);
+  }
+}
+
+.animate-pulse-vermilion {
+  animation: vermilionPulse 2s ease-in-out infinite both;
+}
+
+.corner-fold {
+  position: relative;
+}
+
+.corner-fold::before,
+.corner-fold::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--ink-medium);
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.corner-fold::before {
+  top: 0;
+  left: 0;
+  border-right: none;
+  border-bottom: none;
+}
+
+.corner-fold::after {
+  bottom: 0;
+  right: 0;
+  border-left: none;
+  border-top: none;
+}
+
 /* ── 水墨入场 ── */
 @keyframes inkReveal {
   0% { opacity: 0; filter: blur(8px); }
   30% { opacity: 0.5; filter: blur(4px); }
   100% { opacity: 1; filter: blur(0); }
-}
-
-/* ── 卷轴展开 ── */
-@keyframes scrollUnfold {
-  0% { transform: scaleY(0); transform-origin: top; opacity: 0; }
-  60% { transform: scaleY(1.02); }
-  100% { transform: scaleY(1); opacity: 1; }
 }
 
 /* ── 落墨浮现 ── */
@@ -34,13 +114,6 @@
 @keyframes inkRipple {
   0% { transform: scale(0.8); opacity: 0.6; }
   100% { transform: scale(1.5); opacity: 0; }
-}
-
-/* ── 朱红脉冲 ── */
-@keyframes pulseVermilion {
-  0% { box-shadow: 0 0 0 0 rgba(200, 75, 49, 0.4); }
-  70% { box-shadow: 0 0 0 16px rgba(200, 75, 49, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(200, 75, 49, 0); }
 }
 
 /* ── 呼吸动画 ── */
@@ -121,20 +194,12 @@
   animation: inkReveal 800ms var(--ease-ink) both;
 }
 
-.animate-scroll-unfold {
-  animation: scrollUnfold 600ms var(--ease-ink) both;
-}
-
 .animate-ink-drop {
   animation: inkDrop 400ms var(--ease-out-quart) both;
 }
 
 .animate-ink-ripple {
   animation: inkRipple 1.5s var(--ease-in-out-sine) infinite;
-}
-
-.animate-pulse-vermilion {
-  animation: pulseVermilion 0.6s ease;
 }
 
 .animate-breathe {

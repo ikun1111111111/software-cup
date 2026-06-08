@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { SyncOutlined } from '@ant-design/icons';
+import { message } from 'antd';
+import { getRealtime } from '../../api/analytics';
 
 export interface RealtimeData {
   activeUsers: number;
@@ -21,6 +23,37 @@ const DEFAULT_DATA: RealtimeData = {
   sentimentScore: 0,
 };
 
+function computeMetrics(logs: Awaited<ReturnType<typeof getRealtime>>): RealtimeData {
+  if (logs.length === 0) {
+    return DEFAULT_DATA;
+  }
+
+  const activeUsers = new Set(logs.map((l) => l.session_id)).size;
+
+  const now = Date.now();
+  const oneMinuteAgo = now - 60 * 1000;
+  const messagesPerMinute = logs.filter((l) => {
+    if (!l.created_at) return false;
+    return new Date(l.created_at).getTime() > oneMinuteAgo;
+  }).length;
+
+  const avgResponseTime = Math.round(
+    logs.reduce((sum, l) => sum + (l.latency_ms || 0), 0) / logs.length
+  );
+
+  const scores = logs.map((l) => l.sentiment_score).filter((s): s is number => s !== null && s !== undefined);
+  const sentimentScore = scores.length > 0
+    ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100
+    : 0;
+
+  return {
+    activeUsers,
+    messagesPerMinute,
+    avgResponseTime,
+    sentimentScore,
+  };
+}
+
 const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
   data: propData,
   onConnect,
@@ -35,34 +68,32 @@ const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
     }
   }, [propData]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
+  const fetchData = useCallback(async () => {
+    try {
+      const logs = await getRealtime(50);
+      setData(computeMetrics(logs));
       setConnected(true);
       onConnect?.();
-
-      const interval = setInterval(() => {
-        setData({
-          activeUsers: Math.floor(Math.random() * 100),
-          messagesPerMinute: Math.floor(Math.random() * 50),
-          avgResponseTime: Math.floor(Math.random() * 200),
-          sentimentScore: 0.7 + Math.random() * 0.3,
-        });
-      }, 3000);
-
-      return () => clearInterval(interval);
-    }, 1000);
-
-    return () => {
-      clearTimeout(timer);
+    } catch {
+      setConnected(false);
       onDisconnect?.();
-    };
+    }
   }, [onConnect, onDisconnect]);
 
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 5000);
+    return () => {
+      clearInterval(interval);
+      onDisconnect?.();
+    };
+  }, [fetchData, onDisconnect]);
+
   const metrics = [
-    { label: '活跃用户', value: data.activeUsers, color: 'var(--color-primary)', testId: 'metric-active-users' },
-    { label: '消息/分钟', value: data.messagesPerMinute, color: 'var(--color-success)', testId: 'metric-messages' },
-    { label: '响应时间(ms)', value: data.avgResponseTime, color: 'var(--color-warning)', testId: 'metric-response-time' },
-    { label: '情感分数', value: data.sentimentScore.toFixed(2), color: '#8B5CF6', testId: 'metric-sentiment' },
+    { label: '活跃用户', value: data.activeUsers, color: 'var(--accent)', testId: 'metric-active-users' },
+    { label: '消息/分钟', value: data.messagesPerMinute, color: 'var(--mountain-mid)', testId: 'metric-messages' },
+    { label: '响应时间(ms)', value: data.avgResponseTime, color: 'var(--gold-leaf)', testId: 'metric-response-time' },
+    { label: '情感分数', value: data.sentimentScore.toFixed(2), color: 'var(--mountain-deep)', testId: 'metric-sentiment' },
   ];
 
   return (
@@ -77,26 +108,29 @@ const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
           alignItems: 'center',
           gap: '6px',
         }}>
-          <SyncOutlined style={{ color: 'var(--color-primary)' }} />
+          <SyncOutlined style={{ color: 'var(--accent)' }} />
           实时监控
         </h3>
         <span
           data-testid="connection-status"
           className="badge"
           style={{
-            backgroundColor: connected ? 'var(--color-success-bg)' : 'var(--color-error-bg)',
-            color: connected ? 'var(--color-success)' : 'var(--color-error)',
+            backgroundColor: connected ? 'rgba(74, 124, 111, 0.1)' : 'rgba(200, 75, 49, 0.1)',
+            color: connected ? 'var(--mountain-mid)' : 'var(--vermilion)',
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
           }}
         >
-          <span style={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            backgroundColor: connected ? 'var(--color-success)' : 'var(--color-error)',
-          }} />
+          <span
+            className="animate-pulse-vermilion"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              backgroundColor: connected ? 'var(--mountain-mid)' : 'var(--vermilion)',
+            }}
+          />
           {connected ? '已连接' : '未连接'}
         </span>
       </div>
@@ -109,9 +143,9 @@ const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
         {metrics.map((m) => (
           <div key={m.testId} data-testid={m.testId} style={{
             padding: '14px',
-            border: '1px solid var(--border-light)',
+            border: '1px solid var(--border-ink)',
             borderRadius: 'var(--radius-md)',
-            backgroundColor: 'var(--surface-elevated)',
+            backgroundColor: 'transparent',
           }}>
             <div style={{
               fontSize: '12px',
@@ -121,7 +155,8 @@ const RealtimeMonitor: React.FC<RealtimeMonitorProps> = ({
             }}>
               {m.label}
             </div>
-            <div className="font-mono" style={{
+            <div style={{
+              fontFamily: 'var(--font-mono)',
               fontSize: '24px',
               fontWeight: 700,
               color: m.color,

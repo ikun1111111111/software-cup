@@ -8,7 +8,7 @@ export interface SSEMessage {
 
 export interface SSEOptions {
   onMessage?: (msg: SSEMessage) => void;
-  onError?: (error: Event) => void;
+  onError?: (error: any) => void;
   onOpen?: () => void;
   onClose?: () => void;
 }
@@ -18,8 +18,10 @@ export interface SSEReturn {
   connect: (url: string, body?: any) => void;
   disconnect: () => void;
   isConnected: boolean;
-  error: Event | null;
+  error: any;
 }
+
+const SSE_TIMEOUT_MS = 30000; // 30s timeout
 
 /**
  * SSE流式接收Hook
@@ -29,8 +31,30 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
   const { onMessage, onError, onOpen, onClose } = options;
 
   const [isConnected, setIsConnected] = useState(false);
-  const [error, setError] = useState<Event | null>(null);
+  const [error, setError] = useState<any>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const doneReceivedRef = useRef(false);
+
+  const clearSSETimeout = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  /**
+   * 断开SSE连接
+   */
+  const disconnect = useCallback(() => {
+    clearSSETimeout();
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsConnected(false);
+    onClose?.();
+  }, [onClose, clearSSETimeout]);
 
   /**
    * 建立SSE连接
@@ -38,6 +62,7 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
   const connect = useCallback(async (url: string, body?: any) => {
     // 断开之前的连接
     disconnect();
+    doneReceivedRef.current = false;
 
     // 如果 URL 是相对路径，保持相对路径让浏览器自动使用当前域名
     // vite dev server proxy 会转发 /api 和 /ws 到后端
@@ -50,6 +75,13 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
       setIsConnected(true);
       setError(null);
       onOpen?.();
+
+      // 设置整体超时
+      timeoutRef.current = setTimeout(() => {
+        abortController.abort();
+        onError?.(new Error('SSE连接超时'));
+        setIsConnected(false);
+      }, SSE_TIMEOUT_MS);
 
       const response = await fetch(fullUrl, {
         method: body ? 'POST' : 'GET',
@@ -93,6 +125,7 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
           } else if (line.startsWith('data: ')) {
             const rawData = line.slice(6);
             if (rawData === '[DONE]') {
+              doneReceivedRef.current = true;
               disconnect();
               return;
             }
@@ -102,6 +135,9 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
             } catch {
               // 保持原始字符串
             }
+            if (currentEvent === 'done' || currentEvent === 'faq_hit' || currentEvent === 'error') {
+              doneReceivedRef.current = true;
+            }
             onMessage?.({ event: currentEvent || 'message', data: parsedData });
             // Reset event after data line so next data without event uses default
             currentEvent = '';
@@ -109,27 +145,20 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
         }
       }
 
+      // Stream naturally ended — if no terminal event was received, synthesize one
+      if (!doneReceivedRef.current) {
+        onMessage?.({ event: 'done', data: {} });
+      }
       disconnect();
     } catch (err: any) {
+      clearSSETimeout();
       if (err.name !== 'AbortError') {
         setError(err);
         onError?.(err);
         setIsConnected(false);
       }
     }
-  }, [onMessage, onError, onOpen, onClose]);
-
-  /**
-   * 断开SSE连接
-   */
-  const disconnect = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setIsConnected(false);
-    onClose?.();
-  }, [onClose]);
+  }, [onMessage, onError, onOpen, disconnect, clearSSETimeout]);
 
   return {
     connect,

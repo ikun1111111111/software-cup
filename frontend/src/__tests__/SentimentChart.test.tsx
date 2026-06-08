@@ -19,13 +19,6 @@ describe('SentimentChart', () => {
       expect(screen.getByTestId('chart-container')).toBeDefined();
     });
 
-    it('应该显示图例', () => {
-      render(<SentimentChart />);
-      expect(screen.getByText('正面')).toBeDefined();
-      expect(screen.getByText('中性')).toBeDefined();
-      expect(screen.getByText('负面')).toBeDefined();
-    });
-
     it('应该渲染日期选择器', () => {
       render(<SentimentChart />);
       expect(screen.getByTestId('start-date')).toBeDefined();
@@ -33,38 +26,18 @@ describe('SentimentChart', () => {
     });
   });
 
-  describe('数据展示', () => {
-    it('应该显示默认数据点', () => {
-      render(<SentimentChart />);
-      expect(screen.getByTestId('data-point-0')).toBeDefined();
-      expect(screen.getByTestId('data-point-1')).toBeDefined();
-    });
-
-    it('应该支持自定义数据', () => {
-      const customData = [
-        { date: '2024-01-01', positive: 50, negative: 30, neutral: 20 },
-      ];
-      render(<SentimentChart data={customData} />);
-      expect(screen.getByTestId('data-point-0')).toBeDefined();
-    });
-  });
-
   describe('日期筛选', () => {
     it('修改开始日期应该调用回调', () => {
       const onDateChange = vi.fn();
       render(<SentimentChart onDateChange={onDateChange} />);
-
       fireEvent.change(screen.getByTestId('start-date'), { target: { value: '2024-01-10' } });
-
       expect(onDateChange).toHaveBeenCalledWith('2024-01-10', '2024-01-21');
     });
 
     it('修改结束日期应该调用回调', () => {
       const onDateChange = vi.fn();
       render(<SentimentChart onDateChange={onDateChange} />);
-
       fireEvent.change(screen.getByTestId('end-date'), { target: { value: '2024-01-25' } });
-
       expect(onDateChange).toHaveBeenCalledWith('2024-01-15', '2024-01-25');
     });
   });

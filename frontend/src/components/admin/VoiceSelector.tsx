@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { SoundOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { message } from 'antd';
 
 export interface Voice {
   id: string;
@@ -14,6 +15,7 @@ export interface VoiceSelectorProps {
   selected?: string;
   onChange?: (voiceId: string) => void;
   onPreview?: (voiceId: string) => void;
+  previewVoice?: (voiceId: string) => Promise<string>;
 }
 
 const MOCK_VOICES: Voice[] = [
@@ -28,6 +30,7 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
   selected,
   onChange,
   onPreview,
+  previewVoice,
 }) => {
   const voices = propVoices || MOCK_VOICES;
   const [playing, setPlaying] = useState<string | null>(null);
@@ -36,15 +39,34 @@ const VoiceSelector: React.FC<VoiceSelectorProps> = ({
     onChange?.(voiceId);
   }, [onChange]);
 
-  const handlePreview = useCallback((voiceId: string) => {
+  const handlePreview = useCallback(async (voiceId: string) => {
     setPlaying(voiceId);
     onPreview?.(voiceId);
 
-    // 模拟播放结束
-    setTimeout(() => {
-      setPlaying(null);
-    }, 2000);
-  }, [onPreview]);
+    if (previewVoice) {
+      try {
+        const url = await previewVoice(voiceId);
+        const audio = new Audio(url);
+        audio.onended = () => {
+          setPlaying(null);
+          URL.revokeObjectURL(url);
+        };
+        audio.onerror = () => {
+          setPlaying(null);
+          URL.revokeObjectURL(url);
+          message.error('音频播放失败');
+        };
+        await audio.play();
+      } catch (err: any) {
+        setPlaying(null);
+        message.error('试听失败: ' + (err?.message || '未知错误'));
+      }
+    } else {
+      setTimeout(() => {
+        setPlaying(null);
+      }, 2000);
+    }
+  }, [onPreview, previewVoice]);
 
   const renderVoiceItem = useCallback((voice: Voice) => {
     const isSelected = selected === voice.id;

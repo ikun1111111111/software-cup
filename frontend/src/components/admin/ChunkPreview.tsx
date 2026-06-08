@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { FileTextOutlined } from '@ant-design/icons';
+import { getDocById } from '../../api/knowledge';
 
 export interface Chunk {
   id: string;
@@ -15,27 +16,6 @@ export interface ChunkPreviewProps {
   highlightKeywords?: string[];
 }
 
-const MOCK_CHUNKS: Chunk[] = [
-  {
-    id: '1',
-    content: '灵山大佛是无锡灵山风景区的核心景点，高88米，是世界上最高的青铜佛像之一。',
-    index: 0,
-    metadata: { page: 1 },
-  },
-  {
-    id: '2',
-    content: '梵宫是灵山风景区的标志性建筑，内部装饰华丽，展示了佛教文化的精髓。',
-    index: 1,
-    metadata: { page: 2 },
-  },
-  {
-    id: '3',
-    content: '九龙灌浴是灵山风景区的大型音乐喷泉表演，每天定时演出。',
-    index: 2,
-    metadata: { page: 3 },
-  },
-];
-
 const ChunkPreview: React.FC<ChunkPreviewProps> = ({
   docId,
   chunks: propChunks,
@@ -44,6 +24,7 @@ const ChunkPreview: React.FC<ChunkPreviewProps> = ({
 }) => {
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (propChunks) {
@@ -52,13 +33,17 @@ const ChunkPreview: React.FC<ChunkPreviewProps> = ({
       return;
     }
 
-    // 模拟加载分块数据
-    const timer = setTimeout(() => {
-      setChunks(MOCK_CHUNKS);
-      setLoading(false);
-    }, 500);
-
-    return () => clearTimeout(timer);
+    setLoading(true);
+    setError(null);
+    getDocById(docId)
+      .then((res) => {
+        setChunks(res.chunks);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err?.message || '加载分块失败');
+        setLoading(false);
+      });
   }, [docId, propChunks]);
 
   const highlightText = useCallback((text: string, keywords: string[]) => {

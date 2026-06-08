@@ -7,6 +7,10 @@ const mockWebSocket = {
   send: vi.fn(),
   close: vi.fn(),
   readyState: 1, // WebSocket.OPEN
+  onopen: null as any,
+  onmessage: null as any,
+  onerror: null as any,
+  onclose: null as any,
 };
 
 vi.stubGlobal('WebSocket', vi.fn(() => mockWebSocket));

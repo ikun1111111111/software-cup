@@ -1,5 +1,6 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { FireOutlined } from '@ant-design/icons';
+import InscriptionList from './InscriptionList';
 
 export interface HotQuestion {
   id: string;
@@ -36,6 +37,16 @@ const HotQuestions: React.FC<HotQuestionsProps> = ({
     onQuestionClick?.(question);
   }, [onQuestionClick]);
 
+  const inscriptionItems = useMemo(() => {
+    return questions.map((question, index) => ({
+      id: question.id,
+      number: index + 1,
+      text: question.question,
+      note: `${question.count} 次交互`,
+      highlight: index < 3,
+    }));
+  }, [questions]);
+
   return (
     <div data-testid="hot-questions" style={{ padding: '20px' }}>
       <h3 style={{
@@ -47,76 +58,17 @@ const HotQuestions: React.FC<HotQuestionsProps> = ({
         alignItems: 'center',
         gap: '6px',
       }}>
-        <FireOutlined style={{ color: 'var(--color-accent)' }} />
+        <FireOutlined style={{ color: 'var(--vermilion)' }} />
         热门问答 Top10
       </h3>
       <div data-testid="questions-list">
-        {questions.map((question, index) => (
-          <div
-            key={question.id}
-            data-testid={`question-${question.id}`}
-            onClick={() => handleQuestionClick(question)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: '10px 8px',
-              borderBottom: index < questions.length - 1 ? '1px solid var(--gray-100)' : 'none',
-              cursor: onQuestionClick ? 'pointer' : 'default',
-              borderRadius: 'var(--radius-sm)',
-              transition: 'background-color 150ms',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--surface-bg)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-          >
-            <span style={{
-              width: 24,
-              height: 24,
-              backgroundColor: index < 3 ? 'var(--color-accent)' : 'var(--gray-100)',
-              color: index < 3 ? '#fff' : 'var(--text-secondary)',
-              borderRadius: 'var(--radius-sm)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '12px',
-              fontWeight: 700,
-              marginRight: '12px',
-              flexShrink: 0,
-            }}>
-              {index + 1}
-            </span>
-            <span style={{
-              flex: 1,
-              fontSize: '13px',
-              color: 'var(--text-primary)',
-            }}>
-              {question.question}
-            </span>
-            <span className="font-mono" style={{
-              fontSize: '12px',
-              color: 'var(--text-tertiary)',
-              marginRight: '10px',
-              flexShrink: 0,
-            }}>
-              {question.count}次
-            </span>
-            <span style={{
-              fontSize: '12px',
-              color: question.trend === 'up'
-                ? 'var(--color-success)'
-                : question.trend === 'down'
-                  ? 'var(--color-error)'
-                  : 'var(--text-tertiary)',
-              flexShrink: 0,
-              fontWeight: 500,
-            }}>
-              {question.trend === 'up' ? '↑' : question.trend === 'down' ? '↓' : '→'}
-            </span>
-          </div>
-        ))}
+        <InscriptionList
+          items={inscriptionItems}
+          onItemClick={(item) => {
+            const question = questions.find((q) => q.id === item.id);
+            if (question) handleQuestionClick(question);
+          }}
+        />
       </div>
     </div>
   );

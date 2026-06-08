@@ -90,7 +90,6 @@ const RoomCard: React.FC = () => {
     connected,
     members,
     itinerary,
-    connect,
     disconnect,
     sendChat,
   } = useRoomWebSocket({
@@ -125,13 +124,12 @@ const RoomCard: React.FC = () => {
       setState('room');
       setChatMessages([]);
       setSpotNotifications([]);
-      setTimeout(() => connect(), 100);
     } catch {
       antMsg.error('创建房间失败');
     } finally {
       setLoading(false);
     }
-  }, [nickName, connect]);
+  }, [nickName]);
 
   const handleJoin = useCallback(async () => {
     if (!nickName.trim()) {
@@ -149,13 +147,12 @@ const RoomCard: React.FC = () => {
       setState('room');
       setChatMessages([]);
       setSpotNotifications([]);
-      setTimeout(() => connect(), 100);
     } catch {
       antMsg.error('加入房间失败');
     } finally {
       setLoading(false);
     }
-  }, [nickName, roomCode, connect]);
+  }, [nickName, roomCode]);
 
   const handleLeave = useCallback(() => {
     disconnect();
@@ -167,21 +164,9 @@ const RoomCard: React.FC = () => {
 
   const handleSendChat = useCallback(
     (question: string) => {
-      // Add question locally for immediate display
-      const ts = Math.floor(Date.now() / 1000);
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          id: `q_local_${ts}`,
-          type: 'question',
-          from: nickName,
-          content: question,
-          timestamp: ts,
-        },
-      ]);
       sendChat(question);
     },
-    [sendChat, nickName],
+    [sendChat],
   );
 
   const handleCopyRoomId = useCallback(() => {

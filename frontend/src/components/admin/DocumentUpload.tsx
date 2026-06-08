@@ -1,8 +1,16 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { UploadOutlined, InboxOutlined } from '@ant-design/icons';
+import { uploadFile as uploadFileApi } from '../../api/knowledge';
+
+export interface UploadResult {
+  filename: string;
+  file_path: string;
+  file_type: string;
+  url: string;
+}
 
 export interface DocumentUploadProps {
-  onSuccess?: (file: File) => void;
+  onSuccess?: (result: UploadResult) => void;
   onError?: (error: string) => void;
   accept?: string;
   maxSize?: number; // in MB
@@ -35,25 +43,27 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
     setFileName(file.name);
     setUploadProgress(0);
 
-    // 模拟上传进度
+    // 模拟进度（真实上传无进度回调，用定时器模拟）
     const interval = setInterval(() => {
       setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          return 100;
-        }
+        if (prev >= 90) return prev;
         return prev + 10;
       });
-    }, 100);
+    }, 200);
 
-    // 模拟上传延迟
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    clearInterval(interval);
-
-    setUploadProgress(100);
-    setIsUploading(false);
-    onSuccess?.(file);
-  }, [validateFile, onSuccess]);
+    try {
+      const result = await uploadFileApi(file);
+      clearInterval(interval);
+      setUploadProgress(100);
+      setIsUploading(false);
+      onSuccess?.(result);
+    } catch (err: any) {
+      clearInterval(interval);
+      setIsUploading(false);
+      setUploadProgress(0);
+      onError?.(err?.message || '文件上传失败');
+    }
+  }, [validateFile, onSuccess, onError]);
 
   const handleDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault();

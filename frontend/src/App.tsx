@@ -5,15 +5,15 @@ import zhCN from 'antd/locale/zh_CN';
 import {
   MessageOutlined,
   CompassOutlined,
-  DatabaseOutlined,
-  RobotOutlined,
-  LineChartOutlined,
   DashboardOutlined,
   HistoryOutlined,
   TrophyOutlined,
   EnvironmentOutlined,
   MenuOutlined,
   CloseOutlined,
+  DatabaseOutlined,
+  RobotOutlined,
+  LineChartOutlined,
 } from '@ant-design/icons';
 
 import HomePage from './pages/tourist/HomePage';
@@ -33,6 +33,7 @@ import FloatingAssistant from './components/DigitalHuman/FloatingAssistant';
 import InkEntryOverlay from './components/DigitalHuman/InkEntryOverlay';
 import PushCard from './components/Notification/PushCard';
 import { usePushNotification } from './hooks/usePushNotification';
+import ScrollNav from './components/admin/ScrollNav';
 import { FloatingParticles } from './components/ui';
 
 const theme = {
@@ -311,83 +312,29 @@ function Header() {
   );
 }
 
-/* ═══════════════════════════════════════
-   AdminNav — kept for admin dashboard page
-   ═══════════════════════════════════════ */
-function AdminNav() {
-  const location = useLocation();
-  const links = [
-    { to: '/admin', label: '知识库管理', icon: <DatabaseOutlined />, exact: true },
-    { to: '/admin/avatar', label: '数字人配置', icon: <RobotOutlined /> },
-    { to: '/admin/report', label: '感受度报告', icon: <LineChartOutlined /> },
-    { to: '/admin/dashboard', label: '数据大屏', icon: <DashboardOutlined /> },
-  ];
-
-  return (
-    <div className="glass-surface" style={{
-      display: 'flex',
-      gap: '6px',
-      padding: '10px var(--container-padding)',
-      backgroundColor: 'rgba(255, 255, 255, 0.55)',
-      backdropFilter: 'blur(12px)',
-      WebkitBackdropFilter: 'blur(12px)',
-      borderBottom: '1px solid var(--border-light)',
-      overflowX: 'auto',
-      scrollbarWidth: 'none',
-    }}>
-      {links.map((link) => {
-        const active = link.exact
-          ? location.pathname === link.to
-          : location.pathname.startsWith(link.to);
-        return (
-          <Link
-            key={link.to}
-            to={link.to}
-            style={{
-              padding: '7px 16px',
-              backgroundColor: active ? 'var(--color-primary-bg)' : 'transparent',
-              color: active ? 'var(--color-primary)' : 'var(--text-secondary)',
-              borderRadius: 'var(--radius-md)',
-              textDecoration: 'none',
-              fontSize: '14px',
-              fontWeight: active ? 600 : 400,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
-              border: active ? '1px solid rgba(106, 156, 137, 0.15)' : '1px solid transparent',
-              whiteSpace: 'nowrap',
-              flexShrink: 0,
-            }}
-          >
-            {link.icon}
-            {link.label}
-          </Link>
-        );
-      })}
-    </div>
-  );
+function getThemeByHour(hour: number): string {
+  if (hour >= 6 && hour < 10) return 'dawn';
+  if (hour >= 10 && hour < 16) return 'day';
+  if (hour >= 16 && hour < 19) return 'dusk';
+  return 'night';
 }
 
 function App() {
   const location = useLocation();
-  const isDashboard = location.pathname === '/admin/dashboard';
   const isAdmin = location.pathname.startsWith('/admin');
+
+  useEffect(() => {
+    if (isAdmin) {
+      document.documentElement.setAttribute('data-theme', 'dawn');
+    } else {
+      document.documentElement.setAttribute('data-theme', getThemeByHour(new Date().getHours()));
+    }
+  }, [isAdmin]);
 
   const { notification: pushNotification, handleListen, handleNavigate, dismiss: dismissPush } = usePushNotification({
     userId: 'guest',
-    enabled: !isAdmin && !isDashboard,
+    enabled: !isAdmin,
   });
-
-  useEffect(() => {
-    document.documentElement.setAttribute(
-      'data-theme',
-      isDashboard ? 'dark' : 'light'
-    );
-    return () => {
-      document.documentElement.setAttribute('data-theme', 'light');
-    };
-  }, [isDashboard]);
 
   // 视差滚动 — 远山底图以 0.3x 速度跟随滚动
   useEffect(() => {
@@ -424,10 +371,19 @@ function App() {
           <Route path="/history" element={<HistoryExplore />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
 
-          <Route path="/admin" element={<><AdminNav /><KnowledgePage /></>} />
-          <Route path="/admin/avatar" element={<><AdminNav /><AvatarPage /></>} />
-          <Route path="/admin/report" element={<><AdminNav /><ReportPage /></>} />
-          <Route path="/admin/dashboard" element={<DashboardPage />} />
+          <Route path="/admin/*" element={
+            <>
+              <ScrollNav />
+              <div style={{ paddingLeft: 64 }}>
+                <Routes>
+                  <Route path="/" element={<KnowledgePage />} />
+                  <Route path="avatar" element={<AvatarPage />} />
+                  <Route path="report" element={<ReportPage />} />
+                  <Route path="dashboard" element={<DashboardPage />} />
+                </Routes>
+              </div>
+            </>
+          } />
 
           <Route path="*" element={<NotFound />} />
         </Routes>
