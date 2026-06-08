@@ -309,9 +309,9 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
               padding: '4px 10px',
               fontSize: 11,
               borderRadius: 12,
-              border: liveCostumeMode === 'auto' ? '1px solid #1A5FB4' : '1px solid #E8E5DF',
-              backgroundColor: liveCostumeMode === 'auto' ? '#1A5FB4' : 'transparent',
-              color: liveCostumeMode === 'auto' ? '#fff' : '#5C554C',
+              border: liveCostumeMode === 'auto' ? '1px solid var(--accent)' : '1px solid var(--border-light)',
+              backgroundColor: liveCostumeMode === 'auto' ? 'var(--accent)' : 'transparent',
+              color: liveCostumeMode === 'auto' ? '#fff' : 'var(--text-tertiary)',
               cursor: 'pointer',
               transition: 'all 200ms',
             }}
@@ -323,11 +323,12 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
         {liveCostumeMode === 'auto' && (
           <div style={{
             padding: '10px 14px',
-            background: '#F0F4FF',
-            borderRadius: 8,
+            background: 'rgba(200, 75, 49, 0.06)',
+            borderRadius: 'var(--radius-md)',
             fontSize: 12,
-            color: '#1A5FB4',
+            color: 'var(--accent)',
             marginBottom: 10,
+            border: '1px dashed rgba(200, 75, 49, 0.15)',
           }}>
             当前自动匹配：<strong>{getCostume(liveCostumeId).name}</strong> — {getCostume(liveCostumeId).description}
           </div>
