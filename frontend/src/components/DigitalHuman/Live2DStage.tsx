@@ -110,6 +110,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const appRef = useRef<any>(null);
   const modelRef = useRef<any>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
   // Lip sync values applied via ticker (after idle motion) to avoid override
   const lipSyncValuesRef = useRef({ mouthOpenY: 0, mouthForm: 0, angleZ: 0 });
   const [isLoading, setIsLoading] = useState(true);
@@ -185,18 +186,18 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         await loadCubismRuntime();
         const pixi = await import('pixi.js');
 
-        // Wait for container to have real dimensions, with a timeout to prevent hangs
+        // Wait for container to have real dimensions.
+        // requestAnimationFrame runs before layout, so we use setTimeout to let
+        // the browser finish layout first, then read bounding rect.
         const waitForLayout = () =>
           new Promise<void>((resolve) => {
-            const deadline = Date.now() + LAYOUT_TIMEOUT_MS;
-            const check = () => {
+            setTimeout(() => {
               if (destroyed) return resolve();
               const rect = containerRef.current?.getBoundingClientRect();
               if (rect && rect.width > 0 && rect.height > 0) return resolve();
-              if (Date.now() >= deadline) return resolve(); // proceed with whatever size we have
-              requestAnimationFrame(check);
-            };
-            requestAnimationFrame(check);
+              // One more frame as fallback
+              requestAnimationFrame(() => resolve());
+            }, 50);
           });
 
         await waitForLayout();
@@ -204,8 +205,8 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
 
         // Use actual rendered dimensions, fall back to props if container is zero-sized
         const rect = containerRef.current!.getBoundingClientRect();
-        const w = Math.floor(rect.width) || width;
-        const h = Math.floor(rect.height) || height;
+        const w = Math.max(Math.floor(rect.width) || width, 1);
+        const h = Math.max(Math.floor(rect.height) || height, 1);
 
         // Set canvas size explicitly before creating renderer
         canvas.width = w;
@@ -268,6 +269,32 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         app.stage.addChild(model);
         modelRef.current = model;
 
+        // ResizeObserver: keep renderer in sync with container size changes
+        // and fix the "thin line" bug caused by zero-size reads during init.
+        const ro = new ResizeObserver((entries) => {
+          if (destroyed || !appRef.current || !modelRef.current) return;
+          for (const entry of entries) {
+            const { width: cw, height: ch } = entry.contentRect;
+            if (cw > 0 && ch > 0) {
+              const newW = Math.floor(cw);
+              const newH = Math.floor(ch);
+              appRef.current.renderer.resize(newW, newH);
+              const m = modelRef.current;
+              const fitScale = Math.min(
+                newW / (m.width / m.scale.x),
+                newH / (m.height / m.scale.y)
+              ) * 0.92;
+              m.scale.set(fitScale);
+              m.x = newW / 2 + x;
+              m.y = newH / 2 + y;
+            }
+          }
+        });
+        if (containerRef.current) {
+          ro.observe(containerRef.current);
+        }
+        roRef.current = ro;
+
         // Use native DOM events instead of PIXI events to avoid
         // isInteractive compatibility issues
         clickHandler = () => handleClick();
@@ -304,6 +331,10 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
       if (moveHandler && canvas) {
         canvas.removeEventListener('mousemove', moveHandler);
       }
+      if (roRef.current) {
+        roRef.current.disconnect();
+        roRef.current = null;
+      }
       if (modelRef.current) {
         modelRef.current.destroy();
         modelRef.current = null;
@@ -332,6 +363,8 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
           display: 'block',
           width: '100%',
           height: '100%',
+          minWidth: typeof width === 'number' ? width : 200,
+          minHeight: typeof height === 'number' ? height : 300,
           cursor: 'pointer',
         }}
       />
