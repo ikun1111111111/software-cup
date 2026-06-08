@@ -138,6 +138,8 @@ export function useCostume() {
     ...state,
     /** CSS filter string for the current costume */
     cssFilter: state.costume.cssFilter,
+    /** Texture PNG path for the current costume */
+    texturePath: state.costume.texturePath,
     selectCostume,
     resetToAuto,
     /** Whether current costume is a festival costume */

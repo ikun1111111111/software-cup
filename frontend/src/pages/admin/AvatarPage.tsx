@@ -8,7 +8,7 @@ import DigitalHuman from '../../components/DigitalHuman/DigitalHuman';
 import PaperPanel from '../../components/admin/PaperPanel';
 import PageTransition from '../../components/admin/PageTransition';
 import { getModelPath, getExpressionForAppearance } from '../../config/avatarModels';
-import { useCostume } from '../../hooks/useCostume';
+import { getCostume } from '../../config/costumeMap';
 import { previewVoice } from '../../api/tts';
 import {
   getActiveAvatar,
@@ -69,7 +69,6 @@ const mapBackendToLocal = (backend: Awaited<ReturnType<typeof getActiveAvatar>>)
 });
 
 const AvatarPage: React.FC = () => {
-  const { cssFilter } = useCostume();
   const [config, setConfig] = useState<LocalConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -130,6 +129,8 @@ const AvatarPage: React.FC = () => {
           hair: config.appearance.hair,
           outfit: config.appearance.outfit,
           accessories: config.appearance.accessories,
+          costumeMode: config.appearance.costumeMode,
+          costumeId: config.appearance.costumeId,
         },
         voiceId: config.voiceId,
         welcomeMessage: config.welcomeMessage,
@@ -159,13 +160,17 @@ const AvatarPage: React.FC = () => {
 
   const tabs = ['外观', '声音', '欢迎语'];
 
-  const previewKey = `${config.appearance.model}-${config.appearance.skin}-${config.appearance.hair}-${config.appearance.outfit}`;
-
   const selectedVoiceName = DEFAULT_VOICES.find((v) => v.id === config.voiceId)?.name || config.voiceId;
   const selectedModelName = MODELS.find((m) => m.id === config.appearance.model)?.name || config.appearance.model;
   const selectedSkinName = SKINS.find((s) => s.id === config.appearance.skin)?.name || config.appearance.skin;
   const selectedHairName = HAIRS.find((h) => h.id === config.appearance.hair)?.name || config.appearance.hair;
   const selectedOutfitName = OUTFITS.find((o) => o.id === config.appearance.outfit)?.name || config.appearance.outfit;
+
+  // Derive costume properties from config (single source of truth)
+  const costumeDef = getCostume(config.appearance.costumeId);
+  const costumeTexturePath = costumeDef.texturePath;
+  const costumeCssFilter = costumeDef.cssFilter;
+  const previewKey = `${config.appearance.model}-${config.appearance.skin}-${config.appearance.hair}-${config.appearance.outfit}-${config.appearance.costumeId}`;
 
   return (
     <div data-testid="avatar-page" className="animate-scroll-unfold" style={{
@@ -391,7 +396,8 @@ const AvatarPage: React.FC = () => {
                       height={isMobile ? 280 : 380}
                       emotion="neutral"
                       expression={getExpressionForAppearance(config.appearance)}
-                      cssFilter={cssFilter}
+                      texturePath={costumeTexturePath}
+                      cssFilter={costumeCssFilter}
                       onReady={() => console.log('[AvatarPage] Preview ready')}
                     />
                   </div>
@@ -428,6 +434,11 @@ const AvatarPage: React.FC = () => {
                     <div>
                       <span style={{ color: 'var(--text-tertiary)' }}>服装</span>
                       <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedOutfitName}</span>
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <span style={{ color: 'var(--text-tertiary)' }}>服装</span>
+                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{costumeDef.name}</span>
+                      <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-tertiary)' }}>{costumeDef.description}</span>
                     </div>
                     <div style={{ gridColumn: '1 / -1' }}>
                       <span style={{ color: 'var(--text-tertiary)' }}>声音</span>
