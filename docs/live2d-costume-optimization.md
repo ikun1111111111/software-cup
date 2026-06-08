@@ -93,20 +93,39 @@ backend/app/models/avatar.py                  -- appearance_json 扩展字段
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| `frontend/src/config/costumeMap.ts` | 新建 | 9 套服装定义 + 纹理路径 + 节日日期映射 |
-| `frontend/src/hooks/useCostume.ts` | 新建 | 自动节日检测 + 日常轮换 + localStorage 手动覆盖 |
-| `frontend/src/components/DigitalHuman/Live2DStage.tsx` | 修改 | 添加 `switchTexture` 方法 + `texturePath` prop + 纹理切换 useEffect |
-| `frontend/src/components/DigitalHuman/DigitalHuman.tsx` | 修改 | 透传 `texturePath` 到 Live2DStage |
+| `frontend/src/config/costumeMap.ts` | 新建 | 9 套服装定义 + 纹理路径 + CSS filter + 节日日期映射 |
+| `frontend/src/hooks/useCostume.ts` | 新建 | 自动节日检测 + 日常轮换 + localStorage 手动覆盖 + 返回 cssFilter |
+| `frontend/src/components/DigitalHuman/Live2DStage.tsx` | 修改 | 添加 `cssFilter` prop，应用到 canvas 的 CSS filter + 过渡动画 |
+| `frontend/src/components/DigitalHuman/DigitalHuman.tsx` | 修改 | 透传 `cssFilter` 到 Live2DStage |
+| `frontend/src/pages/tourist/ChatPage.tsx` | 修改 | 调用 `useCostume()` 并将 `cssFilter` 传入 DigitalHuman |
 | `frontend/src/components/admin/AvatarAppearance.tsx` | 重写 | 9 套服装 UI + 自动/手动切换 + 日常/节日分组 |
 | `frontend/src/config/avatarModels.ts` | 修改 | 添加 `getCostumeTexturePath()` |
 | `backend/app/api/avatar.py` | 修改 | `appearance_json` 字段文档更新 |
 | `frontend/public/models/haru/textures/` | 新建 | 纹理素材目录 + README |
 
-### 待完成
+### 视觉实现方案：CSS Filter
+
+由于 Live2D 模型换装需要美术制作纹理 PNG（暂无资源），采用 **CSS filter** 方案实现视觉差异：
+
+| 服装 | CSS Filter 效果 |
+|------|----------------|
+| 素雅禅衣 | `none`（默认原色） |
+| 新中式便装 | 暖色调偏移，亮度+饱和度提升 |
+| 水墨雅服 | 低饱和度 + 高对比度（水墨风） |
+| 锦绣红袍 | 红色色相偏移 + 高饱和度 |
+| 灯彩华裳 | 暖褐色调 + 高亮度 |
+| 踏青轻衣 | 青绿色偏移 |
+| 龙舟竞渡 | 蓝白色偏移 |
+| 月华裳 | 暖金色调 |
+| 锦绣华章 | 红金色偏移 + 高对比度 |
+
+CSS filter 应用在 Live2D canvas 元素上，带 0.6s 过渡动画，切换流畅。
+
+### 待完成（可选增强）
 
 - [ ] 美术制作 9 套服装纹理 PNG（规格：2048x2048，匹配 haru 模型 UV 布局）
 - [ ] 将纹理文件放入 `frontend/public/models/haru/textures/`
-- [ ] 联动 ChatPage，将 useCostume 的 texturePath 传入 DigitalHuman 组件
+- [ ] 替换 CSS filter 为真正的纹理切换（需 Cubism Editor 制作模型）
 
 ---
 
@@ -114,6 +133,6 @@ backend/app/models/avatar.py                  -- appearance_json 扩展字段
 
 | 优先级 | 内容 | 理由 |
 |--------|------|------|
-| **P0** | 日常 3 套 | 直接提升日常多样性 |
-| **P1** | 春节 + 国庆 | 最大旅游高峰期 |
-| **P2** | 其余 4 个节日 | 锦上添花 |
+| **P0** | 日常 3 套 + CSS filter | 已完成，直接提升日常多样性 |
+| **P1** | 春节 + 国庆 CSS filter | 已完成，最大旅游高峰期 |
+| **P2** | 真正的纹理换装 | 需美术资源，锦上添花 |

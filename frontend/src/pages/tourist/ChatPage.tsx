@@ -631,6 +631,20 @@ const ChatPage: React.FC = () => {
         }}
       />
 
+      {/* DEBUG: costume filter indicator */}
+      <div style={{
+        padding: '4px 10px',
+        background: cssFilter && cssFilter !== 'none' ? '#E85D3A' : '#2D8B57',
+        color: '#fff',
+        fontSize: 11,
+        borderRadius: 8,
+        marginBottom: 4,
+        zIndex: 99,
+        position: 'relative',
+      }}>
+        costume: {cssFilter || 'none'}
+      </div>
+
       <div className="animate-float">
         <DigitalHuman
           emotion={emotion}

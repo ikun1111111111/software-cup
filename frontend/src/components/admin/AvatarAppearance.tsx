@@ -6,6 +6,7 @@ import {
   getCostume,
   type CostumeDef,
 } from '../../config/costumeMap';
+import { useCostume } from '../../hooks/useCostume';
 
 export interface AppearanceConfig {
   model: string;
@@ -90,6 +91,7 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
   onChange,
 }) => {
   const [config, setConfig] = useState<AppearanceConfig>(propConfig || DEFAULT_CONFIG);
+  const { costumeId: liveCostumeId, mode: liveCostumeMode, selectCostume, resetToAuto } = useCostume();
 
   const updateConfig = useCallback((updates: Partial<AppearanceConfig>) => {
     const newConfig = { ...config, ...updates };
@@ -98,13 +100,18 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
   }, [config, onChange]);
 
   const handleCostumeSelect = useCallback((costumeId: string) => {
+    selectCostume(costumeId);
     updateConfig({ costumeId, costumeMode: 'manual' });
-  }, [updateConfig]);
+  }, [selectCostume, updateConfig]);
 
   const handleAutoToggle = useCallback(() => {
-    const newMode = config.costumeMode === 'auto' ? 'manual' : 'auto';
-    updateConfig({ costumeMode: newMode });
-  }, [config.costumeMode, updateConfig]);
+    if (liveCostumeMode === 'auto') {
+      updateConfig({ costumeMode: 'manual' });
+    } else {
+      resetToAuto();
+      updateConfig({ costumeMode: 'auto', costumeId: liveCostumeId });
+    }
+  }, [liveCostumeMode, liveCostumeId, resetToAuto, updateConfig]);
 
   const handleHairChange = useCallback((hairId: string) => {
     updateConfig({ hair: hairId });
@@ -135,7 +142,7 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
   });
 
   const renderCostumeButton = (costume: CostumeDef) => {
-    const isSelected = config.costumeId === costume.id && config.costumeMode === 'manual';
+    const isSelected = liveCostumeId === costume.id && liveCostumeMode === 'manual';
     return (
       <button
         key={costume.id}
@@ -302,18 +309,18 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
               padding: '4px 10px',
               fontSize: 11,
               borderRadius: 12,
-              border: config.costumeMode === 'auto' ? '1px solid #1A5FB4' : '1px solid #E8E5DF',
-              backgroundColor: config.costumeMode === 'auto' ? '#1A5FB4' : 'transparent',
-              color: config.costumeMode === 'auto' ? '#fff' : '#5C554C',
+              border: liveCostumeMode === 'auto' ? '1px solid #1A5FB4' : '1px solid #E8E5DF',
+              backgroundColor: liveCostumeMode === 'auto' ? '#1A5FB4' : 'transparent',
+              color: liveCostumeMode === 'auto' ? '#fff' : '#5C554C',
               cursor: 'pointer',
               transition: 'all 200ms',
             }}
           >
-            {config.costumeMode === 'auto' ? '自动匹配节日' : '手动选择'}
+            {liveCostumeMode === 'auto' ? '自动匹配节日' : '手动选择'}
           </button>
         </div>
 
-        {config.costumeMode === 'auto' && (
+        {liveCostumeMode === 'auto' && (
           <div style={{
             padding: '10px 14px',
             background: '#F0F4FF',
@@ -322,7 +329,7 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
             color: '#1A5FB4',
             marginBottom: 10,
           }}>
-            当前自动匹配：<strong>{getCostume(config.costumeId).name}</strong> — {getCostume(config.costumeId).description}
+            当前自动匹配：<strong>{getCostume(liveCostumeId).name}</strong> — {getCostume(liveCostumeId).description}
           </div>
         )}
 

@@ -174,6 +174,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
           else if (id === 'ParamAngleZ') lipSyncValuesRef.current.angleZ = value;
         },
         getModel: () => modelRef.current,
+        switchTexture: async () => {},
       });
     }
   }, [onModelRef]);
@@ -406,6 +407,8 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
     };
   }, [modelPath, width, height, scale, x, y, handleClick]);
 
+  console.log('[Live2DStage] cssFilter prop:', cssFilter);
+
   return (
     <div
       ref={containerRef}
@@ -414,6 +417,8 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         position: 'relative',
         width,
         height,
+        filter: cssFilter && cssFilter !== 'none' ? cssFilter : undefined,
+        transition: 'filter 0.6s ease',
       }}
     >
       <canvas
@@ -426,8 +431,6 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
           minWidth: typeof width === 'number' ? width : 200,
           minHeight: typeof height === 'number' ? height : 300,
           cursor: 'pointer',
-          filter: cssFilter || 'none',
-          transition: 'filter 0.6s ease',
         }}
       />
       {isLoading && (

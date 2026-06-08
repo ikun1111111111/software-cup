@@ -3,18 +3,84 @@ import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import {
-  MessageOutlined,
-  CompassOutlined,
   DashboardOutlined,
-  HistoryOutlined,
-  TrophyOutlined,
-  EnvironmentOutlined,
   MenuOutlined,
   CloseOutlined,
   DatabaseOutlined,
   RobotOutlined,
   LineChartOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
+
+/* — 禅意导航图标 — */
+const iconProps = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', xmlns: 'http://www.w3.org/2000/svg' } as const;
+const stroke = { stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
+
+/** 胜境启扉 — 门扉 */
+const IconGate = () => (
+  <svg {...iconProps}>
+    <path d="M5 20V4C5 4 6 3 8 3C10 3 11 4 12 4C13 4 14 3 16 3C18 3 19 4 19 4V20" {...stroke} strokeWidth={1.6} />
+    <path d="M12 4V20" {...stroke} strokeWidth={1.4} />
+    <path d="M3 20H21" {...stroke} strokeWidth={1.8} />
+    <path d="M9 14C9 14 10 12 12 12C14 12 15 14 15 14" {...stroke} strokeWidth={1.2} opacity={0.6} />
+  </svg>
+);
+
+/** 禅语问讯 — 祥云对话 */
+const IconChat = () => (
+  <svg {...iconProps}>
+    <path d="M5 16C5 16 3 14 5 11C7 8 10 9 12 8C14 7 17 5 19 8C21 11 19 14 16 15C16 15 16 18 13 19L11 22L10 19C7 18 5 16 5 16Z" {...stroke} strokeWidth={1.4} />
+  </svg>
+);
+
+/** 云游胜境 — 祥云 */
+const IconCloud = () => (
+  <svg {...iconProps}>
+    <path d="M5 15C5 15 2 13 4 10C6 7 9 8 11 7C13 6 15 4 18 6C20 8 20 11 18 12C18 12 19 14 17 15H5Z" {...stroke} strokeWidth={1.4} />
+    <path d="M8 18L6 21" {...stroke} strokeWidth={1.0} opacity={0.5} />
+    <path d="M12 17L12 21" {...stroke} strokeWidth={1.0} opacity={0.5} />
+    <path d="M16 18L18 20" {...stroke} strokeWidth={1.0} opacity={0.5} />
+  </svg>
+);
+
+/** 莲台宝地 — 莲花 */
+const IconLotus = () => (
+  <svg {...iconProps}>
+    <path d="M12 16C12 16 7 12 7 8C7 6 9 5 12 7" {...stroke} strokeWidth={1.3} />
+    <path d="M12 16C12 16 17 12 17 8C17 6 15 5 12 7" {...stroke} strokeWidth={1.3} />
+    <path d="M12 16C12 16 5 13 6 9C6.5 7 8.5 6.5 12 8" {...stroke} strokeWidth={1.0} opacity={0.5} />
+    <path d="M12 16C12 16 19 13 18 9C17.5 6.5 15.5 6.5 12 8" {...stroke} strokeWidth={1.0} opacity={0.5} />
+    <path d="M12 7V4" {...stroke} strokeWidth={1.0} opacity={0.4} />
+    <path d="M12 18C10 19 8 20 7 20H17C16 20 14 19 12 18Z" {...stroke} strokeWidth={1.2} opacity={0.6} />
+  </svg>
+);
+
+/** 禅径通幽 — 曲径 */
+const IconPath = () => (
+  <svg {...iconProps}>
+    <path d="M12 21C12 21 10 18 10 15C10 12 14 10 14 7C14 5 13 3 13 3" {...stroke} strokeWidth={1.4} />
+    <path d="M9 6L12 3L15 6" {...stroke} strokeWidth={1.2} opacity={0.5} />
+    <path d="M8 21H16" {...stroke} strokeWidth={1.4} />
+    <circle cx="12" cy="13" r="1" fill="currentColor" opacity={0.4} />
+  </svg>
+);
+
+/** 岁月禅痕 — 月牙 */
+const IconMoon = () => (
+  <svg {...iconProps}>
+    <path d="M20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12C4 7.58172 7.58172 4 12 4C12 4 12 9 16 12C16 12 18.5 12 20 12Z" {...stroke} strokeWidth={1.4} />
+  </svg>
+);
+
+/** 胜境甄选 — 宝石 */
+const IconGem = () => (
+  <svg {...iconProps}>
+    <path d="M6 9L12 3L18 9" {...stroke} strokeWidth={1.4} />
+    <path d="M6 9L3 15L12 21L21 15L18 9H6Z" {...stroke} strokeWidth={1.4} />
+    <path d="M3 15L12 12L21 15" {...stroke} strokeWidth={1.0} opacity={0.5} />
+    <path d="M12 3V12" {...stroke} strokeWidth={1.0} opacity={0.5} />
+  </svg>
+);
 
 import HomePage from './pages/tourist/HomePage';
 import ChatPage from './pages/tourist/ChatPage';
@@ -63,13 +129,13 @@ interface NavLink {
 }
 
 const touristLinks: NavLink[] = [
-  { to: '/', label: '首页', icon: <MessageOutlined /> },
-  { to: '/chat', label: '对话', icon: <MessageOutlined /> },
-  { to: '/explore', label: '探索导览', icon: <CompassOutlined /> },
-  { to: '/attractions', label: '景点', icon: <EnvironmentOutlined /> },
-  { to: '/recommend', label: '路线', icon: <CompassOutlined /> },
-  { to: '/history', label: '时空', icon: <HistoryOutlined /> },
-  { to: '/leaderboard', label: '榜单', icon: <TrophyOutlined /> },
+  { to: '/', label: '胜境启扉', icon: <IconGate /> },
+  { to: '/chat', label: '禅语问讯', icon: <IconChat /> },
+  { to: '/explore', label: '云游胜境', icon: <IconCloud /> },
+  { to: '/attractions', label: '莲台宝地', icon: <IconLotus /> },
+  { to: '/recommend', label: '禅径通幽', icon: <IconPath /> },
+  { to: '/history', label: '岁月禅痕', icon: <IconMoon /> },
+  { to: '/leaderboard', label: '胜境甄选', icon: <IconGem /> },
 ];
 
 const adminLinks: NavLink[] = [

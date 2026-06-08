@@ -69,9 +69,9 @@ const FEATURES: FeatureCard[] = [
 ];
 
 const SPOTS = [
-  { name: '灵山大佛', desc: '世界第一高青铜立佛', img: '/image/AigcAssets3.png', tag: '必游' },
-  { name: '九龙灌浴', desc: '佛教文化主题表演', img: '/image/bg-mountain.png', tag: '热门' },
-  { name: '梵宫', desc: '佛教艺术殿堂', img: '/image/bg-mountain-clean.png', tag: '推荐' },
+  { name: '灵山大佛', desc: '世界第一高青铜立佛', img: '/image/bigfo.png', tag: '必游', imgStyle: { objectPosition: 'center 25%' } },
+  { name: '九龙灌浴', desc: '佛教文化主题表演', img: '/image/nine dragon.png', tag: '热门' },
+  { name: '梵宫', desc: '佛教艺术殿堂', img: '/image/fangong.png', tag: '推荐' },
 ];
 
 /* ── 水墨分割线组件 ── */
@@ -620,6 +620,7 @@ const FeaturedSpots: React.FC = () => (
                   width: '100%',
                   height: '100%',
                   objectFit: 'cover',
+                  ...('imgStyle' in spot ? (spot as any).imgStyle : undefined),
                 }}
               />
               {/* 水墨渐变遮罩 */}

@@ -8,6 +8,7 @@ import DigitalHuman from '../../components/DigitalHuman/DigitalHuman';
 import PaperPanel from '../../components/admin/PaperPanel';
 import PageTransition from '../../components/admin/PageTransition';
 import { getModelPath, getExpressionForAppearance } from '../../config/avatarModels';
+import { useCostume } from '../../hooks/useCostume';
 import { previewVoice } from '../../api/tts';
 import {
   getActiveAvatar,
@@ -41,6 +42,8 @@ const DEFAULT_CONFIG: LocalConfig = {
     hair: 'hair-1',
     outfit: 'outfit-1',
     accessories: [],
+    costumeMode: 'auto' as const,
+    costumeId: 'daily-classic',
   },
   voiceId: 'voice-1',
   welcomeMessage: '你好！欢迎来到灵山景区，我是你的数字人导游，有什么可以帮你的吗？',
@@ -57,6 +60,8 @@ const mapBackendToLocal = (backend: Awaited<ReturnType<typeof getActiveAvatar>>)
         accessories: Array.isArray(backend.appearanceJson.accessories)
           ? backend.appearanceJson.accessories
           : DEFAULT_CONFIG.appearance.accessories,
+        costumeMode: (backend.appearanceJson.costumeMode as 'auto' | 'manual') || 'auto',
+        costumeId: backend.appearanceJson.costumeId || 'daily-classic',
       }
     : DEFAULT_CONFIG.appearance,
   voiceId: backend.voiceId || DEFAULT_CONFIG.voiceId,
@@ -64,6 +69,7 @@ const mapBackendToLocal = (backend: Awaited<ReturnType<typeof getActiveAvatar>>)
 });
 
 const AvatarPage: React.FC = () => {
+  const { cssFilter } = useCostume();
   const [config, setConfig] = useState<LocalConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -348,6 +354,7 @@ const AvatarPage: React.FC = () => {
                       height={isMobile ? 280 : 380}
                       emotion="neutral"
                       expression={getExpressionForAppearance(config.appearance)}
+                      cssFilter={cssFilter}
                       onReady={() => console.log('[AvatarPage] Preview ready')}
                     />
                   </div>
