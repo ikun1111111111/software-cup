@@ -115,43 +115,25 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
         width,
         height,
         borderRadius: '16px',
-        background: 'linear-gradient(180deg, rgba(247,245,240,0.9) 0%, rgba(237,232,222,0.85) 60%, rgba(222,214,200,0.7) 100%)',
+        background: 'transparent',
         overflow: 'hidden',
       }}
     >
-      {/* 宣纸纹理 overlay */}
-      <div style={{
-        position: 'absolute',
-        inset: 0,
-        opacity: 0.35,
-        backgroundImage: `url("data:image/svg+xml,%3Csvg width='120' height='120' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E")`,
-        pointerEvents: 'none',
-        zIndex: 1,
-      }} />
-      {/* 淡墨山水装饰 - 底部远山轮廓 */}
-      <div style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: '35%',
-        background: 'linear-gradient(180deg, transparent 0%, rgba(168,156,140,0.08) 40%, rgba(140,128,112,0.15) 100%)',
-        borderRadius: '0 0 16px 16px',
-        pointerEvents: 'none',
-        zIndex: 1,
-      }} />
-      {/* Live2D Model */}
-      <Live2DStage
-        modelPath={modelPath}
-        texturePath={texturePath}
-        texturePaths={texturePaths}
-        cssFilter={cssFilter}
-        width={width}
-        height={height}
-        scale={0.18}
-        onModelLoaded={handleModelLoaded}
-        onModelRef={handleModelRef}
-      />
+      {/* Live2D Model — z-index:2 ensures it renders above overlays */}
+      <div style={{ position: 'relative', zIndex: 2, width: '100%', height: '100%' }}>
+        <Live2DStage
+          modelPath={modelPath}
+          texturePath={texturePath}
+          texturePaths={texturePaths}
+          cssFilter={cssFilter}
+          width={width}
+          height={height}
+          scale={0.18}
+          y={-30}
+          onModelLoaded={handleModelLoaded}
+          onModelRef={handleModelRef}
+        />
+      </div>
 
       {/* Emotion Controller */}
       <EmotionController

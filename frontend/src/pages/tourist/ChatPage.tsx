@@ -257,7 +257,7 @@ const ErrorToast: React.FC<{ message: string; onClose: () => void }> = ({ messag
 
 const ChatPage: React.FC = () => {
   const location = useLocation();
-  const { cssFilter, texturePaths } = useCostume();
+  const { cssFilter } = useCostume();
   const [inputText, setInputText] = useState('');
   const [emotion, setEmotion] = useState<Emotion>('neutral');
   const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(false);
@@ -635,7 +635,6 @@ const ChatPage: React.FC = () => {
         <DigitalHuman
           emotion={emotion}
           cssFilter={cssFilter}
-          texturePaths={texturePaths}
           isSpeaking={isAvatarSpeaking}
           audioChunks={audioChunks}
           phonemes={phonemes}

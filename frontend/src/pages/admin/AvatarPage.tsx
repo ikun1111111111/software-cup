@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { SaveOutlined, CheckOutlined } from '@ant-design/icons';
 import { message } from 'antd';
-import AvatarAppearance, { MODELS, SKINS, HAIRS, OUTFITS } from '../../components/admin/AvatarAppearance';
+import AvatarAppearance from '../../components/admin/AvatarAppearance';
+import { COSTUMES } from '../../config/costumeMap';
 import VoiceSelector from '../../components/admin/VoiceSelector';
 import WelcomeEditor from '../../components/admin/WelcomeEditor';
 import DigitalHuman from '../../components/DigitalHuman/DigitalHuman';
 import PaperPanel from '../../components/admin/PaperPanel';
 import PageTransition from '../../components/admin/PageTransition';
-import { getModelPath, getExpressionForAppearance } from '../../config/avatarModels';
+import { getModelPath } from '../../config/avatarModels';
 import { useCostume } from '../../hooks/useCostume';
 import { previewVoice } from '../../api/tts';
 import {
@@ -69,7 +70,7 @@ const mapBackendToLocal = (backend: Awaited<ReturnType<typeof getActiveAvatar>>)
 });
 
 const AvatarPage: React.FC = () => {
-  const { cssFilter, texturePaths, costumeId: liveCostumeId, mode: liveCostumeMode, selectCostume, resetToAuto } = useCostume();
+  const { cssFilter, costumeId: liveCostumeId, mode: liveCostumeMode, selectCostume, resetToAuto } = useCostume();
   const [config, setConfig] = useState<LocalConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -161,13 +162,9 @@ const AvatarPage: React.FC = () => {
 
   const tabs = ['外观', '声音', '欢迎语'];
 
-  const previewKey = `${config.appearance.model}-${config.appearance.skin}-${config.appearance.hair}-${config.appearance.outfit}`;
+  const previewKey = config.appearance.model;
 
   const selectedVoiceName = DEFAULT_VOICES.find((v) => v.id === config.voiceId)?.name || config.voiceId;
-  const selectedModelName = MODELS.find((m) => m.id === config.appearance.model)?.name || config.appearance.model;
-  const selectedSkinName = SKINS.find((s) => s.id === config.appearance.skin)?.name || config.appearance.skin;
-  const selectedHairName = HAIRS.find((h) => h.id === config.appearance.hair)?.name || config.appearance.hair;
-  const selectedOutfitName = OUTFITS.find((o) => o.id === config.appearance.outfit)?.name || config.appearance.outfit;
 
   return (
     <div data-testid="avatar-page" className="animate-scroll-unfold" style={{
@@ -355,9 +352,8 @@ const AvatarPage: React.FC = () => {
                       width={isMobile ? 200 : 280}
                       height={isMobile ? 280 : 380}
                       emotion="neutral"
-                      expression={getExpressionForAppearance(config.appearance)}
+                      expression={config.appearance.expressionId || 'f00'}
                       cssFilter={cssFilter}
-                      texturePaths={texturePaths}
                       onReady={() => console.log('[AvatarPage] Preview ready')}
                     />
                   </div>
@@ -366,36 +362,25 @@ const AvatarPage: React.FC = () => {
                 {/* 当前配置摘要 */}
                 <div style={{
                   marginTop: 14,
-                  padding: '12px 14px',
+                  padding: '10px 14px',
                   backgroundColor: 'rgba(247, 245, 240, 0.6)',
                   borderRadius: 'var(--radius-md)',
                   border: '1px dashed var(--border-light)',
                 }}>
                   <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '8px 12px',
+                    display: 'flex',
+                    gap: '16px',
                     fontSize: 12,
                     color: 'var(--text-secondary)',
-                    lineHeight: 1.6,
+                    lineHeight: 1.8,
                   }}>
                     <div>
-                      <span style={{ color: 'var(--text-tertiary)' }}>模型</span>
-                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedModelName}</span>
+                      <span style={{ color: 'var(--text-tertiary)' }}>当前服装</span>
+                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>
+                        {config.appearance.costumeId ? COSTUMES[config.appearance.costumeId]?.name || config.appearance.costumeId : '自动匹配'}
+                      </span>
                     </div>
                     <div>
-                      <span style={{ color: 'var(--text-tertiary)' }}>肤色</span>
-                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedSkinName}</span>
-                    </div>
-                    <div>
-                      <span style={{ color: 'var(--text-tertiary)' }}>发型</span>
-                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedHairName}</span>
-                    </div>
-                    <div>
-                      <span style={{ color: 'var(--text-tertiary)' }}>服装</span>
-                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedOutfitName}</span>
-                    </div>
-                    <div style={{ gridColumn: '1 / -1' }}>
                       <span style={{ color: 'var(--text-tertiary)' }}>声音</span>
                       <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedVoiceName}</span>
                     </div>

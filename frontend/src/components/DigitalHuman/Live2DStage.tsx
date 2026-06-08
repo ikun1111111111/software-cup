@@ -6,6 +6,9 @@ let MotionPreloadStrategy: any = null;
 let cubismLoaded = false;
 let pixiModule: any = null;
 
+// Guard against HMR re-patching: mark prototype methods after first patch
+const PATCH_MARKER = '__live2d_patched_v1';
+
 async function loadCubismRuntime() {
   if (cubismLoaded) return;
   try {
@@ -18,7 +21,7 @@ async function loadCubismRuntime() {
 
     const EventBoundary = (pixi as any).EventBoundary;
     const patchMethod = (methodName: string) => {
-      if (EventBoundary?.prototype?.[methodName]) {
+      if (EventBoundary?.prototype?.[methodName] && !EventBoundary.prototype[PATCH_MARKER]) {
         const original = EventBoundary.prototype[methodName];
         EventBoundary.prototype[methodName] = function (...args: any[]) {
           try {
@@ -32,6 +35,9 @@ async function loadCubismRuntime() {
     };
     patchMethod('hitTestMoveRecursive');
     patchMethod('hitTestRecursive');
+    if (EventBoundary?.prototype) {
+      EventBoundary.prototype[PATCH_MARKER] = true;
+    }
 
     const BatchRenderer = (pixi as any).BatchRenderer;
     if (BatchRenderer?.prototype?.contextChange && !(BatchRenderer.prototype.contextChange as any).__safe) {
@@ -197,28 +203,8 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
     }
   }, [onModelRef]);
 
-  // Apply costume textures when texturePaths changes or model finishes loading.
-  // isLoading is a dep so the initial textures get applied once the model is ready.
-  useEffect(() => {
-    const paths = texturePaths || (texturePath ? [texturePath] : null);
-    if (!paths || !modelRef.current || isLoading) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const pixi = pixiModule || await import('pixi.js');
-        const loaded = await Promise.all(paths.map((p: string) => pixi.Assets.load(p)));
-        if (cancelled) return;
-        const model = modelRef.current;
-        if (!model?.textures) return;
-        for (let i = 0; i < loaded.length && i < model.textures.length; i++) {
-          model.textures[i] = loaded[i];
-        }
-      } catch (e) {
-        console.warn('[Live2DStage] texture swap failed:', e);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [texturePaths, texturePath, isLoading]);
+  // Costume textures are baked into model settings at load time.
+  // When texturePaths changes, the model reloads below with the new textures.
 
   // Update color filter ref when cssFilter changes (ticker applies it per-frame)
   useEffect(() => {
@@ -237,7 +223,10 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
     }
   }, []);
 
-  // Initialize PIXI app and load model — only re-runs when modelPath changes.
+  // Serialize costume texture paths for use as a useEffect dependency key
+  const textureKey = JSON.stringify(texturePaths || texturePath || '');
+
+  // Initialize PIXI app and load model — re-runs when modelPath or costume textures change.
   // Size/position changes are handled by ResizeObserver (no full reload).
   useEffect(() => {
     if (!canvasRef.current || !modelPath) return;
@@ -246,6 +235,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
     let destroyed = false;
     let clickHandler: (() => void) | null = null;
     let moveHandler: ((e: MouseEvent) => void) | null = null;
+    let visibilityHandler: (() => void) | null = null;
 
     const init = async () => {
       try {
@@ -298,9 +288,39 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
           eventFeatures: { move: false, globalMove: false, click: false, wheel: false },
         } as any);
 
+        // Cap at 30fps — Live2D doesn't need 60fps, halves GPU/CPU load
+        if (app.ticker.maxFPS !== undefined) {
+          app.ticker.maxFPS = 30;
+        } else {
+          app.ticker.speed = 0.5;
+        }
+
         appRef.current = app;
 
-        const model = await Live2DModel.from(modelPath, {
+        // Build model source: if costume textures are specified,
+        // fetch the settings JSON and override texture paths before loading.
+        let modelSource: string | object = modelPath;
+        const costumePaths = texturePaths || (texturePath ? [texturePath] : null);
+        if (costumePaths && costumePaths.length > 0) {
+          try {
+            const resp = await fetch(modelPath);
+            const settings = await resp.json();
+            // Convert absolute costume paths to relative (relative to model dir)
+            const modelDir = modelPath.substring(0, modelPath.lastIndexOf('/') + 1);
+            settings.url = modelPath;
+            settings.FileReferences.Textures = costumePaths.map((p: string) => {
+              // If path starts with modelDir, strip it to make relative
+              if (p.startsWith(modelDir)) return p.slice(modelDir.length);
+              // Otherwise use the path as-is
+              return p.startsWith('/') ? p.slice(1) : p;
+            });
+            modelSource = settings;
+          } catch (e) {
+            console.warn('[Live2DStage] Failed to fetch model settings, using original path:', e);
+          }
+        }
+
+        const model = await Live2DModel.from(modelSource, {
           motionPreload: MotionPreloadStrategy.IDLE,
           autoInteract: false,
         });
@@ -310,6 +330,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
           return;
         }
 
+        let lastFilterKey = '__init__';
         app.ticker.add(() => {
           const v = lipSyncValuesRef.current;
           const core = model.internalModel?.coreModel;
@@ -320,7 +341,11 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
           }
           core.setParameterValueById('ParamAngleZ', v.angleZ);
           const cf = colorFilterRef.current;
-          model.filters = cf.length > 0 ? cf : null;
+          const filterKey = cf.length > 0 ? 'filter' : 'none';
+          if (filterKey !== lastFilterKey) {
+            model.filters = cf.length > 0 ? cf : null;
+            lastFilterKey = filterKey;
+          }
         });
 
         // Auto-fit model to canvas
@@ -366,16 +391,38 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         clickHandler = () => handleClick();
         canvas.addEventListener('click', clickHandler);
 
+        let focusRafPending = false;
+        let lastMoveX = 0;
+        let lastMoveY = 0;
         moveHandler = (e: MouseEvent) => {
           if (!modelRef.current || !canvasRef.current) return;
           const rect = canvasRef.current.getBoundingClientRect();
-          const px = e.clientX - rect.left;
-          const py = e.clientY - rect.top;
-          modelRef.current.focus(px, py);
+          lastMoveX = e.clientX - rect.left;
+          lastMoveY = e.clientY - rect.top;
+          if (!focusRafPending) {
+            focusRafPending = true;
+            requestAnimationFrame(() => {
+              focusRafPending = false;
+              if (modelRef.current) {
+                modelRef.current.focus(lastMoveX, lastMoveY);
+              }
+            });
+          }
         };
         canvas.addEventListener('mousemove', moveHandler);
 
         colorFilterRef.current = buildColorFilter(cssFilter);
+
+        // Pause PIXI ticker when tab is hidden to save GPU/CPU
+        visibilityHandler = () => {
+          if (!appRef.current) return;
+          if (document.hidden) {
+            appRef.current.ticker.stop();
+          } else {
+            appRef.current.ticker.start();
+          }
+        };
+        document.addEventListener('visibilitychange', visibilityHandler);
 
         setIsLoading(false);
         onModelLoaded?.(model);
@@ -399,20 +446,21 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
       if (moveHandler && canvas) {
         canvas.removeEventListener('mousemove', moveHandler);
       }
+      if (visibilityHandler) {
+        document.removeEventListener('visibilitychange', visibilityHandler);
+      }
       if (roRef.current) {
         roRef.current.disconnect();
         roRef.current = null;
       }
-      if (modelRef.current) {
-        modelRef.current.destroy();
-        modelRef.current = null;
-      }
       if (appRef.current) {
+        appRef.current.ticker.stop();
         appRef.current.destroy(true, { children: true });
         appRef.current = null;
+        modelRef.current = null;
       }
     };
-  }, [modelPath, handleClick]);
+  }, [modelPath, handleClick, textureKey]);
 
   return (
     <div
