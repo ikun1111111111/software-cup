@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import {
@@ -73,10 +73,10 @@ const touristLinks: NavLink[] = [
 ];
 
 const adminLinks: NavLink[] = [
-  { to: '/admin', label: '知识库', icon: <DatabaseOutlined />, exact: true },
+  { to: '/admin/dashboard', label: '大屏', icon: <DashboardOutlined />, exact: true },
+  { to: '/admin/knowledge', label: '知识库', icon: <DatabaseOutlined /> },
   { to: '/admin/avatar', label: '数字人', icon: <RobotOutlined /> },
   { to: '/admin/report', label: '报告', icon: <LineChartOutlined /> },
-  { to: '/admin/dashboard', label: '大屏', icon: <DashboardOutlined /> },
 ];
 
 function Header() {
@@ -202,7 +202,7 @@ function Header() {
       {/* Admin / Tourist toggle (desktop) */}
       <div className="hide-mobile" style={{ flexShrink: 0, marginLeft: 'auto' }}>
         <Link
-          to={isAdmin ? '/' : '/admin'}
+          to={isAdmin ? '/' : '/admin/dashboard'}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -290,7 +290,7 @@ function Header() {
           })}
           <div style={{ height: 1, background: 'var(--border-light)', margin: '4px 0' }} />
           <Link
-            to={isAdmin ? '/' : '/admin'}
+            to={isAdmin ? '/' : '/admin/dashboard'}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -372,7 +372,8 @@ function App() {
 
           <Route path="/admin/*" element={
             <Routes>
-              <Route path="/" element={<KnowledgePage />} />
+              <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
+              <Route path="knowledge" element={<KnowledgePage />} />
               <Route path="avatar" element={<AvatarPage />} />
               <Route path="report" element={<ReportPage />} />
               <Route path="dashboard" element={<DashboardPage />} />
