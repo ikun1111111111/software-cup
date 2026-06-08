@@ -33,3 +33,15 @@ export function getExpressionForAppearance(appearance: {
   };
   return skinExprMap[appearance.skin] || 'f00';
 }
+
+/**
+ * Resolve the texture path for a given costume ID.
+ * Returns undefined for daily-classic (uses default model textures).
+ */
+export function getCostumeTexturePath(costumeId: string): string | undefined {
+  // Lazy import to avoid circular dependency
+  const { getCostume } = require('./costumeMap');
+  const costume = getCostume(costumeId);
+  if (costume.id === 'daily-classic') return undefined;
+  return costume.texturePath;
+}

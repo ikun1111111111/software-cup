@@ -1,4 +1,12 @@
 import React, { useCallback, useState } from 'react';
+import {
+  COSTUMES,
+  DAILY_COSTUME_IDS,
+  FESTIVAL_COSTUME_IDS,
+  getCostume,
+  type CostumeDef,
+} from '../../config/costumeMap';
+import { useCostume } from '../../hooks/useCostume';
 
 export interface AppearanceConfig {
   model: string;
@@ -6,6 +14,10 @@ export interface AppearanceConfig {
   hair: string;
   outfit: string;
   accessories: string[];
+  /** Costume mode: 'auto' = system picks by date, 'manual' = user chose */
+  costumeMode: 'auto' | 'manual';
+  /** Active costume ID (from costumeMap.ts) */
+  costumeId: string;
 }
 
 export interface AvatarAppearanceProps {
@@ -50,6 +62,28 @@ const DEFAULT_CONFIG: AppearanceConfig = {
   hair: 'hair-1',
   outfit: 'outfit-1',
   accessories: [],
+  costumeMode: 'auto',
+  costumeId: 'daily-classic',
+};
+
+const buttonStyle = (isSelected: boolean): React.CSSProperties => ({
+  padding: '8px 16px',
+  backgroundColor: isSelected ? '#1A5FB4' : '#F8F6F2',
+  color: isSelected ? '#fff' : '#5C554C',
+  border: isSelected ? '1.5px solid #1A5FB4' : '1px solid #E8E5DF',
+  borderRadius: '8px',
+  cursor: 'pointer',
+  fontSize: '13px',
+  fontWeight: isSelected ? 600 : 400,
+  transition: 'all 200ms',
+});
+
+const categoryLabel: React.CSSProperties = {
+  fontSize: 12,
+  color: '#8A8580',
+  fontWeight: 500,
+  marginBottom: 6,
+  display: 'block',
 };
 
 const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
@@ -57,6 +91,7 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
   onChange,
 }) => {
   const [config, setConfig] = useState<AppearanceConfig>(propConfig || DEFAULT_CONFIG);
+  const { costumeId: liveCostumeId, mode: liveCostumeMode, selectCostume, resetToAuto } = useCostume();
 
   const updateConfig = useCallback((updates: Partial<AppearanceConfig>) => {
     const newConfig = { ...config, ...updates };
@@ -64,13 +99,19 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
     onChange?.(newConfig);
   }, [config, onChange]);
 
-  const handleModelChange = useCallback((modelId: string) => {
-    updateConfig({ model: modelId });
-  }, [updateConfig]);
+  const handleCostumeSelect = useCallback((costumeId: string) => {
+    selectCostume(costumeId);
+    updateConfig({ costumeId, costumeMode: 'manual' });
+  }, [selectCostume, updateConfig]);
 
-  const handleSkinChange = useCallback((skinId: string) => {
-    updateConfig({ skin: skinId });
-  }, [updateConfig]);
+  const handleAutoToggle = useCallback(() => {
+    if (liveCostumeMode === 'auto') {
+      updateConfig({ costumeMode: 'manual' });
+    } else {
+      resetToAuto();
+      updateConfig({ costumeMode: 'auto', costumeId: liveCostumeId });
+    }
+  }, [liveCostumeMode, liveCostumeId, resetToAuto, updateConfig]);
 
   const handleHairChange = useCallback((hairId: string) => {
     updateConfig({ hair: hairId });
@@ -99,6 +140,29 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
     transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
     letterSpacing: isSelected ? '0.02em' : 'normal',
   });
+
+  const renderCostumeButton = (costume: CostumeDef) => {
+    const isSelected = liveCostumeId === costume.id && liveCostumeMode === 'manual';
+    return (
+      <button
+        key={costume.id}
+        data-testid={`costume-${costume.id}`}
+        onClick={() => handleCostumeSelect(costume.id)}
+        style={{
+          ...buttonStyle(isSelected),
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          gap: 2,
+          minWidth: 100,
+        }}
+        title={costume.description}
+      >
+        <span>{costume.name}</span>
+        <span style={{ fontSize: 11, opacity: 0.7 }}>{costume.description}</span>
+      </button>
+    );
+  };
 
   const labelStyle: React.CSSProperties = {
     display: 'block',
@@ -146,7 +210,7 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
             <button
               key={model.id}
               data-testid={`model-${model.id}`}
-              onClick={() => handleModelChange(model.id)}
+              onClick={() => updateConfig({ model: model.id })}
               style={buttonStyle(config.model === model.id)}
               onMouseEnter={(e) => {
                 if (config.model !== model.id) {
@@ -174,7 +238,7 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
             <button
               key={skin.id}
               data-testid={`skin-${skin.id}`}
-              onClick={() => handleSkinChange(skin.id)}
+              onClick={() => updateConfig({ skin: skin.id })}
               style={buttonStyle(config.skin === skin.id)}
               onMouseEnter={(e) => {
                 if (config.skin !== skin.id) {
@@ -214,7 +278,7 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
             <button
               key={hair.id}
               data-testid={`hair-${hair.id}`}
-              onClick={() => handleHairChange(hair.id)}
+              onClick={() => updateConfig({ hair: hair.id })}
               style={buttonStyle(config.hair === hair.id)}
               onMouseEnter={(e) => {
                 if (config.hair !== hair.id) {
@@ -235,34 +299,54 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
         </div>
       </div>
 
+      {/* Costume selection — 9-costume system with auto/manual toggle */}
       <div style={sectionStyle}>
-        <label style={labelStyle}>服装</label>
-        <div data-testid="outfit-list" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {OUTFITS.map((outfit) => (
-            <button
-              key={outfit.id}
-              data-testid={`outfit-${outfit.id}`}
-              onClick={() => handleOutfitChange(outfit.id)}
-              style={buttonStyle(config.outfit === outfit.id)}
-              onMouseEnter={(e) => {
-                if (config.outfit !== outfit.id) {
-                  e.currentTarget.style.backgroundColor = 'rgba(200, 75, 49, 0.04)';
-                  e.currentTarget.style.borderColor = 'rgba(200, 75, 49, 0.2)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (config.outfit !== outfit.id) {
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                  e.currentTarget.style.borderColor = 'var(--border-light)';
-                }
-              }}
-            >
-              {outfit.name}
-            </button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+          <label style={labelStyle}>服装</label>
+          <button
+            onClick={handleAutoToggle}
+            style={{
+              padding: '4px 10px',
+              fontSize: 11,
+              borderRadius: 12,
+              border: liveCostumeMode === 'auto' ? '1px solid #1A5FB4' : '1px solid #E8E5DF',
+              backgroundColor: liveCostumeMode === 'auto' ? '#1A5FB4' : 'transparent',
+              color: liveCostumeMode === 'auto' ? '#fff' : '#5C554C',
+              cursor: 'pointer',
+              transition: 'all 200ms',
+            }}
+          >
+            {liveCostumeMode === 'auto' ? '自动匹配节日' : '手动选择'}
+          </button>
+        </div>
+
+        {liveCostumeMode === 'auto' && (
+          <div style={{
+            padding: '10px 14px',
+            background: '#F0F4FF',
+            borderRadius: 8,
+            fontSize: 12,
+            color: '#1A5FB4',
+            marginBottom: 10,
+          }}>
+            当前自动匹配：<strong>{getCostume(liveCostumeId).name}</strong> — {getCostume(liveCostumeId).description}
+          </div>
+        )}
+
+        <div data-testid="costume-list">
+          <span style={categoryLabel}>日常服装</span>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: 10 }}>
+            {DAILY_COSTUME_IDS.map((id) => renderCostumeButton(COSTUMES[id]))}
+          </div>
+
+          <span style={categoryLabel}>节日限定</span>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {FESTIVAL_COSTUME_IDS.map((id) => renderCostumeButton(COSTUMES[id]))}
+          </div>
         </div>
       </div>
 
+      {/* Accessories */}
       <div style={{ marginBottom: '0' }}>
         <label style={labelStyle}>配饰</label>
         <div data-testid="accessory-list" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -270,7 +354,12 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
             <button
               key={acc.id}
               data-testid={`acc-${acc.id}`}
-              onClick={() => toggleAccessory(acc.id)}
+              onClick={() => {
+                const newAccessories = config.accessories.includes(acc.id)
+                  ? config.accessories.filter((id) => id !== acc.id)
+                  : [...config.accessories, acc.id];
+                updateConfig({ accessories: newAccessories });
+              }}
               style={buttonStyle(config.accessories.includes(acc.id))}
               onMouseEnter={(e) => {
                 if (!config.accessories.includes(acc.id)) {

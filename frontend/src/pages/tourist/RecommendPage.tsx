@@ -303,34 +303,34 @@ const RecommendPage: React.FC = () => {
       }}
     >
       {/* 标题区 */}
-      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+      <div style={{ textAlign: 'center', marginBottom: 40, padding: '24px 0' }}>
         <div style={{
-          width: 120, height: 2,
+          width: 200, height: 2,
           background: 'linear-gradient(90deg, transparent, var(--color-primary), transparent)',
-          margin: '0 auto 16px',
+          margin: '0 auto 20px',
         }} />
         <h2
           style={{
-            margin: '0 0 8px 0',
-            fontSize: isMobile ? '22px' : '28px',
+            margin: '0 0 12px 0',
+            fontSize: isMobile ? '28px' : '38px',
             fontWeight: 700,
             color: 'var(--text-primary)',
             fontFamily: 'var(--font-calligraphy)',
-            letterSpacing: 3,
+            letterSpacing: 6,
           }}
         >
           个性化路线推荐
         </h2>
         <p style={{
-          margin: 0, color: 'var(--text-tertiary)', fontSize: '15px',
-          fontFamily: 'var(--font-serif)', letterSpacing: 1,
+          margin: 0, color: 'var(--text-tertiary)', fontSize: '18px',
+          fontFamily: 'var(--font-serif)', letterSpacing: 2,
         }}>
           选择你的兴趣，AI 为你定制专属游览路线
         </p>
         <div style={{
-          width: 120, height: 2,
+          width: 200, height: 2,
           background: 'linear-gradient(90deg, transparent, var(--color-primary), transparent)',
-          margin: '12px auto 0',
+          margin: '16px auto 0',
         }} />
       </div>
 

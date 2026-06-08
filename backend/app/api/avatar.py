@@ -21,6 +21,8 @@ class AvatarCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     description: str | None = None
     model_path: str | None = None
+    # appearance_json keys: model, skin, hair, outfit, accessories,
+    #   costumeId (str), costumeMode ('auto'|'manual')
     appearance_json: dict | None = None
     voice_id: str | None = None
     emotion_presets: dict | None = None

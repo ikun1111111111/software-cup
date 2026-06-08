@@ -144,6 +144,8 @@ describe('AvatarAppearance', () => {
         hair: 'hair-1',
         outfit: 'outfit-1',
         accessories: ['acc-1'],
+        costumeMode: 'auto' as const,
+        costumeId: 'daily-classic',
       };
       render(<AvatarAppearance config={config} onChange={onChange} />);
 
@@ -171,6 +173,8 @@ describe('AvatarAppearance', () => {
         hair: 'hair-2',
         outfit: 'outfit-2',
         accessories: ['acc-1', 'acc-2'],
+        costumeMode: 'auto' as const,
+        costumeId: 'daily-classic',
       };
       render(<AvatarAppearance config={config} />);
 
