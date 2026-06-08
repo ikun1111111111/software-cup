@@ -8,7 +8,7 @@ export interface SSEMessage {
 
 export interface SSEOptions {
   onMessage?: (msg: SSEMessage) => void;
-  onError?: (error: Event) => void;
+  onError?: (error: any) => void;
   onOpen?: () => void;
   onClose?: () => void;
 }
@@ -18,7 +18,7 @@ export interface SSEReturn {
   connect: (url: string, body?: any) => void;
   disconnect: () => void;
   isConnected: boolean;
-  error: Event | null;
+  error: any;
 }
 
 const SSE_TIMEOUT_MS = 30000; // 30s timeout
@@ -31,7 +31,7 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
   const { onMessage, onError, onOpen, onClose } = options;
 
   const [isConnected, setIsConnected] = useState(false);
-  const [error, setError] = useState<Event | null>(null);
+  const [error, setError] = useState<any>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const doneReceivedRef = useRef(false);

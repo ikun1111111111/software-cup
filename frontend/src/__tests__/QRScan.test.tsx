@@ -27,7 +27,7 @@ describe('QRScan', () => {
   beforeEach(() => {
     mockStart.mockClear();
     mockStop.mockClear();
-    listSpotsSpy = vi.spyOn(spotsApi, 'listSpots').mockResolvedValue(mockSpots.slice(0, 3) as any);
+    listSpotsSpy = vi.spyOn(spotsApi, 'listSpots').mockResolvedValue(mockSpots.slice(0, 3) as any) as any;
   });
 
   afterEach(() => {

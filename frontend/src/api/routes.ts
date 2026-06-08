@@ -37,6 +37,7 @@ export interface RecommendRequest {
   session_id?: string;
   lat?: number;
   lng?: number;
+  limit?: number;
 }
 
 export const getRecommendations = async (params?: RecommendRequest): Promise<RecommendationResult[]> => {
