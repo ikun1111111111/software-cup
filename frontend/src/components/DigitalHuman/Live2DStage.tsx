@@ -79,10 +79,14 @@ export interface Live2DModelActions {
   motion: (group: string, index?: number) => void;
   setParameter: (id: string, value: number) => void;
   getModel: () => any;
+  /** Swap the model's body texture at runtime. */
+  switchTexture: (textureUrl: string) => Promise<void>;
 }
 
 export interface Live2DStageProps {
   modelPath: string;
+  /** Optional costume texture PNG path. When changed, the model reloads with the new texture. */
+  texturePath?: string;
   width?: number;
   height?: number;
   scale?: number;
@@ -97,6 +101,7 @@ const LAYOUT_TIMEOUT_MS = 3000;
 
 const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
   modelPath,
+  texturePath,
   width = 300,
   height = 400,
   scale = 0.15,
@@ -131,6 +136,27 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
       else if (id === 'ParamAngleZ') lipSyncValuesRef.current.angleZ = value;
     },
     getModel: () => modelRef.current,
+    switchTexture: async (textureUrl: string) => {
+      const model = modelRef.current;
+      if (!model) return;
+      try {
+        const pixi = await import('pixi.js');
+        const tex = await pixi.Assets.load(textureUrl);
+        // pixi-live2d-display stores textures on the internal sprite
+        const sprites = model.internalModel?.coreModel?._drawables;
+        if (sprites) {
+          // Try to find the first drawable with a texture and swap it
+          for (const sprite of Object.values(sprites) as any[]) {
+            if (sprite?.texture) {
+              sprite.texture = tex;
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[Live2DStage] switchTexture failed, texture may not exist:', textureUrl, e);
+      }
+    },
   }), []);
 
   // Notify parent of model actions ref
@@ -148,6 +174,37 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
       });
     }
   }, [onModelRef]);
+
+  // Apply costume texture when texturePath changes (without full model reload)
+  useEffect(() => {
+    if (!texturePath || !modelRef.current) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const pixi = await import('pixi.js');
+        const tex = await pixi.Assets.load(texturePath);
+        if (cancelled) return;
+        const core = modelRef.current?.internalModel?.coreModel;
+        if (!core) return;
+        // Cubism 4: iterate drawables, swap first texture-bearing slot
+        const count = core.getDrawableCount?.() ?? 0;
+        for (let i = 0; i < count; i++) {
+          const idx = core.getDrawableTextureIndex?.(i);
+          if (idx >= 0) {
+            // Swap via PIXI sprite if available
+            const sprites = modelRef.current.internalModel?.sprites;
+            if (sprites && sprites[i]) {
+              sprites[i].texture = tex;
+            }
+            break;
+          }
+        }
+      } catch {
+        // Texture file may not exist yet — silently ignore
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [texturePath]);
 
   // Click to trigger random motion
   const handleClick = useCallback(() => {
