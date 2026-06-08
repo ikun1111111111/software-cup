@@ -169,19 +169,19 @@ const renderSegment = (seg: TextSegment, idx: number): React.ReactNode => {
         <span
           key={idx}
           style={{
-            color: '#1A5FB4',
+            color: '#4A7A68',
             fontWeight: 600,
-            backgroundColor: 'rgba(26, 95, 180, 0.08)',
+            backgroundColor: 'rgba(106, 156, 137, 0.08)',
             padding: '0 4px',
             borderRadius: '4px',
             cursor: 'pointer',
             transition: 'background-color 150ms',
           }}
           onMouseEnter={(e) => {
-            (e.target as HTMLElement).style.backgroundColor = 'rgba(26, 95, 180, 0.15)';
+            (e.target as HTMLElement).style.backgroundColor = 'rgba(106, 156, 137, 0.15)';
           }}
           onMouseLeave={(e) => {
-            (e.target as HTMLElement).style.backgroundColor = 'rgba(26, 95, 180, 0.08)';
+            (e.target as HTMLElement).style.backgroundColor = 'rgba(106, 156, 137, 0.08)';
           }}
         >
           {seg.content}
@@ -379,19 +379,19 @@ const SourceTag: React.FC<{ source?: string }> = ({ source }) => {
     rag: {
       icon: <DatabaseOutlined style={{ fontSize: '10px' }} />,
       label: '知识库',
-      color: '#1A5FB4',
-      bg: 'rgba(26, 95, 180, 0.1)',
+      color: '#4A7A68',
+      bg: 'rgba(106, 156, 137, 0.1)',
     },
     cache: {
       icon: <SyncOutlined style={{ fontSize: '10px' }} />,
       label: '缓存',
-      color: '#8B5CF6',
-      bg: 'rgba(139, 92, 246, 0.1)',
+      color: '#C8A951',
+      bg: 'rgba(200, 169, 81, 0.1)',
     },
     offline: {
       icon: <CheckCircleOutlined style={{ fontSize: '10px' }} />,
       label: '离线',
-      color: '#7A7268',
+      color: '#7A7468',
       bg: 'rgba(122, 114, 104, 0.1)',
     },
   };
@@ -528,14 +528,14 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isUser, source, showSo
   const avatarConfig = useMemo(() => {
     if (isUser) {
       return {
-        bg: 'linear-gradient(135deg, #E8F0FE 0%, #D4E4FA 100%)',
-        color: '#1A5FB4',
+        bg: 'linear-gradient(135deg, #FCECE9 0%, #FDF5F3 100%)',
+        color: '#C84B31',
         icon: <span style={{ fontSize: '14px', fontWeight: 700 }}>你</span>,
-        border: '1.5px solid rgba(26, 95, 180, 0.15)',
+        border: '1.5px solid rgba(200, 75, 49, 0.15)',
       };
     }
     return {
-      bg: 'linear-gradient(135deg, #1A5FB4 0%, #3584E4 100%)',
+      bg: 'linear-gradient(135deg, #6A9C89 0%, #8CBFAD 100%)',
       color: '#fff',
       icon: <RobotOutlined style={{ fontSize: '16px' }} />,
       border: 'none',
@@ -554,6 +554,33 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isUser, source, showSo
     transform: visible ? 'translateY(0)' : 'translateY(12px)',
     transition: 'opacity 300ms ease-out, transform 300ms ease-out',
   };
+
+  // 书札/朱批气泡主体样式
+  const messageBodyStyle: React.CSSProperties = isUser
+    ? {
+        padding: '12px 16px',
+        borderRadius: 'var(--radius-lg) 0 0 var(--radius-lg)',
+        background: 'linear-gradient(135deg, #FCECE9 0%, #FDF5F3 100%)',
+        color: '#2A2520',
+        fontSize: '14.5px',
+        lineHeight: 1.75,
+        wordBreak: 'break-word',
+        boxShadow: '0 1px 6px rgba(26, 22, 20, 0.06)',
+        borderRight: '3px solid var(--color-accent)',
+        position: 'relative',
+      }
+    : {
+        padding: '14px 18px',
+        borderRadius: '0 var(--radius-lg) var(--radius-lg) 0',
+        background: 'linear-gradient(135deg, #FDFBF7 0%, #F5F3EE 100%)',
+        color: 'var(--text-primary)',
+        fontSize: '14.5px',
+        lineHeight: 1.75,
+        wordBreak: 'break-word',
+        boxShadow: '0 1px 6px rgba(26, 22, 20, 0.06)',
+        borderLeft: '3px solid var(--color-primary)',
+        position: 'relative',
+      };
 
   // 内容区域最大宽度
   const maxWidth = isUser ? '70%' : '78%';
@@ -595,8 +622,8 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isUser, source, showSo
           color: avatarConfig.color,
           border: avatarConfig.border,
           boxShadow: isUser
-            ? '0 2px 6px rgba(26, 95, 180, 0.1)'
-            : '0 2px 8px rgba(26, 95, 180, 0.25)',
+            ? '0 2px 6px rgba(200, 75, 49, 0.1)'
+            : '0 2px 8px rgba(106, 156, 137, 0.25)',
         }}
       >
         {avatarConfig.icon}
@@ -604,26 +631,11 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isUser, source, showSo
 
       {/* 内容区域 */}
       <div style={{ minWidth: 0, maxWidth, display: 'flex', flexDirection: 'column' }}>
-        {/* 气泡主体 */}
+        {/* 气泡主体 — 书札/朱批 */}
         <div
           ref={contentRef}
           className="chat-bubble-content"
-          style={{
-            padding: isUser ? '12px 16px' : '14px 18px',
-            borderRadius: isUser
-              ? '18px 18px 4px 18px'
-              : '18px 18px 18px 4px',
-            backgroundColor: isUser ? 'var(--color-primary)' : 'var(--surface-card)',
-            color: isUser ? '#fff' : 'var(--text-primary)',
-            fontSize: '14.5px',
-            lineHeight: 1.75,
-            wordBreak: 'break-word',
-            boxShadow: isUser
-              ? '0 2px 10px rgba(26, 95, 180, 0.18)'
-              : '0 1px 6px rgba(26, 22, 20, 0.06), 0 1px 2px rgba(26, 22, 20, 0.04)',
-            border: isUser ? 'none' : '1px solid var(--border-light)',
-            position: 'relative',
-          }}
+          style={messageBodyStyle}
         >
           {hasContent ? (
             <>

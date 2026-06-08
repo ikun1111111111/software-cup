@@ -75,8 +75,9 @@ const RecommendPage: React.FC = () => {
   useEffect(() => {
     setLoading(true);
     listRoutes(selectedType || undefined)
-      .then((data) => {
-        setRoutes(data);
+      .then((res) => {
+        const data = (res as any)?.data ?? res;
+        setRoutes(Array.isArray(data) ? data : []);
       })
       .catch(() => {
         setRoutes([]);
@@ -90,14 +91,16 @@ const RecommendPage: React.FC = () => {
     if (found) {
       setExpandedRoute(found.id);
       getRouteById(found.id)
-        .then((detail) => {
+        .then((res) => {
+          const detail = (res as any)?.data ?? res;
           setRouteDetail(detail);
-          const spotIds = detail.spot_order || [];
+          const spotIds: string[] = detail.spot_order || [];
           const cache: Record<string, SpotDetail> = {};
           Promise.all(
-            spotIds.map(async (id) => {
+            spotIds.map(async (spotId: string) => {
               try {
-                cache[id] = await getSpotById(id);
+                const sRes = await getSpotById(spotId);
+                cache[spotId] = (sRes as any)?.data ?? sRes;
               } catch {
                 /* skip */
               }
@@ -119,14 +122,16 @@ const RecommendPage: React.FC = () => {
       setExpandedRoute(routeId);
       setRouteDetail(null);
       try {
-        const detail = await getRouteById(routeId);
+        const res = await getRouteById(routeId);
+        const detail = (res as any)?.data ?? res;
         setRouteDetail(detail);
-        const spotIds = detail.spot_order || [];
+        const spotIds: string[] = detail.spot_order || [];
         const cache: Record<string, SpotDetail> = {};
         await Promise.all(
-          spotIds.map(async (id) => {
+          spotIds.map(async (spotId: string) => {
             try {
-              cache[id] = await getSpotById(id);
+              const sRes = await getSpotById(spotId);
+              cache[spotId] = (sRes as any)?.data ?? sRes;
             } catch {
               /* skip */
             }
@@ -168,14 +173,18 @@ const RecommendPage: React.FC = () => {
           <div
             style={{
               padding: isMobile ? '16px' : '20px',
-              background: route.gradient || 'linear-gradient(135deg, #1A5FB4 0%, #3584E4 100%)',
+              background: route.gradient || 'linear-gradient(135deg, #6A9C89 0%, #8CBFAD 100%)',
               color: '#fff',
               cursor: 'pointer',
+              position: 'relative',
             }}
             onClick={() => handleExpandRoute(route.id)}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>
+              <h3 style={{
+                margin: 0, fontSize: '18px', fontWeight: 700,
+                fontFamily: 'var(--font-calligraphy)', letterSpacing: 1,
+              }}>
                 {route.name}
               </h3>
               {isExpanded ? <UpOutlined style={{ fontSize: '12px' }} /> : <DownOutlined style={{ fontSize: '12px' }} />}
@@ -183,7 +192,8 @@ const RecommendPage: React.FC = () => {
             <div
               style={{
                 display: 'flex', gap: '20px', marginTop: '8px',
-                fontSize: '13px', opacity: 0.9,
+                fontSize: '14px', opacity: 0.9,
+                fontFamily: 'var(--font-serif)',
               }}
             >
               <span>
@@ -196,7 +206,8 @@ const RecommendPage: React.FC = () => {
             <p
               style={{
                 color: 'var(--text-secondary)', margin: '0 0 12px 0',
-                fontSize: '14px', lineHeight: 1.6,
+                fontSize: '15px', lineHeight: 1.8,
+                fontFamily: 'var(--font-serif)',
               }}
             >
               {route.description}
@@ -209,7 +220,12 @@ const RecommendPage: React.FC = () => {
                   borderTop: '1px solid var(--border-light)',
                 }}
               >
-                <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)' }}>
+                <div style={{
+                  fontSize: '15px', fontWeight: 700, marginBottom: '12px',
+                  color: 'var(--text-primary)', fontFamily: 'var(--font-calligraphy)', letterSpacing: 1,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                }}>
+                  <div style={{ width: 3, height: 16, background: 'var(--color-primary)', borderRadius: 2 }} />
                   路线景点
                 </div>
                 {routeDetail.spot_order.map((spotId, i) => {
@@ -224,6 +240,7 @@ const RecommendPage: React.FC = () => {
                         border: '1px solid var(--border-light)',
                         borderRadius: 'var(--radius-md)',
                         backgroundColor: 'var(--surface-card)',
+                        position: 'relative',
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
@@ -233,21 +250,28 @@ const RecommendPage: React.FC = () => {
                             background: 'var(--color-primary)', color: '#fff',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: '12px', fontWeight: 700, flexShrink: 0,
+                            fontFamily: 'var(--font-calligraphy)',
                           }}
                         >
                           {i + 1}
                         </span>
-                        <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        <span style={{
+                          fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)',
+                          fontFamily: 'var(--font-serif)',
+                        }}>
                           {spot?.name || spotId}
                         </span>
                       </div>
                       {spot?.overview && (
-                        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                        <div style={{
+                          fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px',
+                          fontFamily: 'var(--font-serif)', lineHeight: 1.6,
+                        }}>
                           {spot.overview}
                         </div>
                       )}
                       {detail?.讲解重点 && detail.讲解重点.length > 0 && (
-                        <div style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+                        <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-serif)' }}>
                           <div style={{ fontWeight: 500, marginBottom: '4px' }}>讲解重点：</div>
                           <ul style={{ margin: '0 0 0 16px', padding: 0 }}>
                             {detail.讲解重点.map((p, j) => <li key={j}>{p}</li>)}
@@ -269,32 +293,45 @@ const RecommendPage: React.FC = () => {
   return (
     <div
       data-testid="recommend-page"
-      className="ink-wash-bg"
+      className="paper-texture"
       style={{
-        padding: isMobile ? '16px' : '24px',
-        maxWidth: '900px',
+        padding: isMobile ? '20px' : '32px',
+        maxWidth: '1100px',
         margin: '0 auto',
-        paddingBottom: isMobile ? '80px' : '24px',
+        paddingBottom: isMobile ? '80px' : '48px',
+        minHeight: 'calc(100vh - 120px)',
       }}
     >
-      <div style={{ marginBottom: '20px' }}>
+      {/* 标题区 */}
+      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+        <div style={{
+          width: 120, height: 2,
+          background: 'linear-gradient(90deg, transparent, var(--color-primary), transparent)',
+          margin: '0 auto 16px',
+        }} />
         <h2
           style={{
-            margin: '0 0 4px 0',
-            fontSize: isMobile ? '18px' : '20px',
+            margin: '0 0 8px 0',
+            fontSize: isMobile ? '22px' : '28px',
             fontWeight: 700,
             color: 'var(--text-primary)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
+            fontFamily: 'var(--font-calligraphy)',
+            letterSpacing: 3,
           }}
         >
-          <CompassOutlined style={{ color: 'var(--color-primary)' }} />
           个性化路线推荐
         </h2>
-        <p style={{ margin: 0, color: 'var(--text-tertiary)', fontSize: '14px' }}>
+        <p style={{
+          margin: 0, color: 'var(--text-tertiary)', fontSize: '15px',
+          fontFamily: 'var(--font-serif)', letterSpacing: 1,
+        }}>
           选择你的兴趣，AI 为你定制专属游览路线
         </p>
+        <div style={{
+          width: 120, height: 2,
+          background: 'linear-gradient(90deg, transparent, var(--color-primary), transparent)',
+          margin: '12px auto 0',
+        }} />
       </div>
 
       {/* DNA Profile Section */}
@@ -365,8 +402,9 @@ const RecommendPage: React.FC = () => {
         className="scroll-tags"
         data-testid="interest-tags"
         style={{
-          marginBottom: '20px',
+          marginBottom: '24px',
           flexWrap: isMobile ? 'nowrap' : 'wrap',
+          justifyContent: 'center',
         }}
       >
         {INTEREST_OPTIONS.map((option) => {
@@ -384,6 +422,8 @@ const RecommendPage: React.FC = () => {
                 backgroundColor: selected ? 'var(--color-primary-bg)' : undefined,
                 color: selected ? 'var(--color-primary)' : undefined,
                 fontWeight: selected ? 600 : undefined,
+                fontFamily: 'var(--font-serif)',
+                letterSpacing: 1,
               }}
             >
               {option.label}
@@ -396,15 +436,14 @@ const RecommendPage: React.FC = () => {
       <div style={{ marginBottom: '24px' }}>
         <div
           style={{
-            fontSize: '16px',
-            fontWeight: 600,
+            fontSize: '16px', fontWeight: 700,
             color: 'var(--text-primary)',
             marginBottom: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
+            display: 'flex', alignItems: 'center', gap: '8px',
+            fontFamily: 'var(--font-calligraphy)', letterSpacing: 1,
           }}
         >
+          <div style={{ width: 3, height: 18, background: 'var(--color-accent)', borderRadius: 2 }} />
           <CompassOutlined style={{ color: 'var(--color-accent)' }} />
           AI 智能推荐
         </div>
@@ -443,15 +482,14 @@ const RecommendPage: React.FC = () => {
       <div>
         <div
           style={{
-            fontSize: '16px',
-            fontWeight: 600,
+            fontSize: '16px', fontWeight: 700,
             color: 'var(--text-primary)',
             marginBottom: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
+            display: 'flex', alignItems: 'center', gap: '8px',
+            fontFamily: 'var(--font-calligraphy)', letterSpacing: 1,
           }}
         >
+          <div style={{ width: 3, height: 18, background: 'var(--color-primary)', borderRadius: 2 }} />
           <CompassOutlined style={{ color: 'var(--color-primary)' }} />
           预设路线
         </div>
@@ -460,8 +498,8 @@ const RecommendPage: React.FC = () => {
           style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 200ms' }}
         >
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-tertiary)' }}>
-              加载中...
+            <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-serif)' }}>
+              墨韵渐染...
             </div>
           ) : routes.length > 0 ? (
             routes.map((route, index) => renderRouteCard(route, index))
@@ -476,7 +514,9 @@ const RecommendPage: React.FC = () => {
               }}
             >
               <CompassOutlined style={{ fontSize: '40px', marginBottom: '12px', color: 'var(--gray-300)' }} />
-              <div style={{ fontSize: '15px', fontWeight: 500 }}>暂无匹配的推荐路线</div>
+              <div style={{ fontSize: '15px', fontWeight: 500, fontFamily: 'var(--font-serif)' }}>
+                暂无匹配的推荐路线
+              </div>
             </div>
           )}
         </div>

@@ -78,6 +78,12 @@ const QUICK_QUESTIONS: QuickQuestion[] = [
     color: '#13c2c2',
   },
   {
+    text: '景区开放时间',
+    icon: <BulbOutlined />,
+    category: '服务',
+    color: '#E67E22',
+  },
+  {
     text: '怎么去灵山胜境？',
     icon: <CompassOutlined />,
     category: '交通',
@@ -430,7 +436,7 @@ const ChatPage: React.FC = () => {
 
       addMessage(userMessage);
       setInputText('');
-      setEmotion('thinking');
+      setEmotion('think');
 
       const assistantMessage: Message = {
         id: `msg_${Date.now() + 1}`,
@@ -502,7 +508,7 @@ const ChatPage: React.FC = () => {
       };
 
       addMessage(userMessage);
-      setEmotion('thinking');
+      setEmotion('think');
 
       const assistantMessage: Message = {
         id: `msg_${Date.now() + 1}`,
@@ -594,7 +600,7 @@ const ChatPage: React.FC = () => {
           width: 240,
           height: 240,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(26,95,180,0.05) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(106,156,137,0.05) 0%, transparent 70%)',
           pointerEvents: 'none',
         }}
       />
@@ -895,7 +901,7 @@ const ChatPage: React.FC = () => {
                   </div>
                 </button>
               ))}
-              {/* 听故事按钮 */}
+              {/* 听故事按钮 — 红色醒目主题 */}
               <button
                 className="animate-fade-in-up"
                 onClick={() => handleStory('灵山大佛')}
@@ -906,24 +912,22 @@ const ChatPage: React.FC = () => {
                   alignItems: 'flex-start',
                   gap: '8px',
                   padding: '14px 14px',
-                  backgroundColor: 'var(--surface-card)',
-                  border: '1.5px solid var(--border-light)',
+                  background: 'linear-gradient(135deg, #C84B31 0%, #A33D28 100%)',
+                  border: '1.5px solid rgba(200, 75, 49, 0.6)',
                   borderRadius: '14px',
                   cursor: 'pointer',
                   textAlign: 'left',
                   transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
-                  boxShadow: '0 1px 4px rgba(26, 22, 20, 0.04)',
-                  opacity: storyLoading ? 0.6 : 1,
+                  boxShadow: '0 4px 16px rgba(200, 75, 49, 0.25)',
+                  opacity: storyLoading ? 0.7 : 1,
                 }}
                 onMouseEnter={(e) => {
                   if (storyLoading) return;
-                  e.currentTarget.style.borderColor = '#C84B31';
-                  e.currentTarget.style.boxShadow = '0 2px 12px #C84B3118';
+                  e.currentTarget.style.boxShadow = '0 6px 24px rgba(200, 75, 49, 0.4)';
                   e.currentTarget.style.transform = 'translateY(-2px)';
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--border-light)';
-                  e.currentTarget.style.boxShadow = '0 1px 4px rgba(26, 22, 20, 0.04)';
+                  e.currentTarget.style.boxShadow = '0 4px 16px rgba(200, 75, 49, 0.25)';
                   e.currentTarget.style.transform = 'translateY(0)';
                 }}
               >
@@ -935,8 +939,8 @@ const ChatPage: React.FC = () => {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    backgroundColor: 'rgba(200, 75, 49, 0.08)',
-                    color: '#C84B31',
+                    backgroundColor: 'rgba(255,255,255,0.2)',
+                    color: '#fff',
                     fontSize: '14px',
                     flexShrink: 0,
                   }}
@@ -947,7 +951,7 @@ const ChatPage: React.FC = () => {
                   <div
                     style={{
                       fontSize: '11px',
-                      color: '#C84B31',
+                      color: 'rgba(255,255,255,0.85)',
                       fontWeight: 600,
                       marginBottom: '3px',
                       textTransform: 'uppercase',
@@ -959,7 +963,7 @@ const ChatPage: React.FC = () => {
                   <div
                     style={{
                       fontSize: '13px',
-                      color: 'var(--text-primary)',
+                      color: '#fff',
                       fontWeight: 500,
                       lineHeight: 1.4,
                     }}
@@ -1040,7 +1044,7 @@ const ChatPage: React.FC = () => {
             onKeyPress={handleKeyPress}
             onFocus={() => setInputFocused(true)}
             onBlur={() => setInputFocused(false)}
-            placeholder="问小景任何问题…"
+            placeholder="寻一处胜地..."
             disabled={isStreaming}
             style={{
               width: '100%',
@@ -1054,7 +1058,7 @@ const ChatPage: React.FC = () => {
                 ? '1.5px solid var(--color-primary)'
                 : '1.5px solid var(--border-light)',
               boxShadow: inputFocused
-                ? '0 0 0 3px rgba(26, 95, 180, 0.1), inset 0 1px 2px rgba(26, 22, 20, 0.02)'
+                ? '0 0 0 3px rgba(106, 156, 137, 0.1), inset 0 1px 2px rgba(26, 22, 20, 0.02)'
                 : 'inset 0 1px 2px rgba(26, 22, 20, 0.02)',
               transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
             }}
@@ -1077,11 +1081,11 @@ const ChatPage: React.FC = () => {
             justifyContent: 'center',
             background: (!inputText.trim() || isStreaming)
               ? 'var(--gray-200)'
-              : 'linear-gradient(135deg, #1A5FB4 0%, #3584E4 100%)',
+              : 'linear-gradient(135deg, #C84B31 0%, #E85D3A 100%)',
             border: 'none',
             boxShadow: (!inputText.trim() || isStreaming)
               ? 'none'
-              : '0 2px 10px rgba(26, 95, 180, 0.3)',
+              : '0 2px 10px rgba(200, 75, 49, 0.3)',
             transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
             fontSize: '16px',
           }}
@@ -1101,8 +1105,8 @@ const ChatPage: React.FC = () => {
           display: 'flex',
           flexDirection: isMobile ? 'column' : 'row',
           height: isMobile
-            ? 'calc(100vh - 56px - 56px)'
-            : 'calc(100vh - 56px - 48px)',
+            ? 'calc(100vh - 60px)'
+            : 'calc(100vh - 60px)',
           overflow: 'hidden',
         }}
       >

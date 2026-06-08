@@ -17,6 +17,7 @@ from app.core.analytics import (
     heatmap_stats,
 )
 from app.tasks.report_task import generate_report_task, get_report_status
+from app.services.crowd_predict import get_crowd_prediction, get_best_time, get_crowd_alerts
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -119,6 +120,98 @@ class ReportStatusResponse(BaseModel):
     content: str | None = None
     period: str | None = None
     generated_at: str | None = None
+
+
+# ── Crowd Prediction endpoints (M12) ─────────────────────────────────────────
+
+
+class HourlyPrediction(BaseModel):
+    hour: int
+    predicted_visitors: int
+    crowd_level: str
+    emoji: str
+
+
+class CrowdPredictionResponse(BaseModel):
+    target_date: str
+    is_weekend: bool
+    predictions: dict[str, list[HourlyPrediction]]
+
+
+class BestTimeResponse(BaseModel):
+    attraction_name: str
+    best_time: str
+    reason: str
+    hourly: list[HourlyPrediction]
+
+
+class CrowdAlertItem(BaseModel):
+    attraction_name: str
+    level: str
+    peak_hours: list[int]
+    max_predicted: int
+    suggestion: str
+
+
+class CrowdAlertResponse(BaseModel):
+    target_date: str
+    threshold: int
+    alerts: list[CrowdAlertItem]
+    total_alerts: int
+
+
+@router.get("/crowd", response_model=CrowdPredictionResponse)
+async def crowd_prediction(
+    attraction_name: str | None = Query(None, description="景点名称"),
+    target_date: str | None = Query(None, description="目标日期 YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Predict crowd levels for scenic spots by hour."""
+    from datetime import date as dt_date
+    td = None
+    if target_date:
+        try:
+            td = dt_date.fromisoformat(target_date)
+        except ValueError:
+            pass
+    result = await get_crowd_prediction(db, attraction_name=attraction_name, target_date=td)
+    return result
+
+
+@router.get("/crowd/best-time", response_model=BestTimeResponse)
+async def crowd_best_time(
+    attraction_name: str = Query(..., description="景点名称"),
+    target_date: str | None = Query(None, description="目标日期 YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Recommend the best visiting time for a scenic spot."""
+    from datetime import date as dt_date
+    td = None
+    if target_date:
+        try:
+            td = dt_date.fromisoformat(target_date)
+        except ValueError:
+            pass
+    result = await get_best_time(db, attraction_name, target_date=td)
+    return result
+
+
+@router.get("/crowd/alert", response_model=CrowdAlertResponse)
+async def crowd_alert(
+    threshold: int = Query(150, ge=1, description="拥挤阈值"),
+    target_date: str | None = Query(None, description="目标日期 YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get crowd alerts — spots predicted to exceed threshold."""
+    from datetime import date as dt_date
+    td = None
+    if target_date:
+        try:
+            td = dt_date.fromisoformat(target_date)
+        except ValueError:
+            pass
+    result = await get_crowd_alerts(db, threshold=threshold, target_date=td)
+    return result
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────

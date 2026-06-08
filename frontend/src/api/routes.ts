@@ -40,7 +40,8 @@ export interface RecommendRequest {
 }
 
 export const getRecommendations = async (params?: RecommendRequest): Promise<RecommendationResult[]> => {
-  const resp = await get<RecommendationResult[]>('/recommend', params);
+  const sessionId = params?.session_id || 'web-' + Date.now().toString(36);
+  const resp = await get<any>('/recommend', { ...params, session_id: sessionId, limit: params?.limit || 5 });
   return resp.data;
 };
 
