@@ -111,14 +111,17 @@ const MetricsCard: React.FC<MetricsCardProps> = ({
             width: 44,
             height: 44,
             backgroundColor: typeof color === 'string' && color.startsWith('#')
-              ? `${color}12`
-              : 'rgba(200, 75, 49, 0.08)',
+              ? `${color}18`
+              : 'rgba(200, 75, 49, 0.12)',
             borderRadius: 'var(--radius-md)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '20px',
+            fontSize: '22px',
             color: color,
+            border: typeof color === 'string' && color.startsWith('#')
+              ? `1px solid ${color}30`
+              : '1px solid rgba(200, 75, 49, 0.18)',
           }}
         >
           {icon}

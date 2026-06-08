@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { DatabaseOutlined, QuestionCircleOutlined, UploadOutlined, PlusOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DatabaseOutlined, QuestionCircleOutlined, UploadOutlined, PlusOutlined, DeleteOutlined, ReloadOutlined, InboxOutlined, FileTextOutlined, BookOutlined } from '@ant-design/icons';
 import DocumentUpload from '../../components/admin/DocumentUpload';
 import ChunkPreview from '../../components/admin/ChunkPreview';
 import FAQEditor from '../../components/admin/FAQEditor';
@@ -328,8 +328,37 @@ const KnowledgePage: React.FC = () => {
 
               <div data-testid="doc-list">
                 {documents.length === 0 && !loadingDocs && (
-                  <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-tertiary)' }}>
-                    暂无文档，请点击右上角上传
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '48px 24px',
+                    color: 'var(--text-tertiary)',
+                    borderRadius: 'var(--radius-lg)',
+                    border: '2px dashed var(--border-light)',
+                    backgroundColor: 'rgba(247, 245, 240, 0.5)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '16px',
+                  }}>
+                    <div style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: '50%',
+                      backgroundColor: 'rgba(200, 75, 49, 0.06)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <InboxOutlined style={{ fontSize: 28, color: 'var(--vermilion)', opacity: 0.6 }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                        暂无文档
+                      </div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>
+                        点击右上角上传按钮，开始构建知识库
+                      </div>
+                    </div>
                   </div>
                 )}
                 {documents.map((doc) => {
@@ -478,8 +507,37 @@ const KnowledgePage: React.FC = () => {
 
               <div data-testid="faq-list">
                 {faqs.length === 0 && !loadingFaqs && (
-                  <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-tertiary)' }}>
-                    暂无FAQ，请点击右上角新建
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '48px 24px',
+                    color: 'var(--text-tertiary)',
+                    borderRadius: 'var(--radius-lg)',
+                    border: '2px dashed var(--border-light)',
+                    backgroundColor: 'rgba(247, 245, 240, 0.5)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '16px',
+                  }}>
+                    <div style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: '50%',
+                      backgroundColor: 'rgba(201, 169, 110, 0.08)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <BookOutlined style={{ fontSize: 28, color: 'var(--gold-leaf)', opacity: 0.7 }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}>
+                        暂无FAQ
+                      </div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>
+                        点击右上角新建按钮，添加常见问题解答
+                      </div>
+                    </div>
                   </div>
                 )}
                 {(() => {

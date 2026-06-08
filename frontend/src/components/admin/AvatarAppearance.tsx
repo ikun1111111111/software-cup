@@ -156,12 +156,10 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
             style={{
               padding: '4px 12px',
               fontSize: 11,
-              borderRadius: 14,
-              border: liveCostumeMode === 'auto'
-                ? '1px solid rgba(106, 156, 137, 0.5)'
-                : '1px solid var(--border-light)',
-              backgroundColor: liveCostumeMode === 'auto' ? 'rgba(106, 156, 137, 0.08)' : 'transparent',
-              color: liveCostumeMode === 'auto' ? '#6A9C89' : 'var(--text-tertiary)',
+              borderRadius: 12,
+              border: liveCostumeMode === 'auto' ? '1px solid var(--accent)' : '1px solid var(--border-light)',
+              backgroundColor: liveCostumeMode === 'auto' ? 'var(--accent)' : 'transparent',
+              color: liveCostumeMode === 'auto' ? '#fff' : 'var(--text-tertiary)',
               cursor: 'pointer',
               transition: 'all 200ms',
               fontWeight: 500,
@@ -174,12 +172,12 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
         {liveCostumeMode === 'auto' && (
           <div style={{
             padding: '10px 14px',
-            background: 'rgba(106, 156, 137, 0.06)',
-            borderRadius: 8,
+            background: 'rgba(200, 75, 49, 0.06)',
+            borderRadius: 'var(--radius-md)',
             fontSize: 12,
-            color: '#6A9C89',
-            marginBottom: 12,
-            border: '1px solid rgba(106, 156, 137, 0.12)',
+            color: 'var(--accent)',
+            marginBottom: 10,
+            border: '1px dashed rgba(200, 75, 49, 0.15)',
           }}>
             系统自动匹配：<strong>{getCostume(liveCostumeId).name}</strong> — {getCostume(liveCostumeId).description}
           </div>

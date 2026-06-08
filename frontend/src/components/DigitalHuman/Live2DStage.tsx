@@ -509,12 +509,12 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
             <div style={{
               width: 36,
               height: 36,
-              border: '3px solid #E8E5DF',
-              borderTopColor: '#1A5FB4',
+              border: '3px solid var(--border-light)',
+              borderTopColor: 'var(--accent)',
               borderRadius: '50%',
               animation: 'spin 0.8s linear infinite',
             }} />
-            <span style={{ fontSize: '13px', color: '#A8A198' }}>数字人加载中...</span>
+            <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>数字人加载中...</span>
           </div>
         </div>
       )}

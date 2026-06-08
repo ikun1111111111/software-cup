@@ -1,5 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { DownloadOutlined, FileTextOutlined } from '@ant-design/icons';
+import {
+  DownloadOutlined,
+  FileTextOutlined,
+  LoadingOutlined,
+  FileSearchOutlined,
+  BulbOutlined,
+  CalendarOutlined,
+  EyeInvisibleOutlined,
+} from '@ant-design/icons';
 import { message } from 'antd';
 import { Document, Paragraph, TextRun, HeadingLevel, Packer, AlignmentType } from 'docx';
 import { saveAs } from 'file-saver';
@@ -292,7 +300,9 @@ const ReportPage: React.FC = () => {
 
   return (
     <div data-testid="report-page" className="animate-scroll-unfold" style={{
-      padding: isMobile ? '16px' : '28px',
+      padding: isMobile ? '16px' : '32px',
+      maxWidth: 1440,
+      margin: '0 auto',
     }}>
       <PageTransition>
         <div style={{
@@ -314,7 +324,15 @@ const ReportPage: React.FC = () => {
             }}>
               游客感受度报告
             </h1>
-            <span style={{ fontSize: '14px', color: 'var(--text-tertiary)' }}>
+            <span style={{
+              fontSize: '14px',
+              color: 'var(--text-tertiary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              marginTop: '4px',
+            }}>
+              <CalendarOutlined style={{ fontSize: '12px', opacity: 0.7 }} />
               {report?.period || (startDate && endDate ? `${startDate} 至 ${endDate}` : '请选择日期范围')}
             </span>
           </div>
@@ -378,14 +396,90 @@ const ReportPage: React.FC = () => {
         )}
 
         {!report?.content && !generating && (
-          <PaperPanel style={{ marginBottom: 24, padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-            暂无报告，请点击右上角生成
+          <PaperPanel style={{ marginBottom: 24 }}>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '48px 24px',
+              gap: '16px',
+              textAlign: 'center',
+            }}>
+              <div style={{
+                width: 64,
+                height: 64,
+                borderRadius: '50%',
+                backgroundColor: 'rgba(200, 75, 49, 0.06)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <FileSearchOutlined style={{ fontSize: 28, color: 'var(--vermilion)', opacity: 0.6 }} />
+              </div>
+              <div>
+                <div style={{
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  marginBottom: '6px',
+                }}>
+                  暂无分析报告
+                </div>
+                <div style={{
+                  fontSize: '13px',
+                  color: 'var(--text-tertiary)',
+                  maxWidth: 320,
+                  lineHeight: 1.6,
+                }}>
+                  点击右上角「生成报告」按钮，系统将基于近期交互数据生成游客感受度分析
+                </div>
+              </div>
+            </div>
           </PaperPanel>
         )}
 
         {generating && !report?.content && (
-          <PaperPanel style={{ marginBottom: 24, padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-            报告生成中，请稍候...
+          <PaperPanel style={{ marginBottom: 24 }}>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '48px 24px',
+              gap: '16px',
+              textAlign: 'center',
+            }}>
+              <div style={{
+                width: 64,
+                height: 64,
+                borderRadius: '50%',
+                backgroundColor: 'rgba(201, 169, 110, 0.08)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <LoadingOutlined style={{ fontSize: 28, color: 'var(--gold-leaf)' }} className="animate-spin" />
+              </div>
+              <div>
+                <div style={{
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  color: 'var(--text-secondary)',
+                  marginBottom: '6px',
+                }}>
+                  正在生成分析报告
+                </div>
+                <div style={{
+                  fontSize: '13px',
+                  color: 'var(--text-tertiary)',
+                  maxWidth: 320,
+                  lineHeight: 1.6,
+                }}>
+                  系统正在分析近期交互数据，提取情感趋势与知识盲区，请稍候...
+                </div>
+              </div>
+            </div>
           </PaperPanel>
         )}
 
@@ -413,8 +507,33 @@ const ReportPage: React.FC = () => {
               {blindSpots.length > 0 ? (
                 <InscriptionList items={blindSpotItems} />
               ) : (
-                <div style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>
-                  {report?.content ? '未从报告中解析到盲区数据' : '请生成报告后查看'}
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '36px 16px',
+                  gap: '12px',
+                  textAlign: 'center',
+                }}>
+                  <div style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(128, 128, 128, 0.06)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <EyeInvisibleOutlined style={{ fontSize: 20, color: 'var(--text-tertiary)', opacity: 0.7 }} />
+                  </div>
+                  <div style={{
+                    fontSize: '13px',
+                    color: 'var(--text-tertiary)',
+                    lineHeight: 1.5,
+                  }}>
+                    {report?.content ? '未从报告中解析到盲区数据' : '请生成报告后查看'}
+                  </div>
                 </div>
               )}
             </div>
@@ -424,8 +543,33 @@ const ReportPage: React.FC = () => {
               {suggestions.length > 0 ? (
                 <InscriptionList items={suggestionItems} />
               ) : (
-                <div style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>
-                  {report?.content ? '未从报告中解析到建议数据' : '请生成报告后查看'}
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '36px 16px',
+                  gap: '12px',
+                  textAlign: 'center',
+                }}>
+                  <div style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(74, 124, 111, 0.06)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <BulbOutlined style={{ fontSize: 20, color: 'var(--mountain-mid)', opacity: 0.7 }} />
+                  </div>
+                  <div style={{
+                    fontSize: '13px',
+                    color: 'var(--text-tertiary)',
+                    lineHeight: 1.5,
+                  }}>
+                    {report?.content ? '未从报告中解析到建议数据' : '请生成报告后查看'}
+                  </div>
                 </div>
               )}
             </div>
