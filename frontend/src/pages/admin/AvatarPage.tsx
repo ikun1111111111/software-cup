@@ -69,7 +69,7 @@ const mapBackendToLocal = (backend: Awaited<ReturnType<typeof getActiveAvatar>>)
 });
 
 const AvatarPage: React.FC = () => {
-  const { cssFilter } = useCostume();
+  const { cssFilter, texturePaths, costumeId: liveCostumeId, mode: liveCostumeMode, selectCostume, resetToAuto } = useCostume();
   const [config, setConfig] = useState<LocalConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -130,6 +130,8 @@ const AvatarPage: React.FC = () => {
           hair: config.appearance.hair,
           outfit: config.appearance.outfit,
           accessories: config.appearance.accessories,
+          costumeMode: config.appearance.costumeMode,
+          costumeId: config.appearance.costumeId,
         },
         voiceId: config.voiceId,
         welcomeMessage: config.welcomeMessage,
@@ -355,6 +357,7 @@ const AvatarPage: React.FC = () => {
                       emotion="neutral"
                       expression={getExpressionForAppearance(config.appearance)}
                       cssFilter={cssFilter}
+                      texturePaths={texturePaths}
                       onReady={() => console.log('[AvatarPage] Preview ready')}
                     />
                   </div>
@@ -449,7 +452,14 @@ const AvatarPage: React.FC = () => {
               <PaperPanel>
                 {activeTab === 0 && (
                   <div data-testid="appearance-section">
-                    <AvatarAppearance config={config.appearance} onChange={handleAppearanceChange} />
+                    <AvatarAppearance
+                      config={config.appearance}
+                      onChange={handleAppearanceChange}
+                      activeCostumeId={liveCostumeId}
+                      activeCostumeMode={liveCostumeMode}
+                      onCostumeSelect={selectCostume}
+                      onCostumeAutoToggle={() => liveCostumeMode === 'auto' ? selectCostume(liveCostumeId) : resetToAuto()}
+                    />
                   </div>
                 )}
                 {activeTab === 1 && (

@@ -4,17 +4,18 @@ import type * as PIXI from 'pixi.js';
 let Live2DModel: any = null;
 let MotionPreloadStrategy: any = null;
 let cubismLoaded = false;
+let pixiModule: any = null;
 
 async function loadCubismRuntime() {
   if (cubismLoaded) return;
   try {
     const pixi = await import('pixi.js');
+    pixiModule = pixi;
     const live2d = await import('pixi-live2d-display/cubism4');
     Live2DModel = live2d.Live2DModel;
     MotionPreloadStrategy = live2d.MotionPreloadStrategy;
     (Live2DModel as any).registerTicker?.(pixi.Ticker);
 
-    // Patch PIXI v7 EventBoundary to avoid isInteractive crash with pixi-live2d-display
     const EventBoundary = (pixi as any).EventBoundary;
     const patchMethod = (methodName: string) => {
       if (EventBoundary?.prototype?.[methodName]) {
@@ -23,9 +24,7 @@ async function loadCubismRuntime() {
           try {
             return original.apply(this, args);
           } catch (e: any) {
-            if (e?.message?.includes('isInteractive')) {
-              return null;
-            }
+            if (e?.message?.includes('isInteractive')) return null;
             throw e;
           }
         };
@@ -34,9 +33,6 @@ async function loadCubismRuntime() {
     patchMethod('hitTestMoveRecursive');
     patchMethod('hitTestRecursive');
 
-    // Fix: some GPUs (especially integrated) report MAX_TEXTURE_IMAGE_UNITS = 0,
-    // which causes checkMaxIfStatementsInShader(0, gl) to throw.
-    // Override BatchRenderer.prototype.contextChange with a safe version.
     const BatchRenderer = (pixi as any).BatchRenderer;
     if (BatchRenderer?.prototype?.contextChange && !(BatchRenderer.prototype.contextChange as any).__safe) {
       const settings = (pixi as any).settings;
@@ -46,17 +42,14 @@ async function loadCubismRuntime() {
 
       BatchRenderer.prototype.contextChange = function safeContextChange(this: any) {
         try {
-          // Try original first
           origContextChange.call(this);
         } catch {
-          // GPU returned 0 for MAX_TEXTURE_IMAGE_UNITS — build a minimal working state
           const gl = this.renderer?.gl;
           const maxTex = gl ? Math.max(gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) || 0, 1) : 1;
           this.maxTextures = settings?.PREFER_ENV === ENV?.WEBGL_LEGACY ? 1 : maxTex;
           try {
             if (checkMax) this.maxTextures = checkMax(this.maxTextures, gl);
           } catch {
-            // Even clamped value failed — use absolute minimum
             this.maxTextures = 1;
           }
           this._shader = this.shaderGenerator.generateShader(this.maxTextures);
@@ -87,6 +80,8 @@ export interface Live2DStageProps {
   modelPath: string;
   /** Optional costume texture PNG path. When changed, the model reloads with the new texture. */
   texturePath?: string;
+  /** Costume texture paths (2 files: texture_00 and texture_01). Takes precedence over texturePath. */
+  texturePaths?: [string, string];
   /** CSS filter applied to the canvas for costume visual variation. */
   cssFilter?: string;
   width?: number;
@@ -101,9 +96,31 @@ export interface Live2DStageProps {
 
 const LAYOUT_TIMEOUT_MS = 3000;
 
+/** Parse a CSS filter string into a PIXI ColorMatrixFilter array. */
+function buildColorFilter(cssFilter?: string): any[] {
+  if (!cssFilter || cssFilter === 'none') return [];
+  if (!pixiModule?.ColorMatrixFilter) return [];
+
+  const cmf = new pixiModule.ColorMatrixFilter();
+  const hueMatch = cssFilter.match(/hue-rotate\(([^)]+)\)/);
+  const satMatch = cssFilter.match(/saturate\(([^)]+)\)/);
+  const briMatch = cssFilter.match(/brightness\(([^)]+)\)/);
+  const conMatch = cssFilter.match(/contrast\(([^)]+)\)/);
+  const sepMatch = cssFilter.match(/sepia\(([^)]+)\)/);
+
+  if (sepMatch) cmf.sepia(false);
+  if (hueMatch) cmf.hue(parseFloat(hueMatch[1]), false);
+  if (satMatch) cmf.saturate(parseFloat(satMatch[1]) - 1, false);
+  if (briMatch) cmf.brightness(parseFloat(briMatch[1]), false);
+  if (conMatch) cmf.contrast(parseFloat(conMatch[1]), false);
+
+  return [cmf];
+}
+
 const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
   modelPath,
   texturePath,
+  texturePaths,
   cssFilter,
   width = 300,
   height = 400,
@@ -119,6 +136,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
   const appRef = useRef<any>(null);
   const modelRef = useRef<any>(null);
   const roRef = useRef<ResizeObserver | null>(null);
+  const colorFilterRef = useRef<any[]>([]);
   // Lip sync values applied via ticker (after idle motion) to avoid override
   const lipSyncValuesRef = useRef({ mouthOpenY: 0, mouthForm: 0, angleZ: 0 });
   const [isLoading, setIsLoading] = useState(true);
@@ -143,7 +161,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
       const model = modelRef.current;
       if (!model) return;
       try {
-        const pixi = await import('pixi.js');
+        const pixi = pixiModule || await import('pixi.js');
         const tex = await pixi.Assets.load(textureUrl);
         // pixi-live2d-display stores textures on the internal sprite
         const sprites = model.internalModel?.coreModel?._drawables;
@@ -179,36 +197,33 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
     }
   }, [onModelRef]);
 
-  // Apply costume texture when texturePath changes (without full model reload)
+  // Apply costume textures when texturePaths changes or model finishes loading.
+  // isLoading is a dep so the initial textures get applied once the model is ready.
   useEffect(() => {
-    if (!texturePath || !modelRef.current) return;
+    const paths = texturePaths || (texturePath ? [texturePath] : null);
+    if (!paths || !modelRef.current || isLoading) return;
     let cancelled = false;
     (async () => {
       try {
-        const pixi = await import('pixi.js');
-        const tex = await pixi.Assets.load(texturePath);
+        const pixi = pixiModule || await import('pixi.js');
+        const loaded = await Promise.all(paths.map((p: string) => pixi.Assets.load(p)));
         if (cancelled) return;
-        const core = modelRef.current?.internalModel?.coreModel;
-        if (!core) return;
-        // Cubism 4: iterate drawables, swap first texture-bearing slot
-        const count = core.getDrawableCount?.() ?? 0;
-        for (let i = 0; i < count; i++) {
-          const idx = core.getDrawableTextureIndex?.(i);
-          if (idx >= 0) {
-            // Swap via PIXI sprite if available
-            const sprites = modelRef.current.internalModel?.sprites;
-            if (sprites && sprites[i]) {
-              sprites[i].texture = tex;
-            }
-            break;
-          }
+        const model = modelRef.current;
+        if (!model?.textures) return;
+        for (let i = 0; i < loaded.length && i < model.textures.length; i++) {
+          model.textures[i] = loaded[i];
         }
-      } catch {
-        // Texture file may not exist yet — silently ignore
+      } catch (e) {
+        console.warn('[Live2DStage] texture swap failed:', e);
       }
     })();
     return () => { cancelled = true; };
-  }, [texturePath]);
+  }, [texturePaths, texturePath, isLoading]);
+
+  // Update color filter ref when cssFilter changes (ticker applies it per-frame)
+  useEffect(() => {
+    colorFilterRef.current = buildColorFilter(cssFilter);
+  }, [cssFilter]);
 
   // Click to trigger random motion
   const handleClick = useCallback(() => {
@@ -222,7 +237,8 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
     }
   }, []);
 
-  // Initialize PIXI app and load model
+  // Initialize PIXI app and load model — only re-runs when modelPath changes.
+  // Size/position changes are handled by ResizeObserver (no full reload).
   useEffect(() => {
     if (!canvasRef.current || !modelPath) return;
 
@@ -236,46 +252,41 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         setIsLoading(true);
         setError(null);
 
-        // Destroy previous app if exists
         if (appRef.current) {
           appRef.current.destroy(true);
           appRef.current = null;
           modelRef.current = null;
         }
 
-        // Dynamically load Cubism runtime + PIXI
         await loadCubismRuntime();
-        const pixi = await import('pixi.js');
+        const pixi = pixiModule || await import('pixi.js');
+        (window as any).__pixi_module = pixi;
 
-        // Wait for container to have real dimensions.
-        // requestAnimationFrame runs before layout, so we use setTimeout to let
-        // the browser finish layout first, then read bounding rect.
+        // Wait for container dimensions with timeout fallback
         const waitForLayout = () =>
           new Promise<void>((resolve) => {
-            setTimeout(() => {
+            let elapsed = 0;
+            const poll = () => {
               if (destroyed) return resolve();
               const rect = containerRef.current?.getBoundingClientRect();
               if (rect && rect.width > 0 && rect.height > 0) return resolve();
-              // One more frame as fallback
-              requestAnimationFrame(() => resolve());
-            }, 50);
+              elapsed += 50;
+              if (elapsed >= LAYOUT_TIMEOUT_MS) return resolve();
+              setTimeout(poll, 50);
+            };
+            poll();
           });
 
         await waitForLayout();
         if (destroyed) return;
 
-        // Use actual rendered dimensions, fall back to props if container is zero-sized
         const rect = containerRef.current!.getBoundingClientRect();
         const w = Math.max(Math.floor(rect.width) || width, 1);
         const h = Math.max(Math.floor(rect.height) || height, 1);
 
-        // Set canvas size explicitly before creating renderer
         canvas.width = w;
         canvas.height = h;
 
-        // Create PIXI Application with verified dimensions
-        // Disable PIXI's event system — pixi-live2d-display v0.4 uses v6 API
-        // (isInteractive() removed in v7). We handle mouse tracking via native DOM events.
         const app = new pixi.Application({
           view: canvas,
           width: w,
@@ -289,7 +300,6 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
 
         appRef.current = app;
 
-        // Load Live2D model
         const model = await Live2DModel.from(modelPath, {
           motionPreload: MotionPreloadStrategy.IDLE,
           autoInteract: false,
@@ -300,8 +310,6 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
           return;
         }
 
-        // Enable built-in lip sync so our parameter updates are applied on top of idle motion
-        // Register ticker callback to apply lip sync values AFTER idle motion updates
         app.ticker.add(() => {
           const v = lipSyncValuesRef.current;
           const core = model.internalModel?.coreModel;
@@ -311,16 +319,16 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
             core.setParameterValueById('ParamMouthForm', v.mouthForm);
           }
           core.setParameterValueById('ParamAngleZ', v.angleZ);
+          const cf = colorFilterRef.current;
+          model.filters = cf.length > 0 ? cf : null;
         });
 
-        // Auto-fit: scale model to fit entirely within canvas
+        // Auto-fit model to canvas
         model.scale.set(scale);
         const curW = model.width || 0;
         const curH = model.height || 0;
         if (curW > 0 && curH > 0) {
-          const unscaledW = curW / scale;
-          const unscaledH = curH / scale;
-          const fitScale = Math.min(w / unscaledW, h / unscaledH) * 0.92;
+          const fitScale = Math.min(w / (curW / scale), h / (curH / scale)) * 0.92;
           model.scale.set(fitScale);
         }
         model.anchor.set(0.5, 0.5);
@@ -330,8 +338,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         app.stage.addChild(model);
         modelRef.current = model;
 
-        // ResizeObserver: keep renderer in sync with container size changes
-        // and fix the "thin line" bug caused by zero-size reads during init.
+        // ResizeObserver handles all size changes — no need to recreate the app
         const ro = new ResizeObserver((entries) => {
           if (destroyed || !appRef.current || !modelRef.current) return;
           for (const entry of entries) {
@@ -356,8 +363,6 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         }
         roRef.current = ro;
 
-        // Use native DOM events instead of PIXI events to avoid
-        // isInteractive compatibility issues
         clickHandler = () => handleClick();
         canvas.addEventListener('click', clickHandler);
 
@@ -369,6 +374,8 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
           modelRef.current.focus(px, py);
         };
         canvas.addEventListener('mousemove', moveHandler);
+
+        colorFilterRef.current = buildColorFilter(cssFilter);
 
         setIsLoading(false);
         onModelLoaded?.(model);
@@ -405,9 +412,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         appRef.current = null;
       }
     };
-  }, [modelPath, width, height, scale, x, y, handleClick]);
-
-  console.log('[Live2DStage] cssFilter prop:', cssFilter);
+  }, [modelPath, handleClick]);
 
   return (
     <div
@@ -417,8 +422,6 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         position: 'relative',
         width,
         height,
-        filter: cssFilter && cssFilter !== 'none' ? cssFilter : undefined,
-        transition: 'filter 0.6s ease',
       }}
     >
       <canvas

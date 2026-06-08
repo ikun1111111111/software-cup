@@ -12,11 +12,11 @@ export interface CostumeDef {
   id: string;
   name: string;
   category: CostumeCategory;
-  /** Texture PNG path under public/models/haru/textures/ */
-  texturePath: string;
+  /** Texture PNG paths (2 files: texture_00 and texture_01) */
+  texturePaths: [string, string];
   /** Live2D expression to pair with this costume */
   expression: string;
-  /** CSS filter applied to the Live2D canvas for visual costume variation */
+  /** CSS filter fallback (kept for backward compat) */
   cssFilter: string;
   /** Short description shown in UI */
   description: string;
@@ -32,7 +32,10 @@ export const COSTUMES: Record<string, CostumeDef> = {
     id: 'daily-classic',
     name: '素雅禅衣',
     category: 'daily',
-    texturePath: '/models/haru/textures/daily_classic.png',
+    texturePaths: [
+      '/models/haru/textures/daily_classic_00.png',
+      '/models/haru/textures/daily_classic_01.png',
+    ],
     expression: 'f00',
     cssFilter: 'none',
     description: '米白浅灰汉服，简约禅意',
@@ -43,7 +46,10 @@ export const COSTUMES: Record<string, CostumeDef> = {
     id: 'daily-modern',
     name: '新中式便装',
     category: 'daily',
-    texturePath: '/models/haru/textures/daily_modern.png',
+    texturePaths: [
+      '/models/haru/textures/daily_modern_00.png',
+      '/models/haru/textures/daily_modern_01.png',
+    ],
     expression: 'f01',
     cssFilter: 'brightness(1.08) saturate(1.15) hue-rotate(-10deg)',
     description: '改良旗袍元素，现代感',
@@ -54,7 +60,10 @@ export const COSTUMES: Record<string, CostumeDef> = {
     id: 'daily-artistic',
     name: '水墨雅服',
     category: 'daily',
-    texturePath: '/models/haru/textures/daily_artistic.png',
+    texturePaths: [
+      '/models/haru/textures/daily_artistic_00.png',
+      '/models/haru/textures/daily_artistic_01.png',
+    ],
     expression: 'f02',
     cssFilter: 'saturate(0.6) brightness(1.05) contrast(1.1)',
     description: '水墨风印花，飘逸感',
@@ -67,7 +76,10 @@ export const COSTUMES: Record<string, CostumeDef> = {
     id: 'festival-spring',
     name: '锦绣红袍',
     category: 'festival',
-    texturePath: '/models/haru/textures/festival_spring.png',
+    texturePaths: [
+      '/models/haru/textures/festival_spring_00.png',
+      '/models/haru/textures/festival_spring_01.png',
+    ],
     expression: 'f03',
     cssFilter: 'hue-rotate(-30deg) saturate(1.5) brightness(1.05)',
     description: '红色旗袍/汉服，金线刺绣',
@@ -78,7 +90,10 @@ export const COSTUMES: Record<string, CostumeDef> = {
     id: 'festival-lantern',
     name: '灯彩华裳',
     category: 'festival',
-    texturePath: '/models/haru/textures/festival_lantern.png',
+    texturePaths: [
+      '/models/haru/textures/festival_lantern_00.png',
+      '/models/haru/textures/festival_lantern_01.png',
+    ],
     expression: 'f04',
     cssFilter: 'sepia(0.3) saturate(1.4) brightness(1.1) hue-rotate(-15deg)',
     description: '彩灯元素，暖色调',
@@ -89,7 +104,10 @@ export const COSTUMES: Record<string, CostumeDef> = {
     id: 'festival-qingming',
     name: '踏青轻衣',
     category: 'festival',
-    texturePath: '/models/haru/textures/festival_qingming.png',
+    texturePaths: [
+      '/models/haru/textures/festival_qingming_00.png',
+      '/models/haru/textures/festival_qingming_01.png',
+    ],
     expression: 'f05',
     cssFilter: 'hue-rotate(60deg) saturate(0.9) brightness(1.08)',
     description: '青绿色，春意盎然',
@@ -100,7 +118,10 @@ export const COSTUMES: Record<string, CostumeDef> = {
     id: 'festival-dragon',
     name: '龙舟竞渡',
     category: 'festival',
-    texturePath: '/models/haru/textures/festival_dragon.png',
+    texturePaths: [
+      '/models/haru/textures/festival_dragon_00.png',
+      '/models/haru/textures/festival_dragon_01.png',
+    ],
     expression: 'f06',
     cssFilter: 'hue-rotate(180deg) saturate(0.8) brightness(1.1) contrast(1.05)',
     description: '蓝白配色，龙纹点缀',
@@ -111,7 +132,10 @@ export const COSTUMES: Record<string, CostumeDef> = {
     id: 'festival-midautumn',
     name: '月华裳',
     category: 'festival',
-    texturePath: '/models/haru/textures/festival_midautumn.png',
+    texturePaths: [
+      '/models/haru/textures/festival_midautumn_00.png',
+      '/models/haru/textures/festival_midautumn_01.png',
+    ],
     expression: 'f07',
     cssFilter: 'sepia(0.15) hue-rotate(20deg) saturate(1.2) brightness(1.12)',
     description: '桂花金+月白，桂花元素',
@@ -122,7 +146,10 @@ export const COSTUMES: Record<string, CostumeDef> = {
     id: 'festival-national',
     name: '锦绣华章',
     category: 'festival',
-    texturePath: '/models/haru/textures/festival_national.png',
+    texturePaths: [
+      '/models/haru/textures/festival_national_00.png',
+      '/models/haru/textures/festival_national_01.png',
+    ],
     expression: 'f03',
     cssFilter: 'hue-rotate(-20deg) saturate(1.6) brightness(1.08) contrast(1.05)',
     description: '中国红+金，庄重大气',

@@ -23,6 +23,14 @@ export interface AppearanceConfig {
 export interface AvatarAppearanceProps {
   config?: AppearanceConfig;
   onChange?: (config: AppearanceConfig) => void;
+  /** Costume ID from parent's useCostume (overrides internal state) */
+  activeCostumeId?: string;
+  /** Costume mode from parent */
+  activeCostumeMode?: 'auto' | 'manual';
+  /** Called when user selects a costume */
+  onCostumeSelect?: (costumeId: string) => void;
+  /** Called when user toggles auto mode */
+  onCostumeAutoToggle?: () => void;
 }
 
 export const MODELS = [
@@ -89,9 +97,16 @@ const categoryLabel: React.CSSProperties = {
 const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
   config: propConfig,
   onChange,
+  activeCostumeId: propCostumeId,
+  activeCostumeMode: propCostumeMode,
+  onCostumeSelect,
+  onCostumeAutoToggle,
 }) => {
   const [config, setConfig] = useState<AppearanceConfig>(propConfig || DEFAULT_CONFIG);
-  const { costumeId: liveCostumeId, mode: liveCostumeMode, selectCostume, resetToAuto } = useCostume();
+  const fallbackCostume = useCostume();
+  // Use parent-provided costume state when available, otherwise use internal hook
+  const liveCostumeId = propCostumeId ?? fallbackCostume.costumeId;
+  const liveCostumeMode = propCostumeMode ?? fallbackCostume.mode;
 
   const updateConfig = useCallback((updates: Partial<AppearanceConfig>) => {
     const newConfig = { ...config, ...updates };
@@ -100,18 +115,26 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
   }, [config, onChange]);
 
   const handleCostumeSelect = useCallback((costumeId: string) => {
-    selectCostume(costumeId);
+    if (onCostumeSelect) {
+      onCostumeSelect(costumeId);
+    } else {
+      fallbackCostume.selectCostume(costumeId);
+    }
     updateConfig({ costumeId, costumeMode: 'manual' });
-  }, [selectCostume, updateConfig]);
+  }, [onCostumeSelect, fallbackCostume, updateConfig]);
 
   const handleAutoToggle = useCallback(() => {
-    if (liveCostumeMode === 'auto') {
-      updateConfig({ costumeMode: 'manual' });
+    if (onCostumeAutoToggle) {
+      onCostumeAutoToggle();
     } else {
-      resetToAuto();
-      updateConfig({ costumeMode: 'auto', costumeId: liveCostumeId });
+      if (liveCostumeMode === 'auto') {
+        fallbackCostume.selectCostume(liveCostumeId);
+      } else {
+        fallbackCostume.resetToAuto();
+      }
     }
-  }, [liveCostumeMode, liveCostumeId, resetToAuto, updateConfig]);
+    updateConfig({ costumeMode: liveCostumeMode === 'auto' ? 'manual' : 'auto', costumeId: liveCostumeId });
+  }, [onCostumeAutoToggle, liveCostumeMode, liveCostumeId, fallbackCostume, updateConfig]);
 
   const handleHairChange = useCallback((hairId: string) => {
     updateConfig({ hair: hairId });
