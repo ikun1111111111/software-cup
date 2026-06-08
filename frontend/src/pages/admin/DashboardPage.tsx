@@ -82,7 +82,6 @@ const DashboardPage: React.FC = () => {
       className="animate-scroll-unfold"
       style={{
         padding: isMobile ? '16px' : '28px',
-        paddingLeft: 64,
       }}
     >
       <PageTransition>

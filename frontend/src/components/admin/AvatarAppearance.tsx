@@ -13,31 +13,31 @@ export interface AvatarAppearanceProps {
   onChange?: (config: AppearanceConfig) => void;
 }
 
-const MODELS = [
+export const MODELS = [
   { id: 'model-1', name: '默认模型' },
   { id: 'model-2', name: '古风模型' },
   { id: 'model-3', name: '现代模型' },
 ];
 
-const SKINS = [
+export const SKINS = [
   { id: 'skin-1', name: '默认肤色', color: '#FDDCB5' },
   { id: 'skin-2', name: '白皙', color: '#FFF5E1' },
   { id: 'skin-3', name: '小麦色', color: '#D4A574' },
 ];
 
-const HAIRS = [
+export const HAIRS = [
   { id: 'hair-1', name: '黑色长发' },
   { id: 'hair-2', name: '棕色短发' },
   { id: 'hair-3', name: '金色卷发' },
 ];
 
-const OUTFITS = [
+export const OUTFITS = [
   { id: 'outfit-1', name: '传统汉服' },
   { id: 'outfit-2', name: '现代正装' },
   { id: 'outfit-3', name: '休闲装' },
 ];
 
-const ACCESSORIES = [
+export const ACCESSORIES = [
   { id: 'acc-1', name: '发簪' },
   { id: 'acc-2', name: '耳环' },
   { id: 'acc-3', name: '项链' },
@@ -89,22 +89,58 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
 
   const buttonStyle = (isSelected: boolean): React.CSSProperties => ({
     padding: '8px 16px',
-    backgroundColor: isSelected ? '#1A5FB4' : '#F8F6F2',
-    color: isSelected ? '#fff' : '#5C554C',
-    border: isSelected ? '1.5px solid #1A5FB4' : '1px solid #E8E5DF',
-    borderRadius: '8px',
+    backgroundColor: isSelected ? 'rgba(200, 75, 49, 0.08)' : 'transparent',
+    color: isSelected ? '#A83828' : 'var(--text-secondary)',
+    border: isSelected ? '1.5px solid rgba(200, 75, 49, 0.35)' : '1px solid var(--border-light)',
+    borderRadius: 'var(--radius-md)',
     cursor: 'pointer',
     fontSize: '13px',
     fontWeight: isSelected ? 600 : 400,
-    transition: 'all 200ms',
+    transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+    letterSpacing: isSelected ? '0.02em' : 'normal',
   });
+
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    marginBottom: '10px',
+    fontWeight: 600,
+    fontSize: '13px',
+    color: 'var(--text-primary)',
+    fontFamily: 'var(--font-serif)',
+    letterSpacing: '0.05em',
+  };
+
+  const sectionStyle: React.CSSProperties = {
+    marginBottom: '20px',
+    paddingBottom: '20px',
+    borderBottom: '1px solid var(--border-light)',
+  };
 
   return (
     <div data-testid="avatar-appearance" style={{ padding: '20px' }}>
-      <h3 style={{ margin: '0 0 18px 0', fontSize: '15px', fontWeight: 600, color: '#1A1614' }}>外观配置</h3>
+      <h3 style={{
+        margin: '0 0 20px 0',
+        fontSize: '16px',
+        fontWeight: 700,
+        color: 'var(--text-primary)',
+        fontFamily: 'var(--font-serif)',
+        letterSpacing: '0.08em',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+      }}>
+        <span style={{
+          width: 3,
+          height: 18,
+          backgroundColor: 'var(--vermilion)',
+          borderRadius: '0 2px 2px 0',
+          opacity: 0.8,
+        }} />
+        外观配置
+      </h3>
 
-      <div style={{ marginBottom: '18px' }}>
-        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, fontSize: '13px', color: '#5C554C' }}>模型</label>
+      <div style={sectionStyle}>
+        <label style={labelStyle}>模型</label>
         <div data-testid="model-list" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {MODELS.map((model) => (
             <button
@@ -112,6 +148,18 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
               data-testid={`model-${model.id}`}
               onClick={() => handleModelChange(model.id)}
               style={buttonStyle(config.model === model.id)}
+              onMouseEnter={(e) => {
+                if (config.model !== model.id) {
+                  e.currentTarget.style.backgroundColor = 'rgba(200, 75, 49, 0.04)';
+                  e.currentTarget.style.borderColor = 'rgba(200, 75, 49, 0.2)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (config.model !== model.id) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.borderColor = 'var(--border-light)';
+                }
+              }}
             >
               {model.name}
             </button>
@@ -119,8 +167,8 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
         </div>
       </div>
 
-      <div style={{ marginBottom: '18px' }}>
-        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, fontSize: '13px', color: '#5C554C' }}>肤色</label>
+      <div style={sectionStyle}>
+        <label style={labelStyle}>肤色</label>
         <div data-testid="skin-list" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {SKINS.map((skin) => (
             <button
@@ -128,16 +176,39 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
               data-testid={`skin-${skin.id}`}
               onClick={() => handleSkinChange(skin.id)}
               style={buttonStyle(config.skin === skin.id)}
+              onMouseEnter={(e) => {
+                if (config.skin !== skin.id) {
+                  e.currentTarget.style.backgroundColor = 'rgba(200, 75, 49, 0.04)';
+                  e.currentTarget.style.borderColor = 'rgba(200, 75, 49, 0.2)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (config.skin !== skin.id) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.borderColor = 'var(--border-light)';
+                }
+              }}
             >
-              <span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: '50%', backgroundColor: skin.color, marginRight: 6, verticalAlign: 'middle' }} />
+              <span style={{
+                display: 'inline-block',
+                width: 14,
+                height: 14,
+                borderRadius: '50%',
+                backgroundColor: skin.color,
+                marginRight: 8,
+                verticalAlign: 'middle',
+                border: '1.5px solid rgba(0,0,0,0.08)',
+                boxShadow: config.skin === skin.id ? '0 0 0 2px rgba(200,75,49,0.2)' : 'none',
+                transition: 'box-shadow 200ms',
+              }} />
               {skin.name}
             </button>
           ))}
         </div>
       </div>
 
-      <div style={{ marginBottom: '18px' }}>
-        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, fontSize: '13px', color: '#5C554C' }}>发型</label>
+      <div style={sectionStyle}>
+        <label style={labelStyle}>发型</label>
         <div data-testid="hair-list" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {HAIRS.map((hair) => (
             <button
@@ -145,6 +216,18 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
               data-testid={`hair-${hair.id}`}
               onClick={() => handleHairChange(hair.id)}
               style={buttonStyle(config.hair === hair.id)}
+              onMouseEnter={(e) => {
+                if (config.hair !== hair.id) {
+                  e.currentTarget.style.backgroundColor = 'rgba(200, 75, 49, 0.04)';
+                  e.currentTarget.style.borderColor = 'rgba(200, 75, 49, 0.2)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (config.hair !== hair.id) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.borderColor = 'var(--border-light)';
+                }
+              }}
             >
               {hair.name}
             </button>
@@ -152,8 +235,8 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
         </div>
       </div>
 
-      <div style={{ marginBottom: '18px' }}>
-        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, fontSize: '13px', color: '#5C554C' }}>服装</label>
+      <div style={sectionStyle}>
+        <label style={labelStyle}>服装</label>
         <div data-testid="outfit-list" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {OUTFITS.map((outfit) => (
             <button
@@ -161,6 +244,18 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
               data-testid={`outfit-${outfit.id}`}
               onClick={() => handleOutfitChange(outfit.id)}
               style={buttonStyle(config.outfit === outfit.id)}
+              onMouseEnter={(e) => {
+                if (config.outfit !== outfit.id) {
+                  e.currentTarget.style.backgroundColor = 'rgba(200, 75, 49, 0.04)';
+                  e.currentTarget.style.borderColor = 'rgba(200, 75, 49, 0.2)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (config.outfit !== outfit.id) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.borderColor = 'var(--border-light)';
+                }
+              }}
             >
               {outfit.name}
             </button>
@@ -169,7 +264,7 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
       </div>
 
       <div style={{ marginBottom: '0' }}>
-        <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, fontSize: '13px', color: '#5C554C' }}>配饰</label>
+        <label style={labelStyle}>配饰</label>
         <div data-testid="accessory-list" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           {ACCESSORIES.map((acc) => (
             <button
@@ -177,6 +272,18 @@ const AvatarAppearance: React.FC<AvatarAppearanceProps> = ({
               data-testid={`acc-${acc.id}`}
               onClick={() => toggleAccessory(acc.id)}
               style={buttonStyle(config.accessories.includes(acc.id))}
+              onMouseEnter={(e) => {
+                if (!config.accessories.includes(acc.id)) {
+                  e.currentTarget.style.backgroundColor = 'rgba(200, 75, 49, 0.04)';
+                  e.currentTarget.style.borderColor = 'rgba(200, 75, 49, 0.2)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!config.accessories.includes(acc.id)) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.borderColor = 'var(--border-light)';
+                }
+              }}
             >
               {acc.name}
             </button>

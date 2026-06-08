@@ -295,7 +295,6 @@ const ReportPage: React.FC = () => {
       paddingTop: isMobile ? '16px' : '28px',
       paddingRight: isMobile ? '16px' : '28px',
       paddingBottom: isMobile ? '16px' : '28px',
-      paddingLeft: 64,
     }}>
       <PageTransition>
         <div style={{

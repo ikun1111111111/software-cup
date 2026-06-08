@@ -106,9 +106,31 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
         width,
         height,
         borderRadius: '16px',
-        background: 'linear-gradient(180deg, #F0F4FF 0%, #E8F0FE 50%, #F8F6F2 100%)',
+        background: 'linear-gradient(180deg, rgba(247,245,240,0.9) 0%, rgba(237,232,222,0.85) 60%, rgba(222,214,200,0.7) 100%)',
+        overflow: 'hidden',
       }}
     >
+      {/* 宣纸纹理 overlay */}
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        opacity: 0.35,
+        backgroundImage: `url("data:image/svg+xml,%3Csvg width='120' height='120' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E")`,
+        pointerEvents: 'none',
+        zIndex: 1,
+      }} />
+      {/* 淡墨山水装饰 - 底部远山轮廓 */}
+      <div style={{
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: '35%',
+        background: 'linear-gradient(180deg, transparent 0%, rgba(168,156,140,0.08) 40%, rgba(140,128,112,0.15) 100%)',
+        borderRadius: '0 0 16px 16px',
+        pointerEvents: 'none',
+        zIndex: 1,
+      }} />
       {/* Live2D Model */}
       <Live2DStage
         modelPath={modelPath}
@@ -144,54 +166,38 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
         onTimeUpdateMs={handleTimeUpdateMs}
       />
 
-      {/* Debug: mouth value indicator */}
-      <div style={{
-        position: 'absolute',
-        top: 8,
-        right: 8,
-        padding: '3px 8px',
-        backgroundColor: 'rgba(0,0,0,0.7)',
-        borderRadius: 6,
-        fontSize: 11,
-        fontFamily: 'monospace',
-        color: mouthValue > 0.3 ? '#4ade80' : '#f87171',
-        zIndex: 10,
-        pointerEvents: 'none',
-      }}>
-        mouth: {mouthValue.toFixed(2)}
-      </div>
-
       {/* Speaking indicator */}
       {isSpeaking && (
         <div style={{
           position: 'absolute',
-          bottom: 12,
+          bottom: 16,
           left: '50%',
           transform: 'translateX(-50%)',
           display: 'flex',
           alignItems: 'center',
-          gap: '6px',
-          padding: '4px 12px',
-          backgroundColor: 'rgba(26, 95, 180, 0.85)',
-          borderRadius: '12px',
-          backdropFilter: 'blur(4px)',
+          gap: '8px',
+          padding: '6px 16px',
+          backgroundColor: 'rgba(42, 37, 32, 0.65)',
+          borderRadius: 'var(--radius-pill)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 10,
         }}>
-          <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '3px', alignItems: 'flex-end', height: 16 }}>
             {[0, 1, 2].map(i => (
               <div
                 key={i}
                 style={{
                   width: 3,
-                  height: 8 + Math.random() * 8,
-                  backgroundColor: '#fff',
+                  height: 6 + (i + 1) * 4,
+                  backgroundColor: 'var(--gold-leaf)',
                   borderRadius: 2,
-                  animation: `soundBar 0.${4 + i}s ease-in-out infinite alternate`,
-                  animationDelay: `${i * 0.1}s`,
+                  animation: `soundBar 0.${5 + i}s ease-in-out infinite alternate`,
+                  animationDelay: `${i * 0.12}s`,
                 }}
               />
             ))}
           </div>
-          <span style={{ fontSize: '11px', color: '#fff', fontWeight: 500 }}>讲解中...</span>
+          <span style={{ fontSize: '12px', color: '#F3EFE6', fontWeight: 500, letterSpacing: '0.05em' }}>讲解中</span>
         </div>
       )}
 

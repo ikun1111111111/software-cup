@@ -216,7 +216,6 @@ const KnowledgePage: React.FC = () => {
   return (
     <div data-testid="knowledge-page" className="animate-scroll-unfold" style={{
       padding: isMobile ? '16px' : '28px',
-      paddingLeft: 64,
     }}>
       <PageTransition>
         <h1 style={{

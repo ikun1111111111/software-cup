@@ -33,7 +33,6 @@ import FloatingAssistant from './components/DigitalHuman/FloatingAssistant';
 import InkEntryOverlay from './components/DigitalHuman/InkEntryOverlay';
 import PushCard from './components/Notification/PushCard';
 import { usePushNotification } from './hooks/usePushNotification';
-import ScrollNav from './components/admin/ScrollNav';
 import { FloatingParticles } from './components/ui';
 
 const theme = {
@@ -372,17 +371,12 @@ function App() {
           <Route path="/leaderboard" element={<Leaderboard />} />
 
           <Route path="/admin/*" element={
-            <>
-              <ScrollNav />
-              <div style={{ paddingLeft: 64 }}>
-                <Routes>
-                  <Route path="/" element={<KnowledgePage />} />
-                  <Route path="avatar" element={<AvatarPage />} />
-                  <Route path="report" element={<ReportPage />} />
-                  <Route path="dashboard" element={<DashboardPage />} />
-                </Routes>
-              </div>
-            </>
+            <Routes>
+              <Route path="/" element={<KnowledgePage />} />
+              <Route path="avatar" element={<AvatarPage />} />
+              <Route path="report" element={<ReportPage />} />
+              <Route path="dashboard" element={<DashboardPage />} />
+            </Routes>
           } />
 
           <Route path="*" element={<NotFound />} />
