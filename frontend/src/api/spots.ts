@@ -7,6 +7,8 @@ export interface Spot {
   tags: string[] | null;
   overview: string;
   qr_code: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface SpotDetail extends Spot {

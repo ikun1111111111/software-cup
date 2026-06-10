@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { Routes, Route, Link, Navigate, useLocation } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
@@ -11,6 +11,41 @@ import {
   LineChartOutlined,
   MessageOutlined,
 } from '@ant-design/icons';
+
+import HomePage from './pages/tourist/HomePage';
+import AttractionList from './pages/tourist/AttractionList';
+import AttractionDetail from './pages/tourist/AttractionDetail';
+import NotFound from './pages/NotFound';
+import FloatingAssistant from './components/DigitalHuman/FloatingAssistant';
+import InkEntryOverlay from './components/DigitalHuman/InkEntryOverlay';
+import PushCard from './components/Notification/PushCard';
+import { usePushNotification } from './hooks/usePushNotification';
+import { FloatingParticles } from './components/ui';
+
+// 路由级代码分割 — 非首屏页面延迟加载
+const RecommendPage = React.lazy(() => import('./pages/tourist/RecommendPage'));
+const TouristDashboard = React.lazy(() => import('./pages/tourist/TouristDashboard'));
+const HistoryExplore = React.lazy(() => import('./pages/tourist/HistoryExplore'));
+const Leaderboard = React.lazy(() => import('./pages/tourist/Leaderboard'));
+const VRMDemo = React.lazy(() => import('./pages/tourist/VRMDemo'));
+const MemoryPage = React.lazy(() => import('./pages/tourist/MemoryPage'));
+const MapGuidePage = React.lazy(() => import('./pages/tourist/MapGuidePage'));
+const KnowledgePage = React.lazy(() => import('./pages/admin/KnowledgePage'));
+const AvatarPage = React.lazy(() => import('./pages/admin/AvatarPage'));
+const SpeakingDemo = React.lazy(() => import('./pages/admin/SpeakingDemo'));
+const ReportPage = React.lazy(() => import('./pages/admin/ReportPage'));
+const DashboardPage = React.lazy(() => import('./pages/admin/DashboardPage'));
+
+// 路由加载占位
+const RouteLoading: React.FC = () => (
+  <div style={{
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    minHeight: '60vh', color: 'var(--text-tertiary)',
+    fontFamily: 'var(--font-serif)', fontSize: 16, letterSpacing: 2,
+  }}>
+    墨韵渐染...
+  </div>
+);
 
 /* — 禅意导航图标 — */
 const iconProps = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', xmlns: 'http://www.w3.org/2000/svg' } as const;
@@ -82,24 +117,17 @@ const IconGem = () => (
   </svg>
 );
 
-import HomePage from './pages/tourist/HomePage';
-import ChatPage from './pages/tourist/ChatPage';
-import RecommendPage from './pages/tourist/RecommendPage';
-import TouristDashboard from './pages/tourist/TouristDashboard';
-import AttractionList from './pages/tourist/AttractionList';
-import AttractionDetail from './pages/tourist/AttractionDetail';
-import HistoryExplore from './pages/tourist/HistoryExplore';
-import Leaderboard from './pages/tourist/Leaderboard';
-import KnowledgePage from './pages/admin/KnowledgePage';
-import AvatarPage from './pages/admin/AvatarPage';
-import ReportPage from './pages/admin/ReportPage';
-import DashboardPage from './pages/admin/DashboardPage';
-import NotFound from './pages/NotFound';
-import FloatingAssistant from './components/DigitalHuman/FloatingAssistant';
-import InkEntryOverlay from './components/DigitalHuman/InkEntryOverlay';
-import PushCard from './components/Notification/PushCard';
-import { usePushNotification } from './hooks/usePushNotification';
-import { FloatingParticles } from './components/ui';
+/** 旅行记忆 — 书卷 */
+const IconMemory = () => (
+  <svg {...iconProps}>
+    <path d="M4 4C4 4 6 3 8 3C10 3 12 4 12 4V20C12 20 10 19 8 19C6 19 4 20 4 20V4Z" {...stroke} strokeWidth={1.4} />
+    <path d="M20 4C20 4 18 3 16 3C14 3 12 4 12 4V20C12 20 14 19 16 19C18 19 20 20 20 20V4Z" {...stroke} strokeWidth={1.4} />
+    <path d="M7 8H10" {...stroke} strokeWidth={1.0} opacity={0.5} />
+    <path d="M14 8H17" {...stroke} strokeWidth={1.0} opacity={0.5} />
+    <path d="M7 12H10" {...stroke} strokeWidth={1.0} opacity={0.5} />
+    <path d="M14 12H17" {...stroke} strokeWidth={1.0} opacity={0.5} />
+  </svg>
+);
 
 const theme = {
   token: {
@@ -130,12 +158,11 @@ interface NavLink {
 
 const touristLinks: NavLink[] = [
   { to: '/', label: '胜境启扉', icon: <IconGate /> },
-  { to: '/chat', label: '禅语问讯', icon: <IconChat /> },
   { to: '/explore', label: '云游胜境', icon: <IconCloud /> },
   { to: '/attractions', label: '莲台宝地', icon: <IconLotus /> },
   { to: '/recommend', label: '禅径通幽', icon: <IconPath /> },
   { to: '/history', label: '岁月禅痕', icon: <IconMoon /> },
-  { to: '/leaderboard', label: '胜境甄选', icon: <IconGem /> },
+  { to: '/memory', label: '旅行记忆', icon: <IconMemory /> },
 ];
 
 const adminLinks: NavLink[] = [
@@ -178,7 +205,10 @@ function Header() {
       display: 'flex',
       alignItems: 'center',
       gap: 8,
-      padding: '0 20px',
+      paddingTop: 'env(safe-area-inset-top, 0px)',
+      paddingLeft: 20,
+      paddingRight: 20,
+      paddingBottom: 0,
       height: 60,
       background: transparent
         ? 'rgba(247, 245, 240, 0.75)'
@@ -312,7 +342,7 @@ function Header() {
       {menuOpen && (
         <div style={{
           position: 'absolute',
-          top: 60,
+          top: 'calc(60px + env(safe-area-inset-top, 0px))',
           left: 0,
           right: 0,
           background: 'rgba(247, 245, 240, 0.95)',
@@ -423,24 +453,29 @@ function App() {
         backgroundColor: 'transparent',
         color: 'var(--text-primary)',
         transition: 'background-color 300ms',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}>
         <Header />
 
+        <Suspense fallback={<RouteLoading />}>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/chat" element={<ChatPage />} />
           <Route path="/recommend" element={<RecommendPage />} />
           <Route path="/explore" element={<TouristDashboard />} />
           <Route path="/attractions" element={<AttractionList />} />
           <Route path="/attractions/:spotId" element={<AttractionDetail />} />
           <Route path="/history" element={<HistoryExplore />} />
+          <Route path="/memory" element={<MemoryPage />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
+          <Route path="/vrm-demo" element={<VRMDemo />} />
+          <Route path="/map" element={<MapGuidePage />} />
 
           <Route path="/admin/*" element={
             <Routes>
               <Route path="/" element={<Navigate to="/admin/dashboard" replace />} />
               <Route path="knowledge" element={<KnowledgePage />} />
               <Route path="avatar" element={<AvatarPage />} />
+              <Route path="speaking-demo" element={<SpeakingDemo />} />
               <Route path="report" element={<ReportPage />} />
               <Route path="dashboard" element={<DashboardPage />} />
             </Routes>
@@ -448,6 +483,7 @@ function App() {
 
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </Suspense>
 
         {/* 全局背景 — 宣纸纹理 + 淡墨山景（视差滚动） */}
         <div

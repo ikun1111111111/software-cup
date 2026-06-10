@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   MessageOutlined,
@@ -9,8 +9,10 @@ import {
   DownOutlined,
   ArrowRightOutlined,
 } from '@ant-design/icons';
-import DigitalHuman from '../../components/DigitalHuman/DigitalHuman';
+import { FloatingGuide, FloatingGuideRef } from '../../components/vrm/FloatingGuide';
 import { RevealOnScroll } from '../../components/ui';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 /* ================================================================
    首页 — 东方美学入口页（增强版）
@@ -26,14 +28,6 @@ interface FeatureCard {
 }
 
 const FEATURES: FeatureCard[] = [
-  {
-    to: '/chat',
-    label: '对话导览',
-    desc: '与AI数字人对话，获取智能导览',
-    icon: <MessageOutlined />,
-    color: '#6A9C89',
-    bg: '#E8F2EE',
-  },
   {
     to: '/attractions',
     label: '景点探索',
@@ -65,6 +59,14 @@ const FEATURES: FeatureCard[] = [
     icon: <TrophyOutlined />,
     color: '#C8A951',
     bg: '#FDF6E3',
+  },
+  {
+    to: '/map',
+    label: '景区导览',
+    desc: '实时定位与步行导航',
+    icon: <CompassOutlined />,
+    color: '#1890FF',
+    bg: '#E6F4FF',
   },
 ];
 
@@ -169,6 +171,8 @@ const OrientalTitle: React.FC<{
 const HeroSection: React.FC = () => {
   const [loaded, setLoaded] = useState(false);
   const [scrollY, setScrollY] = useState(0);
+  const isMobile = useMediaQuery('(max-width: 768px)');
+  const prefersReducedMotion = useReducedMotion();
 
   useEffect(() => {
     const t = setTimeout(() => setLoaded(true), 100);
@@ -176,22 +180,27 @@ const HeroSection: React.FC = () => {
   }, []);
 
   const handleScroll = useCallback(() => {
-    setScrollY(window.scrollY);
-  }, []);
+    // 如果用户偏好减少动效，不追踪滚动位置
+    if (!prefersReducedMotion) {
+      setScrollY(window.scrollY);
+    }
+  }, [prefersReducedMotion]);
 
   useEffect(() => {
+    if (prefersReducedMotion) return;
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [handleScroll]);
+  }, [handleScroll, prefersReducedMotion]);
 
-  const parallaxOffset = scrollY * 0.3;
+  // 如果用户偏好减少动效，禁用视差
+  const parallaxOffset = prefersReducedMotion ? 0 : scrollY * 0.3;
 
   return (
     <section style={{
       position: 'relative',
       width: '100%',
-      height: '100vh',
-      minHeight: 640,
+      height: isMobile ? 'calc(100vh - 60px - env(safe-area-inset-top, 0px))' : '100vh',
+      minHeight: isMobile ? 500 : 640,
       overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
@@ -206,8 +215,8 @@ const HeroSection: React.FC = () => {
         backgroundImage: 'url(/image/AigcAssets3.png)',
         backgroundSize: 'cover',
         backgroundPosition: `center ${50 + parallaxOffset * 0.1}%`,
-        transform: loaded ? 'scale(1.08)' : 'scale(1.15)',
-        transition: 'transform 12s cubic-bezier(0.25, 1, 0.5, 1)',
+        transform: prefersReducedMotion ? 'scale(1)' : (loaded ? 'scale(1.08)' : 'scale(1.15)'),
+        transition: prefersReducedMotion ? 'none' : 'transform 12s cubic-bezier(0.25, 1, 0.5, 1)',
       }} />
 
       {/* 水墨渐变遮罩 — 多层 */}
@@ -260,9 +269,9 @@ const HeroSection: React.FC = () => {
 
         {/* 主标题 */}
         <h1 style={{
-          fontSize: 'clamp(38px, 8vw, 72px)',
+          fontSize: isMobile ? 'clamp(28px, 10vw, 42px)' : 'clamp(38px, 8vw, 72px)',
           fontWeight: 900,
-          letterSpacing: '20px',
+          letterSpacing: isMobile ? 8 : 20,
           textShadow: '0 2px 40px rgba(0,0,0,0.5), 0 0 80px rgba(0,0,0,0.2)',
           marginBottom: 8,
           fontFamily: "'ZCOOL XiaoWei', 'Noto Serif SC', 'STSong', serif",
@@ -305,7 +314,15 @@ const HeroSection: React.FC = () => {
         </p>
 
         {/* 入口按钮 */}
-        <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: 16,
+          justifyContent: 'center',
+          flexWrap: 'wrap',
+          width: isMobile ? '100%' : 'auto',
+          padding: isMobile ? '0 20px' : 0,
+        }}>
           <Link to="/attractions" style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -337,37 +354,43 @@ const HeroSection: React.FC = () => {
             开启旅程
             <ArrowRightOutlined style={{ fontSize: 14 }} />
           </Link>
-          <Link to="/chat" style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '14px 36px',
-            background: 'rgba(255,255,255,0.08)',
-            color: '#fff',
-            fontSize: 17,
-            fontWeight: 500,
-            borderRadius: 10,
-            textDecoration: 'none',
-            border: '1.5px solid rgba(255,255,255,0.4)',
-            backdropFilter: 'blur(8px)',
-            transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
-            fontFamily: "'ZCOOL XiaoWei', 'Noto Serif SC', serif",
-            letterSpacing: '0.15em',
-          }}
-          onMouseEnter={e => {
-            const el = e.currentTarget;
-            el.style.borderColor = 'rgba(106,156,137,0.8)';
-            el.style.background = 'rgba(106,156,137,0.15)';
-            el.style.transform = 'translateY(-2px)';
-          }}
-          onMouseLeave={e => {
-            const el = e.currentTarget;
-            el.style.borderColor = 'rgba(255,255,255,0.4)';
-            el.style.background = 'rgba(255,255,255,0.08)';
-            el.style.transform = 'translateY(0)';
-          }}>
+          <button
+            onClick={() => {
+              // 触发数字人浮窗展开
+              window.dispatchEvent(new CustomEvent('vrm_expand'));
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '14px 36px',
+              background: 'rgba(255,255,255,0.08)',
+              color: '#fff',
+              fontSize: 17,
+              fontWeight: 500,
+              borderRadius: 10,
+              textDecoration: 'none',
+              border: '1.5px solid rgba(255,255,255,0.4)',
+              backdropFilter: 'blur(8px)',
+              transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+              fontFamily: "'ZCOOL XiaoWei', 'Noto Serif SC', serif",
+              letterSpacing: '0.15em',
+              cursor: 'pointer',
+            }}
+            onMouseEnter={e => {
+              const el = e.currentTarget;
+              el.style.borderColor = 'rgba(106,156,137,0.8)';
+              el.style.background = 'rgba(106,156,137,0.15)';
+              el.style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={e => {
+              const el = e.currentTarget;
+              el.style.borderColor = 'rgba(255,255,255,0.4)';
+              el.style.background = 'rgba(255,255,255,0.08)';
+              el.style.transform = 'translateY(0)';
+            }}>
             <MessageOutlined /> 与数字人对话
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -384,7 +407,7 @@ const HeroSection: React.FC = () => {
         gap: 10,
         opacity: loaded ? 0.65 : 0,
         transition: 'opacity 1.2s ease 1s',
-        animation: 'bounceDown 2.5s ease-in-out infinite',
+        animation: prefersReducedMotion ? 'none' : 'bounceDown 2.5s ease-in-out infinite',
       }}>
         <span style={{ fontSize: 11, letterSpacing: 6, fontFamily: "'Noto Serif SC', serif" }}>
           向下探索
@@ -405,12 +428,15 @@ const HeroSection: React.FC = () => {
 /* ═══════════════════════════════════════
    简介区域 — 书札排版
    ═══════════════════════════════════════ */
-const IntroSection: React.FC = () => (
-  <section style={{
-    position: 'relative',
-    padding: '100px 24px 80px',
-    background: 'linear-gradient(180deg, #F7F5F0 0%, #FDFBF7 50%, #F7F5F0 100%)',
-  }}>
+const IntroSection: React.FC = () => {
+  const isMobile = useMediaQuery('(max-width: 768px)');
+
+  return (
+    <section style={{
+      position: 'relative',
+      padding: isMobile ? '60px 16px 48px' : '100px 24px 80px',
+      background: 'linear-gradient(180deg, #F7F5F0 0%, #FDFBF7 50%, #F7F5F0 100%)',
+    }}>
     {/* 角落装饰 */}
     <div style={{ position: 'absolute', top: 40, left: 40, width: 24, height: 24, borderTop: '2px solid #C0BBB6', borderLeft: '2px solid #C0BBB6', opacity: 0.4 }} />
     <div style={{ position: 'absolute', top: 40, right: 40, width: 24, height: 24, borderTop: '2px solid #C0BBB6', borderRight: '2px solid #C0BBB6', opacity: 0.4 }} />
@@ -432,11 +458,11 @@ const IntroSection: React.FC = () => (
       }} />
 
       <p style={{
-        fontSize: 17,
-        lineHeight: 2.1,
+        fontSize: isMobile ? 15 : 17,
+        lineHeight: isMobile ? 1.8 : 2.1,
         color: '#5C554C',
         textAlign: 'justify',
-        textIndent: '2em',
+        textIndent: isMobile ? '1.5em' : '2em',
         marginBottom: '1.5em',
         fontFamily: "'Noto Serif SC', serif",
         letterSpacing: '0.05em',
@@ -445,11 +471,11 @@ const IntroSection: React.FC = () => (
         还有九龙灌浴、梵宫、五印坛城等众多景点，每一处都蕴含着深厚的佛教文化底蕴。
       </p>
       <p style={{
-        fontSize: 17,
-        lineHeight: 2.1,
+        fontSize: isMobile ? 15 : 17,
+        lineHeight: isMobile ? 1.8 : 2.1,
         color: '#5C554C',
         textAlign: 'justify',
-        textIndent: '2em',
+        textIndent: isMobile ? '1.5em' : '2em',
         fontFamily: "'Noto Serif SC', serif",
         letterSpacing: '0.05em',
       }}>
@@ -461,27 +487,31 @@ const IntroSection: React.FC = () => (
       <InkDivider text="山水禅意" />
     </div>
   </section>
-);
+  );
+};
 
 /* ═══════════════════════════════════════
    功能入口 — 增强版卡片
    ═══════════════════════════════════════ */
-const FeatureSection: React.FC = () => (
-  <section style={{
-    padding: '80px 24px 96px',
-    background: '#F7F5F0',
-    position: 'relative',
-  }}>
-    <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-      <OrientalTitle title="探索灵山" subtitle="EXPLORE" center />
+const FeatureSection: React.FC = () => {
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-        gap: 24,
-        maxWidth: 960,
-        margin: '0 auto',
-      }}>
+  return (
+    <section style={{
+      padding: isMobile ? '60px 16px 72px' : '80px 24px 96px',
+      background: '#F7F5F0',
+      position: 'relative',
+    }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        <OrientalTitle title="探索灵山" subtitle="EXPLORE" center />
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(170px, 1fr))',
+          gap: isMobile ? 12 : 24,
+          maxWidth: 960,
+          margin: '0 auto',
+        }}>
         {FEATURES.map((f, i) => (
           <Link
             key={f.to}
@@ -550,17 +580,21 @@ const FeatureSection: React.FC = () => (
       .feature-card:hover .feature-card-arrow { opacity: 0.8 !important; transform: translateX(0) !important; }
     `}</style>
   </section>
-);
+  );
+};
 
 /* ═══════════════════════════════════════
    精选景点 — 画卷卡片增强
    ═══════════════════════════════════════ */
-const FeaturedSpots: React.FC = () => (
-  <section style={{
-    padding: '80px 24px 96px',
-    background: 'linear-gradient(180deg, #FDFBF7 0%, #F7F5F0 100%)',
-  }}>
-    <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+const FeaturedSpots: React.FC = () => {
+  const isMobile = useMediaQuery('(max-width: 768px)');
+
+  return (
+    <section style={{
+      padding: isMobile ? '60px 16px 72px' : '80px 24px 96px',
+      background: 'linear-gradient(180deg, #FDFBF7 0%, #F7F5F0 100%)',
+    }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -596,16 +630,24 @@ const FeaturedSpots: React.FC = () => (
       </div>
 
       <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-        gap: 28,
+        display: isMobile ? 'flex' : 'grid',
+        gridTemplateColumns: isMobile ? 'none' : 'repeat(auto-fit, minmax(300px, 1fr))',
+        gap: isMobile ? 16 : 28,
+        overflowX: isMobile ? 'auto' : 'visible',
+        scrollSnapType: isMobile ? 'x mandatory' : 'none',
+        padding: isMobile ? '0 0 20px' : 0,
+        margin: isMobile ? '0 -16px' : 0,
       }}>
         {SPOTS.map((spot, i) => (
           <Link
             key={spot.name}
             to="/attractions"
             className="scroll-card"
-            style={{ borderRadius: 20 }}
+            style={{
+              borderRadius: 20,
+              flex: isMobile ? '0 0 85%' : 'none',
+              scrollSnapAlign: isMobile ? 'start' : 'none',
+            }}
           >
             <div style={{
               position: 'relative',
@@ -679,7 +721,8 @@ const FeaturedSpots: React.FC = () => (
       </div>
     </div>
   </section>
-);
+  );
+};
 
 /* ═══════════════════════════════════════
    数字人展示 — 水墨画框增强
@@ -802,34 +845,37 @@ const DigitalHumanSection: React.FC = () => (
           我是小灵，您的灵山胜境数字导览员。有任何问题都可以随时向我提问，
           无论是景点介绍、路线规划还是历史文化，我都能为您详细解答。
         </p>
-        <Link to="/chat" style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 10,
-          padding: '12px 28px',
-          background: 'linear-gradient(135deg, #6A9C89 0%, #8CBFAD 100%)',
-          color: '#fff',
-          fontSize: 16,
-          fontWeight: 600,
-          borderRadius: 10,
-          textDecoration: 'none',
-          boxShadow: '0 4px 16px rgba(106,156,137,0.3)',
-          transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
-          fontFamily: "'ZCOOL XiaoWei', 'Noto Serif SC', serif",
-          letterSpacing: '0.1em',
-        }}
-        onMouseEnter={e => {
-          const el = e.currentTarget;
-          el.style.transform = 'translateY(-2px)';
-          el.style.boxShadow = '0 6px 24px rgba(106,156,137,0.4)';
-        }}
-        onMouseLeave={e => {
-          const el = e.currentTarget;
-          el.style.transform = 'translateY(0)';
-          el.style.boxShadow = '0 4px 16px rgba(106,156,137,0.3)';
-        }}>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('vrm_expand'))}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '12px 28px',
+            background: 'linear-gradient(135deg, #6A9C89 0%, #8CBFAD 100%)',
+            color: '#fff',
+            fontSize: 16,
+            fontWeight: 600,
+            borderRadius: 10,
+            border: 'none',
+            cursor: 'pointer',
+            boxShadow: '0 4px 16px rgba(106,156,137,0.3)',
+            transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+            fontFamily: "'ZCOOL XiaoWei', 'Noto Serif SC', serif",
+            letterSpacing: '0.1em',
+          }}
+          onMouseEnter={e => {
+            const el = e.currentTarget;
+            el.style.transform = 'translateY(-2px)';
+            el.style.boxShadow = '0 6px 24px rgba(106,156,137,0.4)';
+          }}
+          onMouseLeave={e => {
+            const el = e.currentTarget;
+            el.style.transform = 'translateY(0)';
+            el.style.boxShadow = '0 4px 16px rgba(106,156,137,0.3)';
+          }}>
           <MessageOutlined /> 开始对话
-        </Link>
+        </button>
       </div>
     </div>
   </section>
@@ -841,11 +887,11 @@ const DigitalHumanSection: React.FC = () => (
 const Footer: React.FC = () => (
   <footer style={{
     position: 'relative',
-    padding: '0 24px 32px',
+    padding: '0 24px',
+    paddingBottom: 'calc(32px + 64px + env(safe-area-inset-bottom, 0px))',
     background: '#2A2520',
     color: '#A8A198',
     textAlign: 'center',
-    overflow: 'hidden',
   }}>
     {/* 山景剪影 */}
     <svg style={{
@@ -910,23 +956,50 @@ const Footer: React.FC = () => (
 /* ═══════════════════════════════════════
    主组件
    ═══════════════════════════════════════ */
-const HomePage: React.FC = () => (
-  <div style={{ position: 'relative' }}>
-    <HeroSection />
-    <RevealOnScroll delay={0}>
-      <IntroSection />
-    </RevealOnScroll>
-    <RevealOnScroll delay={80}>
-      <FeatureSection />
-    </RevealOnScroll>
-    <RevealOnScroll delay={80}>
-      <FeaturedSpots />
-    </RevealOnScroll>
-    <RevealOnScroll delay={80}>
-      <DigitalHumanSection />
-    </RevealOnScroll>
-    <Footer />
-  </div>
-);
+const HomePage: React.FC = () => {
+  const guideRef = useRef<FloatingGuideRef>(null);
+
+  // 滚动到精选景点时触发推荐
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollY = window.scrollY;
+      const windowHeight = window.innerHeight;
+      const docHeight = document.documentElement.scrollHeight;
+
+      // 滚动到页面中间时推荐
+      if (scrollY > windowHeight * 0.5 && scrollY < windowHeight * 1.5) {
+        // 可以在这里触发推荐讲解
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <HeroSection />
+      <RevealOnScroll delay={0}>
+        <IntroSection />
+      </RevealOnScroll>
+      <RevealOnScroll delay={80}>
+        <FeatureSection />
+      </RevealOnScroll>
+      <RevealOnScroll delay={80}>
+        <FeaturedSpots />
+      </RevealOnScroll>
+      <Footer />
+
+      {/* 数字人浮窗 - 贯穿全页 */}
+      <FloatingGuide
+        ref={guideRef}
+        pageContext="home"
+        autoWelcome={true}
+        welcomeDelay={1000}
+        position="bottom-right"
+      />
+    </div>
+  );
+};
 
 export default HomePage;
