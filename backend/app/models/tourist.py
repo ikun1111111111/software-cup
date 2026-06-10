@@ -33,6 +33,8 @@ class ScenicSpot(Base):
     detail: Mapped[str] = mapped_column(Text, default="")
     qr_code: Mapped[str | None] = mapped_column(String(200), index=True)
     related_spots: Mapped[list | None] = mapped_column(JSON)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True, comment="纬度 GCJ-02")
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True, comment="经度 GCJ-02")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

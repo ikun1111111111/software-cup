@@ -17,6 +17,8 @@ class SpotOut(BaseModel):
     tags: list[str] | None
     overview: str
     qr_code: str | None
+    latitude: float | None = None
+    longitude: float | None = None
 
     class Config:
         from_attributes = True
