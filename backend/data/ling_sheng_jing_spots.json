@@ -5,6 +5,8 @@
     {
       "id": "ling-shan-da-fo",
       "name": "灵山大佛",
+      "latitude": 31.4250,
+      "longitude": 120.3550,
       "category": "核心景点",
       "tags": ["佛教造像", "青铜", "五方五佛", "地标", "拍照"],
       "overview": "世界最高露天青铜释迦牟尼立像，高88米",
@@ -15,6 +17,8 @@
     {
       "id": "fan-gong",
       "name": "灵山梵宫",
+      "latitude": 31.4280,
+      "longitude": 120.3580,
       "category": "核心景点",
       "tags": ["佛教艺术", "建筑", "演出", "世界佛教论坛"],
       "overview": "佛教艺术的卢浮宫，世界佛教论坛主会场",
@@ -25,6 +29,8 @@
     {
       "id": "jiu-long-guan-yu",
       "name": "九龙灌浴",
+      "latitude": 31.4220,
+      "longitude": 120.3520,
       "category": "核心景点",
       "tags": ["表演", "音乐喷泉", "群雕", "亲子", "佛教故事"],
       "overview": "佛陀诞生场景的音乐喷泉表演",
@@ -35,6 +41,8 @@
     {
       "id": "wu-yin-tan-cheng",
       "name": "五印坛城",
+      "latitude": 31.4200,
+      "longitude": 120.3500,
       "category": "核心景点",
       "tags": ["藏传佛教", "坛城", "转经筒", "唐卡"],
       "overview": "藏传佛教文化的瑰宝，可体验转经祈福",
@@ -45,6 +53,8 @@
     {
       "id": "xiang-fu-chan-si",
       "name": "祥符禅寺",
+      "latitude": 31.4240,
+      "longitude": 120.3560,
       "category": "核心景点",
       "tags": ["千年古刹", "历史", "玄奘", "银杏", "古井"],
       "overview": "千年古刹，见证佛教千年传承",
@@ -55,6 +65,8 @@
     {
       "id": "fo-shou-guang-chang",
       "name": "佛手广场",
+      "latitude": 31.4230,
+      "longitude": 120.3530,
       "category": "特色景点",
       "tags": ["祈福", "亲子", "拍照", "天下第一掌"],
       "overview": "'天下第一掌'所在地，灵山两大祈福体验之一",
@@ -65,6 +77,8 @@
     {
       "id": "bai-zi-xi-mi-le",
       "name": "百子戏弥勒",
+      "latitude": 31.4235,
+      "longitude": 120.3540,
       "category": "特色景点",
       "tags": ["亲子", "雕塑", "趣味", "拍照"],
       "overview": "大型青铜雕塑，展现'皆大欢喜'理念",
@@ -75,6 +89,8 @@
     {
       "id": "man-fei-long-ta",
       "name": "曼飞龙塔",
+      "latitude": 31.4260,
+      "longitude": 120.3600,
       "category": "特色景点",
       "tags": ["傣族佛教", "园林", "自然风光"],
       "overview": "傣族佛教建筑风格，与自然环境和谐融合",
@@ -85,6 +101,8 @@
     {
       "id": "ling-shan-jing-she",
       "name": "灵山精舍",
+      "latitude": 31.4255,
+      "longitude": 120.3570,
       "category": "特色景点",
       "tags": ["禅意酒店", "素斋", "早课", "园林"],
       "overview": "禅意酒店，含素斋与早课体验",
@@ -95,6 +113,8 @@
     {
       "id": "ling-shan-da-zhao-bi",
       "name": "灵山大照壁",
+      "latitude": 31.4215,
+      "longitude": 120.3495,
       "category": "特色景点",
       "tags": ["浮雕", "佛教文化", "入口"],
       "overview": "华夏第一壁，全长39.8米的大型浮雕",
@@ -105,6 +125,8 @@
     {
       "id": "pu-ti-da-dao",
       "name": "菩提大道",
+      "latitude": 31.4245,
+      "longitude": 120.3555,
       "category": "特色景点",
       "tags": ["自然风光", "太湖风光", "风水格局"],
       "overview": "欣赏太湖与青龙山、白虎山的自然风貌",
