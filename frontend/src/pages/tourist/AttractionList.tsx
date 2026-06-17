@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { SearchOutlined, TagOutlined } from '@ant-design/icons';
 import { listSpots, type Spot } from '../../api/spots';
 import { RevealOnScroll } from '../../components/ui';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 const CATEGORIES = [
   { key: '', label: '全部' },
@@ -35,6 +36,7 @@ const AttractionList: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState('');
   const [searchText, setSearchText] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   useEffect(() => {
     setCurrentPage(1);
@@ -96,24 +98,36 @@ const AttractionList: React.FC = () => {
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
           background: 'var(--surface-card)', borderRadius: 'var(--radius-md)',
-          padding: '10px 16px', marginBottom: 20,
+          padding: isMobile ? '12px 16px' : '10px 16px',
+          marginBottom: 20,
+          margin: isMobile ? '0 0 16px' : '0 0 20px',
           border: '1px solid var(--gray-200)',
           boxShadow: 'var(--shadow-sm)',
         }}>
           <SearchOutlined style={{ color: 'var(--text-tertiary)', fontSize: 16 }} />
           <input
+            type="search"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             placeholder="寻一处胜地..."
             style={{
               flex: 1, border: 'none', outline: 'none', background: 'transparent',
-              fontSize: 15, color: 'var(--text-primary)',
+              fontSize: 16, color: 'var(--text-primary)',
             }}
           />
         </div>
 
         {/* Category Tabs — 印章式 */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
+        <div style={{
+          display: 'flex',
+          gap: isMobile ? 8 : 10,
+          marginBottom: isMobile ? 16 : 24,
+          overflowX: isMobile ? 'auto' : 'visible',
+          flexWrap: isMobile ? 'nowrap' : 'wrap',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          WebkitOverflowScrolling: 'touch',
+        }}>
           {CATEGORIES.map((cat) => (
             <button
               key={cat.key}
@@ -155,8 +169,8 @@ const AttractionList: React.FC = () => {
         ) : (
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-            gap: 24,
+            gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))',
+            gap: isMobile ? 16 : 24,
           }}>
             {paged.map((spot, i) => (
               <RevealOnScroll key={spot.id} delay={i * 80}>
@@ -210,17 +224,17 @@ const AttractionList: React.FC = () => {
         {totalPages > 1 && (
           <div style={{
             display: 'flex', justifyContent: 'center', alignItems: 'center',
-            gap: 8, marginTop: 28,
+            gap: isMobile ? 16 : 8, marginTop: isMobile ? 24 : 28,
           }}>
             <button
               disabled={safePage <= 1}
               onClick={() => setCurrentPage(safePage - 1)}
               className="btn-outline"
-              style={{ padding: '6px 14px', fontSize: 14 }}
+              style={{ padding: '8px 20px', fontSize: 14 }}
             >
               上一页
             </button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+            {!isMobile && Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
               <button
                 key={p}
                 onClick={() => setCurrentPage(p)}
@@ -239,11 +253,16 @@ const AttractionList: React.FC = () => {
                 {p}
               </button>
             ))}
+            {isMobile && (
+              <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+                {safePage} / {totalPages}
+              </span>
+            )}
             <button
               disabled={safePage >= totalPages}
               onClick={() => setCurrentPage(safePage + 1)}
               className="btn-outline"
-              style={{ padding: '6px 14px', fontSize: 14 }}
+              style={{ padding: '8px 20px', fontSize: 14 }}
             >
               下一页
             </button>

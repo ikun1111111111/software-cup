@@ -127,6 +127,19 @@ async def process_chat(
     # When using fallback, pass empty chunks so the LLM relies solely on system prompt knowledge
     prompt_chunks = [] if use_fallback else chunks
     messages = build_prompt(question, prompt_chunks, history=history_messages if history_messages else None)
+
+    # Run sentiment analysis in parallel with LLM (no dependency between them)
+    import asyncio
+
+    async def _sentiment_task():
+        try:
+            return await analyze_sentiment(question)
+        except Exception as e:
+            logger.warning("Sentiment analysis failed: %s", e)
+            return 0.5, "neutral"
+
+    sentiment_task = asyncio.create_task(_sentiment_task())
+
     if stream:
         result["_stream"] = route_stream(LLMTask.chat, messages)
         result["answer"] = ""  # Will be filled by streaming consumer
@@ -138,13 +151,10 @@ async def process_chat(
             logger.error("LLM generation failed: %s", e)
             result["answer"] = "抱歉，AI服务暂时不可用，请稍后重试。"
 
-    # Step 6: Sentiment analysis (async, non-blocking)
-    try:
-        score, label = await analyze_sentiment(question)
-        result["sentiment_score"] = score
-        result["sentiment_label"] = label
-    except Exception as e:
-        logger.warning("Sentiment analysis failed: %s", e)
+    # Await sentiment (likely already done by now)
+    score, label = await sentiment_task
+    result["sentiment_score"] = score
+    result["sentiment_label"] = label
 
     result["latency_ms"] = int((time.time() - start_time) * 1000)
     return result

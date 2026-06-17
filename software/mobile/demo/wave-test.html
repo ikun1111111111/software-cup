@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Wave Gesture Debug</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; overflow: hidden; font-family: 'Segoe UI', sans-serif; color: #e0e0e0; height: 100vh; }
+
+  #info {
+    position: fixed; top: 16px; left: 16px; z-index: 10;
+    background: rgba(0,0,0,0.7); padding: 12px 16px; border-radius: 8px;
+  }
+  #info h3 { font-size: 14px; color: #f59e0b; margin-bottom: 6px; }
+  #info p { font-size: 12px; color: #aaa; margin: 3px 0; }
+  .key { color: #f59e0b; font-weight: bold; }
+
+  #playWaveBtn, #playPointBtn, #playClapBtn, #playBowBtn {
+    position: fixed; top: 16px; right: 16px; z-index: 10;
+    padding: 10px 28px; font-size: 14px; font-weight: bold;
+    background: #f59e0b; color: #000; border: none; border-radius: 8px; cursor: pointer;
+  }
+  #playPointBtn { top: 60px; background: #3b82f6; }
+  #playClapBtn { top: 104px; background: #10b981; }
+  #playBowBtn { top: 148px; background: #8b5cf6; }
+  #playWaveBtn:hover { background: #fbbf24; }
+  #playPointBtn:hover { background: #60a5fa; }
+  #playClapBtn:hover { background: #34d399; }
+  #playBowBtn:hover { background: #a78bfa; }
+  #playWaveBtn:disabled, #playPointBtn:disabled, #playClapBtn:disabled, #playBowBtn:disabled { background: #666; color: #999; cursor: default; }
+
+  #bone-log {
+    position: fixed; bottom: 16px; left: 16px; z-index: 10;
+    background: rgba(0,0,0,0.75); padding: 12px 16px; border-radius: 8px;
+    font-size: 11px; font-family: monospace; min-width: 320px;
+  }
+  #bone-log div { margin: 2px 0; }
+  .label { color: #888; }
+  .val { color: #4ade80; }
+  .val-warn { color: #f59e0b; }
+
+  #timeline-bar {
+    position: fixed; bottom: 16px; right: 16px; left: 360px; z-index: 10;
+    background: rgba(0,0,0,0.7); padding: 10px 16px; border-radius: 8px;
+  }
+  #timeline-bar .track {
+    height: 6px; background: #333; border-radius: 3px; position: relative; margin-top: 6px;
+  }
+  #timeline-bar .progress {
+    height: 100%; background: #f59e0b; border-radius: 3px; width: 0%; transition: none;
+  }
+  #timeline-bar .label-row {
+    display: flex; justify-content: space-between; font-size: 10px; color: #666; margin-top: 4px;
+  }
+  #timeline-bar h4 { font-size: 11px; color: #f59e0b; }
+</style>
+</head>
+<body>
+
+<div id="info">
+  <h3>Gesture Debug</h3>
+  <p><span class="key">1</span> Wave | <span class="key">2</span> Point | <span class="key">3</span> Clap | <span class="key">4</span> Bow | Drag to orbit</p>
+  <p>Same bone math as <code>VRMIdleAnim.ts</code></p>
+</div>
+
+<button id="playWaveBtn">1 - Wave</button>
+<button id="playPointBtn" style="top:60px">2 - Point</button>
+<button id="playClapBtn" style="top:104px">3 - Clap</button>
+<button id="playBowBtn" style="top:148px">4 - Bow</button>
+
+<div id="bone-log"></div>
+
+<div id="timeline-bar">
+  <h4 id="tl-title">Timeline</h4>
+  <div class="track"><div class="progress" id="tl-progress"></div></div>
+  <div class="label-row">
+    <span>raise</span><span>hold</span><span>settle</span>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { VRMLoaderPlugin, VRMUtils } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.3.3/lib/three-vrm.module.min.js';
+
+// ─── Scene ───
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 50);
+camera.position.set(0.5, 1.2, 2.8);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.0, 0);
+controls.enableDamping = true;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1);
+keyLight.position.set(3, 5, 4);
+scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0xB4D4FF, 0.3);
+fillLight.position.set(-2, 3, -1);
+scene.add(fillLight);
+
+scene.add(new THREE.GridHelper(4, 20, 0x333355, 0x222244));
+
+// ─── VRM Load ───
+let vrm = null;
+const loader = new GLTFLoader();
+loader.register((parser) => new VRMLoaderPlugin(parser));
+
+const logEl = document.getElementById('bone-log');
+const playBtn = document.getElementById('playBtn');
+const tlProgress = document.getElementById('tl-progress');
+
+async function loadVRM() {
+  const paths = ['../assets/models/avatar.vrm'];
+  for (const p of paths) {
+    try {
+      const gltf = await new Promise((res, rej) => loader.load(p, res, undefined, rej));
+      vrm = gltf.userData.vrm;
+      if (!vrm) continue;
+      VRMUtils.removeUnnecessaryVertices(gltf.scene);
+      VRMUtils.combineSkeletons(gltf.scene);
+      VRMUtils.rotateVRM0(vrm);
+      scene.add(vrm.scene);
+      vrm.scene.updateWorldMatrix(true, true);
+      const box = new THREE.Box3().setFromObject(vrm.scene);
+      const h = box.max.y - box.min.y;
+      if (h > 0) {
+        const s = 1.6 / h;
+        vrm.scene.scale.set(s, s, s);
+        vrm.scene.updateWorldMatrix(true, true);
+        const b2 = new THREE.Box3().setFromObject(vrm.scene);
+        vrm.scene.position.y = -b2.min.y;
+      }
+      setArmIdle();
+      log('VRM loaded: ' + p);
+      // 诊断: 检查左手网格的 morph targets 和蒙皮信息
+      diagnoseLeftHand(vrm);
+      return;
+    } catch (e) {
+      log('FAIL: ' + p + ' — ' + e.message, true);
+    }
+  }
+  log('Could not load VRM. Open this file via a local server (e.g. `npx serve software/mobile/demo`).', true);
+}
+
+function log(msg, warn) {
+  logEl.innerHTML = `<div style="color:${warn ? '#f87171' : '#4ade80'}">${msg}</div>` + logEl.innerHTML;
+}
+
+// 诊断左手网格: morph targets + 蒙皮骨骼
+function diagnoseLeftHand(vrm) {
+  const lhBone = vrm.humanoid?.getNormalizedBoneNode('leftHand');
+  if (!lhBone) { console.warn('leftHand bone NOT found'); return; }
+
+  let handMeshes = [];
+  vrm.scene.traverse((obj) => {
+    if (obj.isSkinnedMesh && obj.skeleton) {
+      const idx = obj.skeleton.bones.indexOf(lhBone);
+      if (idx >= 0) handMeshes.push({ name: obj.name, mesh: obj, boneIdx: idx });
+    }
+  });
+
+  console.log(`%c[DIAG] leftHand bone influences ${handMeshes.length} mesh(es)`, 'color:#f59e0b;font-weight:bold');
+  handMeshes.forEach(({ name, mesh, boneIdx }) => {
+    const geo = mesh.geometry;
+    const morphKeys = geo.morphAttributes ? Object.keys(geo.morphAttributes) : [];
+    const morphTargetNames = mesh.morphTargetDictionary
+      ? Object.keys(mesh.morphTargetDictionary)
+      : [];
+    console.log(`  mesh: "${name}" bone[${boneIdx}]`);
+    console.log(`  morphAttributes: ${morphKeys.join(', ') || 'NONE'}`);
+    console.log(`  morphTargetDictionary: ${morphTargetNames.join(', ') || 'NONE'}`);
+    console.log(`  morphTargetInfluences count: ${mesh.morphTargetInfluences?.length || 0}`);
+    console.log(`  vertexCount: ${geo.attributes.position?.count || 0}`);
+  });
+
+  if (vrm.expressionManager) {
+    const exprNames = Object.keys(vrm.expressionManager.expressionMap || {});
+    console.log(`%c[DIAG] expressions: ${exprNames.join(', ') || 'none'}`, 'color:#4ade80');
+  }
+}
+
+// ─── Idle Pose ───
+function setArmIdle() {
+  if (!vrm) return;
+  const lua = vrm.humanoid?.getNormalizedBoneNode('leftUpperArm');
+  const rua = vrm.humanoid?.getNormalizedBoneNode('rightUpperArm');
+  const lla = vrm.humanoid?.getNormalizedBoneNode('leftLowerArm');
+  const rla = vrm.humanoid?.getNormalizedBoneNode('rightLowerArm');
+  const rh  = vrm.humanoid?.getNormalizedBoneNode('rightHand');
+  const lh  = vrm.humanoid?.getNormalizedBoneNode('leftHand');
+  if (lua) { lua.rotation.z = 1.45; lua.rotation.x = 0.12; lua.rotation.y = 0; }
+  if (rua) { rua.rotation.z = -1.45; rua.rotation.x = 0.12; rua.rotation.y = 0; }
+  if (lla) { lla.rotation.x = 0.05; lla.rotation.z = 0; }
+  if (rla) { rla.rotation.x = 0.05; rla.rotation.z = 0; }
+  if (rh)  { rh.rotation.z = 0; rh.rotation.x = 0; rh.rotation.y = 0; }
+  if (lh)  { lh.rotation.z = 0; lh.rotation.x = 0; lh.rotation.y = 0; }
+  ['rightMiddleProximal','rightRingProximal','rightLittleProximal',
+   'rightMiddleIntermediate','rightRingIntermediate','rightLittleIntermediate',
+   'rightThumbProximal'].forEach(name => {
+    const bone = vrm.humanoid?.getNormalizedBoneNode(name);
+    if (bone) { bone.rotation.x = 0; bone.rotation.z = 0; }
+  });
+  vrm.expressionManager?.setValue('happy', 0);
+  vrm.expressionManager?.setValue('neutral', 1);
+}
+
+// ─── Wave Animation (same math as VRMIdleAnim.ts) ───
+let waving = false;
+let waveStart = 0;
+const WAVE_DURATION = 1.5; // seconds
+
+function startWave() {
+  if (waving || !vrm) return;
+  waving = true;
+  waveStart = performance.now() / 1000;
+  document.getElementById('playWaveBtn').disabled = true;
+  vrm.expressionManager?.setValue('neutral', 0);
+  vrm.expressionManager?.setValue('happy', 1);
+}
+
+function applyWave(waveElapsed) {
+  if (!vrm) return;
+  const progress = Math.min(waveElapsed / WAVE_DURATION, 1);
+  const decay = 1 - progress * progress;
+
+  const raiseCurve = progress < 0.15
+    ? (progress / 0.15)
+    : progress > 0.85
+      ? ((1 - progress) / 0.15)
+      : 1;
+
+  const rua = vrm.humanoid?.getNormalizedBoneNode('rightUpperArm');
+  const rla = vrm.humanoid?.getNormalizedBoneNode('rightLowerArm');
+  const rh  = vrm.humanoid?.getNormalizedBoneNode('rightHand');
+  const head = vrm.humanoid?.getNormalizedBoneNode('head');
+
+  // EXACT same values as VRMIdleAnim.ts
+  if (rua) {
+    rua.rotation.z = -1.45 + 3.0 * raiseCurve;
+    rua.rotation.x = 0.12 * (1 - raiseCurve);
+    rua.rotation.y = 0;
+  }
+  if (rla) {
+    rla.rotation.x = -5.0 * raiseCurve;
+    rla.rotation.z = 0;
+  }
+  if (rh) {
+    rh.rotation.x = 0.3 * raiseCurve;
+    rh.rotation.y = Math.sin(waveElapsed * Math.PI * 6) * 0.5 * decay * raiseCurve;
+    rh.rotation.z = 0;
+  }
+  if (head) {
+    head.rotation.y = 0.2 * raiseCurve;
+  }
+
+  // Timeline bar
+  tlProgress.style.width = (progress * 100) + '%';
+
+  // Bone log
+  const phase = progress < 0.15 ? 'RAISE' : progress > 0.85 ? 'SETTLE' : 'WAVE';
+  logEl.innerHTML = [
+    `phase: <span class="val-warn">${phase} (${(progress*100).toFixed(0)}%)</span>`,
+    `raiseCurve: <span class="val">${raiseCurve.toFixed(3)}</span>`,
+    `decay: <span class="val">${decay.toFixed(3)}</span>`,
+    `─── rightUpperArm ───`,
+    `.z = <span class="val">${rua ? rua.rotation.z.toFixed(3) : '-'}</span>  (idle: -1.450)`,
+    `.x = <span class="val">${rua ? rua.rotation.x.toFixed(3) : '-'}</span>  (idle:  0.120)`,
+    `─── rightLowerArm ───`,
+    `.x = <span class="val">${rla ? rla.rotation.x.toFixed(3) : '-'}</span>  (idle:  0.050)`,
+    `─── rightHand ───`,
+    `.z = <span class="val">${rh ? rh.rotation.z.toFixed(3) : '-'}</span>  (idle:  0.000)`,
+  ].map(l => `<div>${l}</div>`).join('');
+
+  if (progress >= 1) {
+    waving = false;
+    document.getElementById('playWaveBtn').disabled = false;
+    setArmIdle();
+  }
+}
+
+// ─── Point Animation ───
+let pointing = false;
+let pointStart = 0;
+const POINT_DURATION = 1.2;
+
+function startPoint() {
+  if (pointing || !vrm) return;
+  pointing = true;
+  pointStart = performance.now() / 1000;
+  document.getElementById('playPointBtn').disabled = true;
+  vrm.expressionManager?.setValue('neutral', 0);
+  vrm.expressionManager?.setValue('relaxed', 1);
+}
+
+function applyPoint(pointElapsed) {
+  if (!vrm) return;
+  const progress = Math.min(pointElapsed / POINT_DURATION, 1);
+  const decay = 1 - progress * progress;
+
+  const raiseCurve = progress < 0.15
+    ? (progress / 0.15)
+    : progress > 0.85
+      ? ((1 - progress) / 0.15)
+      : 1;
+
+  const rua = vrm.humanoid?.getNormalizedBoneNode('rightUpperArm');
+  const rla = vrm.humanoid?.getNormalizedBoneNode('rightLowerArm');
+  const rh  = vrm.humanoid?.getNormalizedBoneNode('rightHand');
+  const head = vrm.humanoid?.getNormalizedBoneNode('head');
+
+  if (rua) {
+    rua.rotation.z = -1.45 + 2.2 * raiseCurve;
+    rua.rotation.x = 0.12 * (1 - raiseCurve) - 0.8 * raiseCurve;
+    rua.rotation.y = -0.3 * raiseCurve;
+  }
+  if (rla) {
+    rla.rotation.x = -3.0 * raiseCurve;
+    rla.rotation.z = 0;
+  }
+  if (rh) {
+    rh.rotation.x = 0.2 * raiseCurve;
+    rh.rotation.y = 0;
+  }
+  // 手指：食指伸出，其余握拳
+  const curl = 0.8 * raiseCurve;
+  ['rightMiddleProximal','rightRingProximal','rightLittleProximal',
+   'rightMiddleIntermediate','rightRingIntermediate','rightLittleIntermediate'].forEach(name => {
+    const bone = vrm.humanoid?.getNormalizedBoneNode(name);
+    if (bone) bone.rotation.x = curl;
+  });
+  const thumb = vrm.humanoid?.getNormalizedBoneNode('rightThumbProximal');
+  if (thumb) thumb.rotation.z = -0.3 * raiseCurve;
+  if (head) {
+    head.rotation.y = 0.4 * raiseCurve;
+    head.rotation.x = -0.15 * raiseCurve;
+  }
+
+  tlProgress.style.width = (progress * 100) + '%';
+
+  const phase = progress < 0.15 ? 'EXTEND' : progress > 0.85 ? 'SETTLE' : 'POINT';
+  logEl.innerHTML = [
+    `<span style="color:#3b82f6;font-weight:bold">POINT</span>`,
+    `phase: <span class="val-warn">${phase} (${(progress*100).toFixed(0)}%)</span>`,
+    `raiseCurve: <span class="val">${raiseCurve.toFixed(3)}</span>`,
+    `─── rightUpperArm ───`,
+    `.z = <span class="val">${rua ? rua.rotation.z.toFixed(3) : '-'}</span>  (idle: -1.450)`,
+    `.x = <span class="val">${rua ? rua.rotation.x.toFixed(3) : '-'}</span>  (idle:  0.120)`,
+    `.y = <span class="val">${rua ? rua.rotation.y.toFixed(3) : '-'}</span>  (idle:  0.000)`,
+    `─── rightLowerArm ───`,
+    `.x = <span class="val">${rla ? rla.rotation.x.toFixed(3) : '-'}</span>  (idle:  0.050)`,
+    `─── rightHand ───`,
+    `.x = <span class="val">${rh ? rh.rotation.x.toFixed(3) : '-'}</span>  (idle:  0.000)`,
+  ].map(l => `<div>${l}</div>`).join('');
+
+  if (progress >= 1) {
+    pointing = false;
+    document.getElementById('playPointBtn').disabled = false;
+    setArmIdle();
+  }
+}
+
+// ─── Clap Animation ───
+let clapping = false;
+let clapStart = 0;
+const CLAP_DURATION = 1.5;
+
+// ─── Bow Animation ───
+let bowing = false;
+let bowStart = 0;
+const BOW_DURATION = 1.5;
+
+function startClap() {
+  if (clapping || !vrm) return;
+  clapping = true;
+  clapStart = performance.now() / 1000;
+  document.getElementById('playClapBtn').disabled = true;
+  vrm.expressionManager?.setValue('neutral', 0);
+  vrm.expressionManager?.setValue('happy', 1);
+}
+
+function applyClap(clapElapsed) {
+  if (!vrm) return;
+  const progress = Math.min(clapElapsed / CLAP_DURATION, 1);
+  const decay = 1 - progress * progress;
+
+  const raiseCurve = progress < 0.15
+    ? (progress / 0.15)
+    : progress > 0.85
+      ? ((1 - progress) / 0.15)
+      : 1;
+
+  const lua = vrm.humanoid?.getNormalizedBoneNode('leftUpperArm');
+  const rua = vrm.humanoid?.getNormalizedBoneNode('rightUpperArm');
+  const lla = vrm.humanoid?.getNormalizedBoneNode('leftLowerArm');
+  const rla = vrm.humanoid?.getNormalizedBoneNode('rightLowerArm');
+  const lh = vrm.humanoid?.getNormalizedBoneNode('leftHand');
+  const rh = vrm.humanoid?.getNormalizedBoneNode('rightHand');
+  const head = vrm.humanoid?.getNormalizedBoneNode('head');
+
+  // 大臂Z轴15°，X轴30°
+  if (lua) {
+    lua.rotation.z = 1.45 - 0.262 * raiseCurve;
+    lua.rotation.x = 0.524 * raiseCurve;
+  }
+  if (rua) {
+    rua.rotation.z = -1.45 + 0.262 * raiseCurve;
+    rua.rotation.x = 0.524 * raiseCurve;
+  }
+  // 小臂Y轴140°，左右反向
+  if (lla) lla.rotation.y = -2.443 * raiseCurve;
+  if (rla) rla.rotation.y = 2.443 * raiseCurve;
+  // Z轴向内让手掌触碰
+  if (lla) lla.rotation.z = 0.489 * raiseCurve; // 左小臂内侧28° (35-7)
+  if (rla) rla.rotation.z = -0.489 * raiseCurve; // 右小臂内侧28° (35-7)
+
+  // 拍击振荡
+  const clapOsc = Math.sin(clapElapsed * Math.PI * 5) * 0.3 * decay * raiseCurve;
+  if (lh) {
+    lh.rotation.x = 0.698 * raiseCurve; // X内翻40° (20+20)
+    lh.rotation.z = 1.2 * raiseCurve + clapOsc - 0.6 * raiseCurve - 1.047 * raiseCurve;
+  }
+  if (rh) {
+    rh.rotation.x = -0.698 * raiseCurve; // X内翻40° (20+20)
+    rh.rotation.z = 0.524 * raiseCurve - clapOsc; // 逆时针30° + 反相摆动
+  }
+  if (head) {
+    head.rotation.x = 0.1 * raiseCurve;
+  }
+
+  tlProgress.style.width = (progress * 100) + '%';
+
+  const phase = progress < 0.15 ? 'RAISE' : progress > 0.85 ? 'SETTLE' : 'CLAP';
+  logEl.innerHTML = [
+    `<span style="color:#10b981;font-weight:bold">CLAP</span>`,
+    `phase: <span class="val-warn">${phase} (${(progress*100).toFixed(0)}%)</span>`,
+    `raiseCurve: <span class="val">${raiseCurve.toFixed(3)}</span>`,
+    `decay: <span class="val">${decay.toFixed(3)}</span>`,
+    `─── leftUpperArm ───`,
+    `.z = <span class="val">${lua ? lua.rotation.z.toFixed(3) : '-'}</span>  (idle:  1.450)`,
+    `─── rightUpperArm ───`,
+    `.z = <span class="val">${rua ? rua.rotation.z.toFixed(3) : '-'}</span>  (idle: -1.450)`,
+    `─── lowerArms ───`,
+    `.x = <span class="val">${lla ? lla.rotation.x.toFixed(3) : '-'}</span>  (idle:  0.050)`,
+    `.z = <span class="val">${lla ? lla.rotation.z.toFixed(3) : '-'}</span> / <span class="val">${rla ? rla.rotation.z.toFixed(3) : '-'}</span>`,
+  ].map(l => `<div>${l}</div>`).join('');
+
+  if (progress >= 1) {
+    clapping = false;
+    document.getElementById('playClapBtn').disabled = false;
+    setArmIdle();
+  }
+}
+
+// ─── Bow Animation ───
+function startBow() {
+  if (bowing || !vrm) return;
+  bowing = true;
+  bowStart = performance.now() / 1000;
+  document.getElementById('playBowBtn').disabled = true;
+  vrm.expressionManager?.setValue('neutral', 0);
+  vrm.expressionManager?.setValue('relaxed', 1);
+}
+
+function applyBow(bowElapsed) {
+  if (!vrm) return;
+  const progress = Math.min(bowElapsed / BOW_DURATION, 1);
+
+  const raiseCurve = progress < 0.25
+    ? (progress / 0.25)
+    : progress > 0.75
+      ? ((1 - progress) / 0.25)
+      : 1;
+
+  const head = vrm.humanoid?.getNormalizedBoneNode('head');
+  const spine = vrm.humanoid?.getNormalizedBoneNode('spine');
+  const hips = vrm.humanoid?.getNormalizedBoneNode('hips');
+  const root = vrm.scene.children[0];
+
+  // 头前倾
+  if (head) {
+    head.rotation.x = -0.7 * raiseCurve;   // ~40° 前倾
+    head.rotation.y = 0;
+    head.rotation.z = 0;
+  }
+  // 脊柱前弯
+  if (spine) {
+    spine.rotation.x = -0.3 * raiseCurve;  // ~17° 前弯
+  }
+  // 整体微前倾
+  if (root) {
+    root.rotation.x = -0.15 * raiseCurve;  // ~8.6° 整体前倾
+  }
+  // 手臂保持 idle 不动 (不需要手部mesh)
+
+  tlProgress.style.width = (progress * 100) + '%';
+
+  const phase = progress < 0.25 ? 'BEND' : progress > 0.75 ? 'RISE' : 'BOW';
+  logEl.innerHTML = [
+    `<span style="color:#8b5cf6;font-weight:bold">BOW 🙇</span>`,
+    `phase: <span class="val-warn">${phase} (${(progress*100).toFixed(0)}%)</span>`,
+    `raiseCurve: <span class="val">${raiseCurve.toFixed(3)}</span>`,
+    `─── head ───`,
+    `.x = <span class="val">${head ? head.rotation.x.toFixed(3) : '-'}</span>  (前倾)`,
+    `─── spine ───`,
+    `.x = <span class="val">${spine ? spine.rotation.x.toFixed(3) : '-'}</span>  (前弯)`,
+    `─── root ───`,
+    `.x = <span class="val">${root ? root.rotation.x.toFixed(3) : '-'}</span>  (整体)`,
+    `注: 手臂保持idle，无需手部mesh`,
+  ].map(l => `<div>${l}</div>`).join('');
+
+  if (progress >= 1) {
+    bowing = false;
+    document.getElementById('playBowBtn').disabled = false;
+    setArmIdle();
+    if (root) root.rotation.x = 0;
+    if (spine) spine.rotation.x = 0;
+  }
+}
+
+// ─── Idle blink ───
+let blinkTimer = 3, isBlinking = false, blinkStart = 0;
+
+function applyIdle(elapsed) {
+  if (!vrm) return;
+  if (!isBlinking && elapsed > blinkTimer) {
+    isBlinking = true;
+    blinkStart = elapsed;
+    blinkTimer = elapsed + 3 + Math.random() * 2;
+  }
+  if (isBlinking) {
+    const p = (elapsed - blinkStart) / 0.15;
+    if (p >= 1) { isBlinking = false; vrm.expressionManager?.setValue('blink', 0); }
+    else vrm.expressionManager?.setValue('blink', p < 0.5 ? p * 2 : (1 - p) * 2);
+  }
+  const root = vrm.scene.children[0];
+  if (root) root.position.y = Math.sin(elapsed * Math.PI * 2 / 3) * 0.02;
+  const head = vrm.humanoid?.getNormalizedBoneNode('head');
+  if (head && !waving && !clapping && !bowing) {
+    head.rotation.x = Math.sin(elapsed * Math.PI * 2 / 5) * 0.03;
+    head.rotation.z = Math.cos(elapsed * Math.PI * 2 / 7) * 0.02;
+    head.rotation.y = 0;
+  }
+}
+
+// ─── Controls ───
+document.getElementById('playWaveBtn').addEventListener('click', startWave);
+document.getElementById('playPointBtn').addEventListener('click', startPoint);
+document.getElementById('playClapBtn').addEventListener('click', startClap);
+document.getElementById('playBowBtn').addEventListener('click', startBow);
+addEventListener('keydown', e => {
+  if (e.code === 'Digit1' || e.code === 'Numpad1') { e.preventDefault(); startWave(); }
+  if (e.code === 'Digit2' || e.code === 'Numpad2') { e.preventDefault(); startPoint(); }
+  if (e.code === 'Digit3' || e.code === 'Numpad3') { e.preventDefault(); startClap(); }
+  if (e.code === 'Digit4' || e.code === 'Numpad4') { e.preventDefault(); startBow(); }
+});
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ─── Render Loop ───
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  const elapsed = clock.getElapsedTime();
+
+  applyIdle(elapsed);
+
+  if (waving) {
+    applyWave((performance.now() / 1000) - waveStart);
+  }
+  if (pointing) {
+    applyPoint((performance.now() / 1000) - pointStart);
+  }
+  if (clapping) {
+    applyClap((performance.now() / 1000) - clapStart);
+  }
+  if (bowing) {
+    applyBow((performance.now() / 1000) - bowStart);
+  }
+
+  vrm?.update(dt);
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+await loadVRM();
+animate();
+</script>
+</body>
+</html>

@@ -3,3 +3,11 @@
 @import './styles/celadon-mountain-bg.css';
 @import './styles/mountain-scroll.css';
 @import './styles/animations.css';
+
+/* ── Safe Area 全局适配 ── */
+html {
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+  padding-left: max(env(safe-area-inset-left, 0px), 0px);
+  padding-right: max(env(safe-area-inset-right, 0px), 0px);
+}

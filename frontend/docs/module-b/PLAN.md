@@ -15,7 +15,7 @@
 
 ---
 
-#### 文件1：frontend/src/api/request.ts
+#### 文件1：software/web/src/api/request.ts
 
 **功能描述：**
 HTTP请求封装，基于axios创建统一的请求实例，包含拦截器、错误处理、Token管理。
@@ -49,7 +49,7 @@ HTTP请求封装，基于axios创建统一的请求实例，包含拦截器、�
 
 ---
 
-#### 文件2：frontend/src/api/chat.ts
+#### 文件2：software/web/src/api/chat.ts
 
 **功能描述：**
 对话API封装，提供对话相关的接口调用。
@@ -79,7 +79,7 @@ HTTP请求封装，基于axios创建统一的请求实例，包含拦截器、�
 
 ---
 
-#### 文件3：frontend/src/api/recommend.ts
+#### 文件3：software/web/src/api/recommend.ts
 
 **功能描述：**
 推荐API封装，提供路线推荐和游客画像接口。
@@ -108,7 +108,7 @@ HTTP请求封装，基于axios创建统一的请求实例，包含拦截器、�
 
 ---
 
-#### 文件4：frontend/src/stores/chatStore.ts
+#### 文件4：software/web/src/stores/chatStore.ts
 
 **功能描述：**
 对话状态管理，使用Zustand管理对话历史、当前会话、加载状态。
@@ -139,7 +139,7 @@ HTTP请求封装，基于axios创建统一的请求实例，包含拦截器、�
 
 ---
 
-#### 文件5：frontend/src/stores/userStore.ts
+#### 文件5：software/web/src/stores/userStore.ts
 
 **功能描述：**
 用户状态管理，管理用户信息、登录状态、偏好设置。
@@ -169,7 +169,7 @@ HTTP请求封装，基于axios创建统一的请求实例，包含拦截器、�
 
 ---
 
-#### 文件6：frontend/src/hooks/useSSE.ts
+#### 文件6：software/web/src/hooks/useSSE.ts
 
 **功能描述：**
 SSE（Server-Sent Events）流式接收Hook，处理AI回复的逐字显示。
@@ -200,7 +200,7 @@ SSE（Server-Sent Events）流式接收Hook，处理AI回复的逐字显示。
 
 ---
 
-#### 文件7：frontend/src/hooks/useWebSocket.ts
+#### 文件7：software/web/src/hooks/useWebSocket.ts
 
 **功能描述：**
 WebSocket信令封装Hook，处理音频流双向通信。
@@ -231,7 +231,7 @@ WebSocket信令封装Hook，处理音频流双向通信。
 
 ---
 
-#### 文件8：frontend/src/hooks/useVoiceRecord.ts
+#### 文件8：software/web/src/hooks/useVoiceRecord.ts
 
 **功能描述：**
 语音录制Hook，使用MediaRecorder API实现录音功能。
@@ -262,7 +262,7 @@ WebSocket信令封装Hook，处理音频流双向通信。
 
 ---
 
-#### 文件9：frontend/src/components/DigitalHuman/ChatBubble.tsx
+#### 文件9：software/web/src/components/DigitalHuman/ChatBubble.tsx
 
 **功能描述：**
 对话气泡组件，展示用户和AI的消息，支持流式显示。
@@ -292,7 +292,7 @@ WebSocket信令封装Hook，处理音频流双向通信。
 
 ---
 
-#### 文件10：frontend/src/components/DigitalHuman/VoiceInput.tsx
+#### 文件10：software/web/src/components/DigitalHuman/VoiceInput.tsx
 
 **功能描述：**
 语音输入按钮组件，支持长按录音、松开发送。
@@ -323,7 +323,7 @@ WebSocket信令封装Hook，处理音频流双向通信。
 
 ---
 
-#### 文件11：frontend/src/pages/tourist/ChatPage.tsx
+#### 文件11：software/web/src/pages/tourist/ChatPage.tsx
 
 **功能描述：**
 对话主界面，整合对话气泡、输入框、语音按钮、推荐面板。
@@ -354,7 +354,7 @@ WebSocket信令封装Hook，处理音频流双向通信。
 
 ---
 
-#### 文件12：frontend/src/pages/tourist/RecommendPage.tsx
+#### 文件12：software/web/src/pages/tourist/RecommendPage.tsx
 
 **功能描述：**
 推荐路线页面，展示个性化路线推荐。
@@ -388,7 +388,7 @@ WebSocket信令封装Hook，处理音频流双向通信。
 
 ---
 
-#### 文件13：frontend/src/hooks/useLive2D.ts
+#### 文件13：software/web/src/hooks/useLive2D.ts
 
 **功能描述：**
 Live2D Hook，封装模型加载、动画控制、参数设置。
@@ -419,7 +419,7 @@ Live2D Hook，封装模型加载、动画控制、参数设置。
 
 ---
 
-#### 文件14：frontend/src/components/DigitalHuman/Live2DStage.tsx
+#### 文件14：software/web/src/components/DigitalHuman/Live2DStage.tsx
 
 **功能描述：**
 Live2D画布组件，渲染数字人模型。
@@ -449,7 +449,7 @@ Live2D画布组件，渲染数字人模型。
 
 ---
 
-#### 文件15：frontend/src/components/DigitalHuman/LipSync.tsx
+#### 文件15：software/web/src/components/DigitalHuman/LipSync.tsx
 
 **功能描述：**
 口型同步组件，根据音素映射控制嘴巴开合。
@@ -479,7 +479,7 @@ Live2D画布组件，渲染数字人模型。
 
 ---
 
-#### 文件16：frontend/src/components/DigitalHuman/EmotionController.tsx
+#### 文件16：software/web/src/components/DigitalHuman/EmotionController.tsx
 
 **功能描述：**
 表情控制器，根据LLM情感分析触发数字人表情。
@@ -509,7 +509,7 @@ Live2D画布组件，渲染数字人模型。
 
 ---
 
-#### 文件17：frontend/src/components/DigitalHuman/AudioSync.tsx
+#### 文件17：software/web/src/components/DigitalHuman/AudioSync.tsx
 
 **功能描述：**
 音频同步组件，协调TTS音频播放和数字人动画。
@@ -543,7 +543,7 @@ Live2D画布组件，渲染数字人模型。
 
 ---
 
-#### 文件18：frontend/src/api/knowledge.ts
+#### 文件18：software/web/src/api/knowledge.ts
 
 **功能描述：**
 知识库API封装，提供文档和FAQ的CRUD接口。
@@ -579,7 +579,7 @@ Live2D画布组件，渲染数字人模型。
 
 ---
 
-#### 文件19：frontend/src/components/admin/DocumentUpload.tsx
+#### 文件19：software/web/src/components/admin/DocumentUpload.tsx
 
 **功能描述：**
 文档上传组件，支持拖拽上传、进度显示。
@@ -610,7 +610,7 @@ Live2D画布组件，渲染数字人模型。
 
 ---
 
-#### 文件20：frontend/src/components/admin/ChunkPreview.tsx
+#### 文件20：software/web/src/components/admin/ChunkPreview.tsx
 
 **功能描述：**
 分块预览组件，展示文档被切分的chunk列表。
@@ -640,7 +640,7 @@ Live2D画布组件，渲染数字人模型。
 
 ---
 
-#### 文件21：frontend/src/components/admin/FAQEditor.tsx
+#### 文件21：software/web/src/components/admin/FAQEditor.tsx
 
 **功能描述：**
 FAQ编辑器组件，支持FAQ的增删改查。
@@ -671,7 +671,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件22：frontend/src/pages/admin/KnowledgePage.tsx
+#### 文件22：software/web/src/pages/admin/KnowledgePage.tsx
 
 **功能描述：**
 知识库管理页面，整合文档上传、列表、分块预览、FAQ管理。
@@ -705,7 +705,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件23：frontend/src/api/avatar.ts
+#### 文件23：software/web/src/api/avatar.ts
 
 **功能描述：**
 数字人配置API封装，提供配置读写接口。
@@ -735,7 +735,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件24：frontend/src/components/admin/AvatarAppearance.tsx
+#### 文件24：software/web/src/components/admin/AvatarAppearance.tsx
 
 **功能描述：**
 数字人外观切换组件，支持服装、发型、配饰选择。
@@ -765,7 +765,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件25：frontend/src/components/admin/VoiceSelector.tsx
+#### 文件25：software/web/src/components/admin/VoiceSelector.tsx
 
 **功能描述：**
 声音选择组件，支持TTS音色试听和选择。
@@ -795,7 +795,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件26：frontend/src/components/admin/WelcomeEditor.tsx
+#### 文件26：software/web/src/components/admin/WelcomeEditor.tsx
 
 **功能描述：**
 欢迎语编辑组件，支持编辑数字人欢迎语。
@@ -825,7 +825,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件27：frontend/src/pages/admin/AvatarPage.tsx
+#### 文件27：software/web/src/pages/admin/AvatarPage.tsx
 
 **功能描述：**
 数字人配置页面，整合外观、声音、欢迎语配置和Live2D预览。
@@ -859,7 +859,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件28：frontend/src/api/analytics.ts
+#### 文件28：software/web/src/api/analytics.ts
 
 **功能描述：**
 分析API封装，提供情感分析、报告、大屏数据接口。
@@ -890,7 +890,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件29：frontend/src/components/admin/SentimentChart.tsx
+#### 文件29：software/web/src/components/admin/SentimentChart.tsx
 
 **功能描述：**
 情感趋势折线图组件，使用ECharts展示positive/neutral/negative趋势。
@@ -920,7 +920,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件30：frontend/src/components/admin/WordCloud.tsx
+#### 文件30：software/web/src/components/admin/WordCloud.tsx
 
 **功能描述：**
 关注点词云组件，展示用户高频提问关键词。
@@ -950,7 +950,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件31：frontend/src/components/admin/MetricsCard.tsx
+#### 文件31：software/web/src/components/admin/MetricsCard.tsx
 
 **功能描述：**
 指标卡片组件，展示今日/本周服务人次等关键指标。
@@ -979,7 +979,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件32：frontend/src/components/admin/HotQuestions.tsx
+#### 文件32：software/web/src/components/admin/HotQuestions.tsx
 
 **功能描述：**
 热门问答排行榜组件，展示Top10热门问题。
@@ -1008,7 +1008,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件33：frontend/src/components/admin/RealtimeMonitor.tsx
+#### 文件33：software/web/src/components/admin/RealtimeMonitor.tsx
 
 **功能描述：**
 实时监控组件，通过WebSocket接收实时交互数据。
@@ -1038,7 +1038,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件34：frontend/src/pages/admin/ReportPage.tsx
+#### 文件34：software/web/src/pages/admin/ReportPage.tsx
 
 **功能描述：**
 感受度报告页面，整合情感趋势、词云、盲区发现、服务建议。
@@ -1068,7 +1068,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件35：frontend/src/pages/admin/DashboardPage.tsx
+#### 文件35：software/web/src/pages/admin/DashboardPage.tsx
 
 **功能描述：**
 数据大屏页面，展示实时运营数据。
@@ -1102,7 +1102,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件36：frontend/src/pages/tourist/QRScan.tsx
+#### 文件36：software/web/src/pages/tourist/QRScan.tsx
 
 **功能描述：**
 二维码扫码定位页面，扫描景区二维码确定位置。
@@ -1132,7 +1132,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件37：frontend/src/components/common/MapSelector.tsx
+#### 文件37：software/web/src/components/common/MapSelector.tsx
 
 **功能描述：**
 手动地图选点组件，用户在地图上点选当前位置。
@@ -1166,7 +1166,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件38：frontend/src/__tests__/ChatPage.test.tsx
+#### 文件38：software/web/src/__tests__/ChatPage.test.tsx
 
 **功能描述：**
 对话页面单元测试。
@@ -1196,7 +1196,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件39：frontend/src/__tests__/VoiceInput.test.tsx
+#### 文件39：software/web/src/__tests__/VoiceInput.test.tsx
 
 **功能描述：**
 语音输入组件单元测试。
@@ -1226,7 +1226,7 @@ FAQ编辑器组件，支持FAQ的增删改查。
 
 ---
 
-#### 文件40：frontend/src/__tests__/Live2DStage.test.tsx
+#### 文件40：software/web/src/__tests__/Live2DStage.test.tsx
 
 **功能描述：**
 Live2D舞台组件单元测试。
@@ -1255,7 +1255,7 @@ Live2D舞台组件单元测试。
 
 ---
 
-#### 文件41：frontend/src/__tests__/KnowledgePage.test.tsx
+#### 文件41：software/web/src/__tests__/KnowledgePage.test.tsx
 
 **功能描述：**
 知识库管理页面单元测试。
@@ -1284,7 +1284,7 @@ Live2D舞台组件单元测试。
 
 ---
 
-#### 文件42：frontend/src/__tests__/DashboardPage.test.tsx
+#### 文件42：software/web/src/__tests__/DashboardPage.test.tsx
 
 **功能描述：**
 数据大屏页面单元测试。
@@ -1316,7 +1316,7 @@ Live2D舞台组件单元测试。
 ## 总文件目录
 
 ```
-frontend/src/
+software/web/src/
 ├── api/
 │   ├── request.ts              # HTTP请求封装
 │   ├── chat.ts                 # 对话API

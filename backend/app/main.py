@@ -46,17 +46,59 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow frontend dev server
+# CORS — 显式列出所有允许的源（移动端局域网部署）
+import socket
+try:
+    _hostname = socket.gethostname()
+    _local_ip = socket.gethostbyname(_hostname)
+except Exception:
+    _local_ip = "localhost"
+
+_cors_origins = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175",
+    "http://localhost:5177",
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "http://localhost:8081",
+    "http://localhost:8082",
+    "http://localhost:8083",
+    "http://localhost:8084",
+    "http://localhost:8085",
+    "http://localhost:8086",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:8081",
+    "http://127.0.0.1:8083",
+    "http://127.0.0.1:8086",
+    f"http://{_local_ip}:8083",
+    f"http://{_local_ip}:8084",
+    f"http://{_local_ip}:8085",
+    f"http://{_local_ip}:8086",
+    f"http://{_local_ip}:8000",
+    f"http://{_local_ip}:8001",
+    "http://26.115.133.11:8083",
+    "http://26.115.133.11:8084",
+    "http://26.115.133.11:8085",
+    "http://26.115.133.11:8086",
+    "http://26.115.133.11:8000",
+    "http://26.115.133.11:8001",
+    "http://10.0.197.69:8083",
+    "http://10.0.197.69:8084",
+    "http://10.0.197.69:8085",
+    "http://10.0.197.69:8086",
+    "http://10.0.197.69:8001",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5177", "http://localhost:3000", "http://127.0.0.1:8000", "http://localhost:8000"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Include API routers
-from app.api import chat, ws, knowledge, upload, recommend, analytics, avatar, tts, offline, vision, story, room, push, spots, routes_api, vision_room, chat_role, history, zen, puzzle  # noqa: E402
+from app.api import chat, ws, knowledge, upload, recommend, analytics, avatar, tts, offline, vision, story, room, push, spots, routes_api, vision_room, chat_role, history, zen, puzzle, memory, guide  # noqa: E402
 
 app.include_router(chat.router)
 app.include_router(ws.router)
@@ -78,6 +120,8 @@ app.include_router(chat_role.router)
 app.include_router(history.router)
 app.include_router(zen.router)
 app.include_router(puzzle.router)
+app.include_router(memory.router)
+app.include_router(guide.router)
 
 # Register room WebSocket via Starlette native WebSocketRoute
 # to avoid FastAPI APIWebSocketRoute + Starlette 1.2.1 incompatibility

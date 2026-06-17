@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "灵山胜境",
+    "slug": "lingshan-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "lingshan",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F7F5F0"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.lingshan.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#F7F5F0"
+      },
+      "package": "com.lingshan.mobile"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-asset",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to show your position on the scenic area map.",
+          "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to show your position on the scenic area map.",
+          "isAndroidForegroundLocationEnabled": true
+        }
+      ]
+    ]
+  }
+}

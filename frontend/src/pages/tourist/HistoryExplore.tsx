@@ -1,17 +1,53 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ClockCircleOutlined, BookOutlined } from '@ant-design/icons';
 import TimelineView from '../../components/tourist/TimelineView';
 import PuzzleGame from '../../components/tourist/PuzzleGame';
 import StampWall from '../../components/tourist/StampWall';
+import { FloatingGuide, FloatingGuideRef } from '../../components/vrm/FloatingGuide';
+import { VRMManager } from '../../components/vrm/VRMManager';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 const HistoryExplore: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'timeline' | 'puzzle' | 'stamps'>('timeline');
+  const [activeEra, setActiveEra] = useState<string>('tang');
   const [loaded, setLoaded] = useState(false);
+  const isMobile = useMediaQuery('(max-width: 768px)');
   const sessionId = 'web-' + Date.now().toString(36);
+  const guideRef = useRef<FloatingGuideRef>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setLoaded(true), 100);
     return () => clearTimeout(t);
+  }, []);
+
+  // 切换朝代时触发数字人讲解
+  const handleEraChange = (era: string) => {
+    setActiveEra(era);
+
+    const eraTexts: Record<string, { text: string; emotion: 'happy' | 'surprised' | 'neutral' }> = {
+      tang: { text: '盛唐时期，灵山开始建寺，佛教文化逐渐兴盛。玄奘法师曾在此驻足...', emotion: 'neutral' },
+      song: { text: '宋代，灵山佛教达到鼎盛，香火旺盛，文人墨客纷纷前来朝拜...', emotion: 'neutral' },
+      ming: { text: '明代，灵山进行了大规模修缮，留下了许多珍贵的历史遗迹...', emotion: 'neutral' },
+      qing: { text: '清代，灵山经历了战火洗礼，但依然保留着深厚的佛教文化底蕴...', emotion: 'neutral' },
+      modern: { text: '1997年，灵山大佛落成开光，高88米，成为世界上最高的青铜立佛...', emotion: 'surprised' },
+    };
+
+    const eraData = eraTexts[era];
+    if (eraData) {
+      guideRef.current?.speak(eraData.text, eraData.emotion);
+    }
+  };
+
+  // 监听 TimelineView 的朝代切换事件
+  useEffect(() => {
+    const handleTimelineEraChange = (e: CustomEvent) => {
+      handleEraChange(e.detail.era);
+    };
+
+    window.addEventListener('timeline_era_change' as any, handleTimelineEraChange);
+    return () => {
+      window.removeEventListener('timeline_era_change' as any, handleTimelineEraChange);
+    };
   }, []);
 
   const tabs = [
@@ -22,12 +58,12 @@ const HistoryExplore: React.FC = () => {
 
   return (
     <div className="paper-texture" style={{ minHeight: 'calc(100vh - 120px)', paddingBottom: 40 }}>
-      <div style={{ maxWidth: 960, margin: '0 auto', padding: '28px 28px' }}>
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: isMobile ? '20px 16px' : '28px 28px' }}>
 
         {/* ═══ 标题区 — 时空穿越入口 ═══ */}
         <div style={{
-          textAlign: 'center', marginBottom: 32, position: 'relative',
-          overflow: 'hidden', padding: '36px 24px 28px',
+          textAlign: 'center', marginBottom: isMobile ? 24 : 32, position: 'relative',
+          overflow: 'hidden', padding: isMobile ? '28px 16px 20px' : '36px 24px 28px',
           borderRadius: 'var(--radius-lg)',
           background: 'linear-gradient(135deg, rgba(180,83,9,0.05) 0%, rgba(124,58,237,0.05) 50%, rgba(26,95,180,0.05) 100%)',
         }}>
@@ -79,11 +115,11 @@ const HistoryExplore: React.FC = () => {
 
           <h1 style={{
             margin: '0 0 8px',
-            fontSize: 30,
+            fontSize: isMobile ? 24 : 30,
             fontWeight: 800,
             fontFamily: 'var(--font-calligraphy)',
             color: 'var(--text-primary)',
-            letterSpacing: 6,
+            letterSpacing: isMobile ? 3 : 6,
             opacity: loaded ? 1 : 0,
             transform: loaded ? 'translateY(0)' : 'translateY(20px)',
             transition: 'all 800ms cubic-bezier(0.25, 1, 0.45, 0.94) 300ms',
@@ -113,8 +149,16 @@ const HistoryExplore: React.FC = () => {
 
         {/* ═══ Tab 栏 — 东方风格增强 ═══ */}
         <div style={{
-          display: 'flex', gap: 10, marginBottom: 28,
-          justifyContent: 'center', flexWrap: 'wrap',
+          display: 'flex',
+          gap: isMobile ? 8 : 10,
+          marginBottom: isMobile ? 20 : 28,
+          justifyContent: isMobile ? 'flex-start' : 'center',
+          flexWrap: isMobile ? 'nowrap' : 'wrap',
+          overflowX: isMobile ? 'auto' : 'visible',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          WebkitOverflowScrolling: 'touch',
+          padding: isMobile ? '0 0 8px' : 0,
         }}>
           {tabs.map((tab) => {
             const isActive = activeTab === tab.key;
@@ -124,7 +168,9 @@ const HistoryExplore: React.FC = () => {
                 onClick={() => setActiveTab(tab.key)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '11px 26px', borderRadius: 10,
+                  padding: isMobile ? '10px 20px' : '11px 26px',
+                  borderRadius: 10,
+                  flexShrink: isMobile ? 0 : undefined,
                   border: isActive ? 'none' : '1.5px solid var(--border-light)',
                   background: isActive
                     ? 'linear-gradient(135deg, var(--color-primary) 0%, #4A8B73 100%)'
@@ -137,6 +183,7 @@ const HistoryExplore: React.FC = () => {
                   transition: 'all 300ms cubic-bezier(0.4, 0, 0.2, 1)',
                   letterSpacing: 1,
                   boxShadow: isActive ? '0 2px 10px rgba(106,156,137,0.3)' : 'none',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 <span style={{ color: isActive ? '#fff' : 'var(--text-tertiary)', fontSize: 15 }}>
@@ -150,13 +197,21 @@ const HistoryExplore: React.FC = () => {
 
         {/* ═══ 内容区域 ═══ */}
         <div className="animate-fade-in">
-          {activeTab === 'timeline' && <TimelineView />}
+          {activeTab === 'timeline' && <TimelineView onEraChange={handleEraChange} />}
           {activeTab === 'puzzle' && (
             <PuzzleGame spotName="灵山大佛" sessionId={sessionId} />
           )}
           {activeTab === 'stamps' && <StampWall sessionId={sessionId} />}
         </div>
       </div>
+
+      {/* 数字人浮窗 */}
+      <FloatingGuide
+        ref={guideRef}
+        pageContext="history"
+        autoWelcome={true}
+        position="bottom-right"
+      />
     </div>
   );
 };

@@ -72,71 +72,71 @@
 ### API模块 (6个)
 | 文件 | 状态 | 测试 |
 |------|------|------|
-| frontend/src/api/request.ts | ✓ | 8个用例 |
-| frontend/src/api/chat.ts | ✓ | (同request) |
-| frontend/src/api/recommend.ts | ✓ | (同request) |
-| frontend/src/api/knowledge.ts | ✓ | 20个用例 |
-| frontend/src/api/avatar.ts | ✓ | 8个用例 |
-| frontend/src/api/analytics.ts | ✓ | 13个用例 |
+| software/web/src/api/request.ts | ✓ | 8个用例 |
+| software/web/src/api/chat.ts | ✓ | (同request) |
+| software/web/src/api/recommend.ts | ✓ | (同request) |
+| software/web/src/api/knowledge.ts | ✓ | 20个用例 |
+| software/web/src/api/avatar.ts | ✓ | 8个用例 |
+| software/web/src/api/analytics.ts | ✓ | 13个用例 |
 
 ### 状态管理 (2个)
 | 文件 | 状态 | 测试 |
 |------|------|------|
-| frontend/src/stores/chatStore.ts | ✓ | 8个用例 |
-| frontend/src/stores/userStore.ts | ✓ | 5个用例 |
+| software/web/src/stores/chatStore.ts | ✓ | 8个用例 |
+| software/web/src/stores/userStore.ts | ✓ | 5个用例 |
 
 ### Hooks (4个)
 | 文件 | 状态 | 测试 |
 |------|------|------|
-| frontend/src/hooks/useSSE.ts | ✓ | 4个用例 |
-| frontend/src/hooks/useWebSocket.ts | ✓ | 5个用例 |
-| frontend/src/hooks/useVoiceRecord.ts | ✓ | 7个用例 |
-| frontend/src/hooks/useLive2D.ts | ✓ | 14个用例 |
+| software/web/src/hooks/useSSE.ts | ✓ | 4个用例 |
+| software/web/src/hooks/useWebSocket.ts | ✓ | 5个用例 |
+| software/web/src/hooks/useVoiceRecord.ts | ✓ | 7个用例 |
+| software/web/src/hooks/useLive2D.ts | ✓ | 14个用例 |
 
 ### 数字人组件 (6个)
 | 文件 | 状态 | 测试 |
 |------|------|------|
-| frontend/src/components/DigitalHuman/ChatBubble.tsx | ✓ | 13个用例 |
-| frontend/src/components/DigitalHuman/VoiceInput.tsx | ✓ | 14个用例 |
-| frontend/src/components/DigitalHuman/Live2DStage.tsx | ✓ | 14个用例 |
-| frontend/src/components/DigitalHuman/LipSync.tsx | ✓ | 10个用例 |
-| frontend/src/components/DigitalHuman/EmotionController.tsx | ✓ | 15个用例 |
-| frontend/src/components/DigitalHuman/AudioSync.tsx | ✓ | 17个用例 |
+| software/web/src/components/DigitalHuman/ChatBubble.tsx | ✓ | 13个用例 |
+| software/web/src/components/DigitalHuman/VoiceInput.tsx | ✓ | 14个用例 |
+| software/web/src/components/DigitalHuman/Live2DStage.tsx | ✓ | 14个用例 |
+| software/web/src/components/DigitalHuman/LipSync.tsx | ✓ | 10个用例 |
+| software/web/src/components/DigitalHuman/EmotionController.tsx | ✓ | 15个用例 |
+| software/web/src/components/DigitalHuman/AudioSync.tsx | ✓ | 17个用例 |
 
 ### 管理后台组件 (11个)
 | 文件 | 状态 | 测试 |
 |------|------|------|
-| frontend/src/components/admin/DocumentUpload.tsx | ✓ | 15个用例 |
-| frontend/src/components/admin/ChunkPreview.tsx | ✓ | 13个用例 |
-| frontend/src/components/admin/FAQEditor.tsx | ✓ | 25个用例 |
-| frontend/src/components/admin/AvatarAppearance.tsx | ✓ | 21个用例 |
-| frontend/src/components/admin/VoiceSelector.tsx | ✓ | 14个用例 |
-| frontend/src/components/admin/WelcomeEditor.tsx | ✓ | 21个用例 |
-| frontend/src/components/admin/SentimentChart.tsx | ✓ | 9个用例 |
-| frontend/src/components/admin/WordCloud.tsx | ✓ | 8个用例 |
-| frontend/src/components/admin/MetricsCard.tsx | ✓ | 9个用例 |
-| frontend/src/components/admin/HotQuestions.tsx | ✓ | 10个用例 |
-| frontend/src/components/admin/RealtimeMonitor.tsx | ✓ | 12个用例 |
+| software/web/src/components/admin/DocumentUpload.tsx | ✓ | 15个用例 |
+| software/web/src/components/admin/ChunkPreview.tsx | ✓ | 13个用例 |
+| software/web/src/components/admin/FAQEditor.tsx | ✓ | 25个用例 |
+| software/web/src/components/admin/AvatarAppearance.tsx | ✓ | 21个用例 |
+| software/web/src/components/admin/VoiceSelector.tsx | ✓ | 14个用例 |
+| software/web/src/components/admin/WelcomeEditor.tsx | ✓ | 21个用例 |
+| software/web/src/components/admin/SentimentChart.tsx | ✓ | 9个用例 |
+| software/web/src/components/admin/WordCloud.tsx | ✓ | 8个用例 |
+| software/web/src/components/admin/MetricsCard.tsx | ✓ | 9个用例 |
+| software/web/src/components/admin/HotQuestions.tsx | ✓ | 10个用例 |
+| software/web/src/components/admin/RealtimeMonitor.tsx | ✓ | 12个用例 |
 
 ### 公共组件 (1个)
 | 文件 | 状态 | 测试 |
 |------|------|------|
-| frontend/src/components/common/MapSelector.tsx | ✓ | 9个用例 |
+| software/web/src/components/common/MapSelector.tsx | ✓ | 9个用例 |
 
 ### 游客端页面 (3个)
 | 文件 | 状态 | 测试 |
 |------|------|------|
-| frontend/src/pages/tourist/ChatPage.tsx | ✓ | 13个用例 |
-| frontend/src/pages/tourist/RecommendPage.tsx | ✓ | 16个用例 |
-| frontend/src/pages/tourist/QRScan.tsx | ✓ | 10个用例 |
+| software/web/src/pages/tourist/ChatPage.tsx | ✓ | 13个用例 |
+| software/web/src/pages/tourist/RecommendPage.tsx | ✓ | 16个用例 |
+| software/web/src/pages/tourist/QRScan.tsx | ✓ | 10个用例 |
 
 ### 管理后台页面 (4个)
 | 文件 | 状态 | 测试 |
 |------|------|------|
-| frontend/src/pages/admin/KnowledgePage.tsx | ✓ | 25个用例 |
-| frontend/src/pages/admin/AvatarPage.tsx | ✓ | 14个用例 |
-| frontend/src/pages/admin/ReportPage.tsx | ✓ | 10个用例 |
-| frontend/src/pages/admin/DashboardPage.tsx | ✓ | 9个用例 |
+| software/web/src/pages/admin/KnowledgePage.tsx | ✓ | 25个用例 |
+| software/web/src/pages/admin/AvatarPage.tsx | ✓ | 14个用例 |
+| software/web/src/pages/admin/ReportPage.tsx | ✓ | 10个用例 |
+| software/web/src/pages/admin/DashboardPage.tsx | ✓ | 9个用例 |
 
 ---
 
@@ -244,15 +244,15 @@ Response: 实时交互数据
   - VITE_WS_URL：WebSocket服务URL
 
 - **静态资源：**
-  - Live2D模型文件：frontend/public/live2d-models/
+  - Live2D模型文件：software/web/public/live2d-models/
 
 ---
 
 ## 文档位置
 
-- **计划书：** frontend/docs/module-b/PLAN.md
-- **测试日志：** frontend/docs/module-b/LOG.md
-- **交接报告：** frontend/docs/module-b/HANDOVER.md
+- **计划书：** software/web/docs/module-b/PLAN.md
+- **测试日志：** software/web/docs/module-b/LOG.md
+- **交接报告：** software/web/docs/module-b/HANDOVER.md
 
 ---
 

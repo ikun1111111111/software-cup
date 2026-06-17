@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeftOutlined, EnvironmentOutlined, TagOutlined,
-  MessageOutlined, SoundOutlined, CameraOutlined,
+  ArrowLeftOutlined, EnvironmentOutlined,
+  CameraOutlined,
 } from '@ant-design/icons';
 import { getSpotById, type SpotDetail } from '../../api/spots';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 
 /* ================================================================
    景点图片映射 — spotId → 图片路径
@@ -12,23 +13,19 @@ import { getSpotById, type SpotDetail } from '../../api/spots';
    ================================================================ */
 
 const SPOT_IMAGES: Record<string, string[]> = {
-  // 灵山胜境景点 — 数据库ID (LS-xxx) 映射
-  'LS-006': ['/image/nine dragon.png'],  // 九龙灌浴
-  'LS-007': ['/image/foshou.png'],       // 降魔浮雕 / 佛手广场
-  'LS-008': ['/image/foshou.png'],       // 阿育王柱 / 佛手广场
-  'LS-009': ['/image/baizi.png'],        // 百子戏弥勒
-  'LS-010': ['/image/xiangfu.png'],      // 祥符禅寺
-  'LS-011': ['/image/bigfo.png'],        // 灵山大佛
-  'LS-012': ['/image/sansheng.png'],     // 三圣殿
-  'LS-013': ['/image/fangong.png'],      // 梵宫
-  'LS-014': ['/image/wuyin.png'],        // 五印坛城
-  'LS-015': ['/image/manfeilong.png'],   // 曼飞龙塔
-  'LS-004': ['/image/jingshe.png'],      // 五门 / 灵山精舍
-  'LS-005': ['/image/puti.png'],         // 菩提大道
-  // 以下景点暂无图片
-  // 'LS-001': [],  // 灵山大照壁
-  // 'LS-002': [],  // 五门
-  // 'LS-003': [],  // 佛足印
+  // 灵山胜境景点 — 使用 slug ID 匹配 API 返回的 spot.id
+  'ling-shan-da-fo':       ['/image/bigfo.png'],
+  'fan-gong':              ['/image/fangong.png'],
+  'jiu-long-guan-yu':      ['/image/nine dragon.png'],
+  'wu-yin-tan-cheng':      ['/image/wuyin.png'],
+  'xiang-fu-chan-si':       ['/image/xiangfu.png'],
+  'fo-shou-guang-chang':   ['/image/foshou.png'],
+  'bai-zi-xi-mi-le':       ['/image/baizi.png'],
+  'man-fei-long-ta':       ['/image/manfeilong.png'],
+  'ling-shan-jing-she':    ['/image/jingshe.png'],
+  'ling-shan-da-zhao-bi':  ['/image/zhaobi.png'],
+  'pu-ti-da-dao':          ['/image/puti.png'],
+  'san-sheng-dian':        ['/image/sansheng.png'],
 };
 
 const getSpotImages = (spotId: string): string[] => SPOT_IMAGES[spotId] || [];
@@ -42,6 +39,7 @@ const AttractionDetail: React.FC = () => {
   const navigate = useNavigate();
   const [spot, setSpot] = useState<SpotDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   useEffect(() => {
     if (!spotId) return;
@@ -131,53 +129,89 @@ const AttractionDetail: React.FC = () => {
   return (
     <div className="paper-texture" style={{ minHeight: 'calc(100vh - 120px)', paddingBottom: 48 }}>
 
-      {/* ═══ Hero 区域 — 纯文字大气风格 ═══ */}
+      {/* ═══ Hero 区域 — 大图背景 ═══ */}
       <div style={{
-        padding: '60px 24px 40px',
-        background: `linear-gradient(180deg, ${accentColor}12 0%, #F7F5F0 100%)`,
-        textAlign: 'center', marginBottom: 0,
+        position: 'relative',
+        textAlign: 'center',
+        height: isMobile ? 320 : 400,
+        overflow: 'hidden',
       }}>
-        <button
-          onClick={() => navigate(-1)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6,
-            background: 'none', border: 'none', color: 'var(--color-primary)',
-            fontSize: 14, cursor: 'pointer', marginBottom: 20, padding: '6px 0',
-            fontFamily: 'var(--font-serif)',
-          }}
-        >
-          <ArrowLeftOutlined /> 返回
-        </button>
-        <h1 style={{
-          margin: '0 0 12px',
-          fontSize: 'clamp(30px, 5vw, 46px)',
-          fontWeight: 800,
-          color: 'var(--text-primary)',
-          fontFamily: "'ZCOOL XiaoWei', 'Noto Serif SC', serif",
-          letterSpacing: 5,
-          lineHeight: 1.3,
-        }}>
-          {spot.name}
-        </h1>
+        {/* 背景大图 — 全宽铺满 */}
+        {hasImages && (
+          <img
+            src={images[0]}
+            alt={spot.name}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              objectPosition: 'center 40%',
+              zIndex: 0,
+            }}
+          />
+        )}
+        {/* 暗色遮罩 */}
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 12,
-          justifyContent: 'center', flexWrap: 'wrap',
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 60%, rgba(0,0,0,0.1) 100%)',
+          zIndex: 1,
+        }} />
+        {/* 内容层 */}
+        <div style={{
+          position: 'relative',
+          zIndex: 2,
+          padding: isMobile ? '40px 16px 28px' : '60px 24px 40px',
         }}>
-          <span style={{
-            fontSize: 13, padding: '4px 12px', borderRadius: 4,
-            background: `${accentColor}15`,
-            color: accentColor, fontWeight: 600,
-            fontFamily: 'var(--font-serif)', letterSpacing: 1,
-            border: `1px solid ${accentColor}20`,
+          <button
+            onClick={() => navigate('/explore')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              background: 'rgba(0,0,0,0.35)', border: 'none',
+              color: '#fff',
+              fontSize: 14, cursor: 'pointer', marginBottom: 20,
+              padding: '6px 14px', borderRadius: 20,
+              fontFamily: 'var(--font-serif)',
+              backdropFilter: 'blur(4px)',
+            }}
+          >
+            <ArrowLeftOutlined /> 返回
+          </button>
+          <h1 style={{
+            margin: '0 0 12px',
+            fontSize: 'clamp(30px, 5vw, 46px)',
+            fontWeight: 800,
+            color: '#fff',
+            textShadow: '0 2px 8px rgba(0,0,0,0.4)',
+            fontFamily: "'ZCOOL XiaoWei', 'Noto Serif SC', serif",
+            letterSpacing: 5,
+            lineHeight: 1.3,
           }}>
-            {spot.category}
-          </span>
-          <span style={{
-            fontSize: 13, color: 'var(--text-tertiary)',
-            fontFamily: 'var(--font-serif)',
+            {spot.name}
+          </h1>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            justifyContent: 'center', flexWrap: 'wrap',
           }}>
-            <EnvironmentOutlined /> 灵山胜境
-          </span>
+            <span style={{
+              fontSize: 13, padding: '4px 12px', borderRadius: 4,
+              background: 'rgba(255,255,255,0.18)',
+              color: '#fff', fontWeight: 600,
+              fontFamily: 'var(--font-serif)', letterSpacing: 1,
+              border: '1px solid rgba(255,255,255,0.25)',
+              backdropFilter: 'blur(4px)',
+            }}>
+              {spot.category}
+            </span>
+            <span style={{
+              fontSize: 13, color: 'rgba(255,255,255,0.85)',
+              fontFamily: 'var(--font-serif)',
+            }}>
+              <EnvironmentOutlined /> 灵山胜境
+            </span>
+          </div>
         </div>
       </div>
 
@@ -257,12 +291,12 @@ const AttractionDetail: React.FC = () => {
               return (
                 <React.Fragment key={idx}>
                   <p style={{
-                    fontSize: 16,
+                    fontSize: isMobile ? 15 : 16,
                     color: 'var(--text-secondary)',
-                    lineHeight: 2.1,
+                    lineHeight: isMobile ? 1.8 : 2.1,
                     fontFamily: 'var(--font-serif)',
                     textAlign: 'justify',
-                    textIndent: '2em',
+                    textIndent: isMobile ? '1.5em' : '2em',
                     marginBottom: '1.3em',
                   }}>
                     {para}
@@ -271,11 +305,11 @@ const AttractionDetail: React.FC = () => {
                   {/* 插入图片 — 交错杂志风 */}
                   {planForThis && (
                     <div style={{
-                      float: planForThis.side,
-                      width: planForThis.width,
-                      margin: planForThis.side === 'right'
+                      float: isMobile ? 'none' : planForThis.side,
+                      width: isMobile ? '100%' : planForThis.width,
+                      margin: isMobile ? '0 0 20px' : (planForThis.side === 'right'
                         ? `${planForThis.offsetY}px -20px 24px 28px`
-                        : `${planForThis.offsetY}px 28px 24px -20px`,
+                        : `${planForThis.offsetY}px 28px 24px -20px`),
                       clear: 'both',
                     }}>
                       <div style={{
@@ -283,7 +317,7 @@ const AttractionDetail: React.FC = () => {
                         overflow: 'hidden',
                         boxShadow: '0 6px 24px rgba(0,0,0,0.10)',
                         border: `1px solid ${accentColor}18`,
-                        transform: `rotate(${planForThis.rotate}deg)`,
+                        transform: isMobile ? 'none' : `rotate(${planForThis.rotate}deg)`,
                         transition: 'transform 400ms ease',
                       }}>
                         <img
@@ -292,11 +326,11 @@ const AttractionDetail: React.FC = () => {
                           loading="lazy"
                           style={{
                             width: '100%',
-                            height: planForThis.width === '48%' ? 240 : planForThis.width === '40%' ? 200 : 180,
+                            height: isMobile ? 200 : (planForThis.width === '48%' ? 240 : planForThis.width === '40%' ? 200 : 180),
                             objectFit: 'cover',
                             objectPosition: planForThis.side === 'right' ? 'center 40%' : 'center 60%',
                             display: 'block',
-                            transform: `rotate(${-planForThis.rotate}deg) scale(1.05)`,
+                            transform: isMobile ? 'none' : `rotate(${-planForThis.rotate}deg) scale(1.05)`,
                           }}
                         />
                       </div>
@@ -371,30 +405,8 @@ const AttractionDetail: React.FC = () => {
           </div>
         )}
 
-        {/* ═══ 操作按钮 ═══ */}
-        <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-          <button
-            onClick={() => navigate('/', { state: { fromQR: true, spotId: spot.id, spotName: spot.name } })}
-            className="btn-seal btn-seal--filled"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '12px 28px', fontSize: 15, fontWeight: 600,
-            }}
-          >
-            <MessageOutlined /> 问数字人导游
-          </button>
-          <button
-            onClick={() => navigate('/', { state: { fromQR: true, spotId: spot.id, spotName: spot.name } })}
-            className="btn-seal btn-seal--filled"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '12px 28px', fontSize: 15, fontWeight: 600,
-            }}
-          >
-            <SoundOutlined /> 听故事讲解
-          </button>
-        </div>
       </div>
+
     </div>
   );
 };

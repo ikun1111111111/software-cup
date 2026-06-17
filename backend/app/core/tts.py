@@ -1,11 +1,14 @@
-"""TTS (Text-to-Speech) via edge-tts with Redis caching.
+"""TTS (Text-to-Speech) via edge-tts or Azure Speech Services with Redis caching.
 
 Provides text-to-audio synthesis with phoneme timestamps for lip-sync.
-Uses Microsoft Edge TTS (free, high quality Chinese voices).
+Supports:
+- Microsoft Edge TTS (free, high quality Chinese voices)
+- Azure Speech Services (premium quality with SSML support)
 """
 import logging
 import hashlib
 import json
+import httpx
 
 from pydantic import BaseModel
 
@@ -22,6 +25,15 @@ _EDGE_TTS_VOICES = {
     "sichuanhua": "zh-CN-XiaoxiaoNeural",    # 四川话暂用普通话
     "male": "zh-CN-YunxiNeural",             # 普通话男声
     "female": "zh-CN-XiaoyiNeural",          # 普通话年轻女声
+}
+
+# Azure Speech Services voice mapping: voice_id -> voice name
+_AZURE_TTS_VOICES = {
+    "mandarin": "zh-CN-XiaoxiaoNeural",      # 标准普通话女声（情感丰富）
+    "nanjinghua": "zh-CN-XiaoxiaoNeural",     # 南京话暂用普通话
+    "sichuanhua": "zh-CN-XiaoxiaoNeural",     # 四川话暂用普通话
+    "male": "zh-CN-YunxiNeural",              # 普通话男声
+    "female": "zh-CN-XiaoyiNeural",           # 普通话年轻女声
 }
 
 
@@ -122,14 +134,17 @@ def _generate_phoneme_timestamps(text: str, duration_ms: int) -> list[dict]:
 
 
 def _resolve_voice(voice_id: str | None) -> str:
-    """Resolve voice_id to edge-tts voice name.
-
-    Returns:
-        edge-tts voice name string.
-    """
+    """Resolve voice_id to edge-tts voice name."""
     if voice_id and voice_id in _EDGE_TTS_VOICES:
         return _EDGE_TTS_VOICES[voice_id]
     return _EDGE_TTS_VOICES["mandarin"]
+
+
+def _resolve_azure_voice(voice_id: str | None) -> str:
+    """Resolve voice_id to Azure Speech Services voice name."""
+    if voice_id and voice_id in _AZURE_TTS_VOICES:
+        return _AZURE_TTS_VOICES[voice_id]
+    return _AZURE_TTS_VOICES["mandarin"]
 
 
 def _cache_key(text: str, voice_id: str | None) -> str:

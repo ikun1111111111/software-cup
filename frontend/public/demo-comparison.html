@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>平替方案对比 - 帧动画 vs 骨骼动画</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Noto Serif SC', 'Source Han Serif SC', 'SimSun', serif;
+      background: #1a1a2e; color: #e0ddd5; min-height: 100vh;
+    }
+    .header { text-align: center; padding: 30px 20px 10px; }
+    .header h1 { font-size: 28px; color: #f3efe6; letter-spacing: 0.08em; margin-bottom: 8px; }
+    .header p { color: #a8a198; font-size: 14px; }
+    .tabs { display: flex; justify-content: center; gap: 16px; margin: 24px 0; }
+    .tab-btn {
+      padding: 10px 28px; border: 2px solid rgba(200,169,110,0.3);
+      background: transparent; color: #c8a951; border-radius: 8px;
+      cursor: pointer; font-size: 15px; font-family: inherit;
+      letter-spacing: 0.05em; transition: all 0.3s;
+    }
+    .tab-btn.active { background: rgba(200,169,110,0.15); border-color: #c8a951; }
+    .tab-btn:hover { background: rgba(200,169,110,0.1); }
+    .demo-section { display: none; max-width: 900px; margin: 0 auto; padding: 0 20px 40px; }
+    .demo-section.active { display: block; }
+
+    /* Layout A */
+    .pixi-container { display: flex; gap: 40px; align-items: center; justify-content: center; flex-wrap: wrap; }
+    .stage-wrapper {
+      position: relative; width: 320px; height: 480px; border-radius: 16px; overflow: hidden;
+      border: 2px solid rgba(200,169,110,0.2); background: linear-gradient(180deg, #2a2a3e 0%, #1a1a2e 100%);
+    }
+    .character-img {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      object-fit: contain; opacity: 0; transition: opacity 0.6s ease;
+      animation: breathe 3s ease-in-out infinite;
+    }
+    .character-img.active { opacity: 1; }
+    @keyframes breathe { 0%,100%{transform:scaleY(1) translateY(0)} 50%{transform:scaleY(1.008) translateY(-2px)} }
+    .blink-overlay {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; animation: blink 4s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,95%,100%{opacity:0} 96%,98%{opacity:0.15;background:rgba(0,0,0,0.3)} }
+    .costume-panel { display: flex; flex-direction: column; gap: 10px; }
+    .costume-panel h3 { font-size: 14px; color: #c8a951; letter-spacing: 0.08em; margin-bottom: 4px; }
+    .costume-btn {
+      display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+      border: 1.5px solid rgba(200,169,110,0.2); background: rgba(255,255,255,0.03);
+      border-radius: 10px; cursor: pointer; transition: all 0.3s;
+      color: #e0ddd5; font-family: inherit; font-size: 13px; width: 200px;
+    }
+    .costume-btn:hover { background: rgba(200,169,110,0.08); border-color: rgba(200,169,110,0.4); }
+    .costume-btn.active { border-color: #c8a951; background: rgba(200,169,110,0.12); }
+    .costume-swatch { width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; }
+    .demo-desc {
+      margin-top: 20px; padding: 16px; background: rgba(255,255,255,0.04);
+      border-radius: 10px; font-size: 13px; line-height: 1.7;
+      color: #a8a198; border-left: 3px solid rgba(200,169,110,0.3);
+    }
+    .demo-desc strong { color: #c8a951; }
+
+    /* Layout B */
+    .skel-container { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+    .skel-canvas-wrap {
+      width: 100%; max-width: 500px; height: 400px; border-radius: 16px; overflow: hidden;
+      border: 2px solid rgba(200,169,110,0.2); background: #0d0d1a; position: relative;
+    }
+    .skel-canvas-wrap canvas { display: block; width: 100%; height: 100%; }
+    .skel-controls { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+    .skel-btn {
+      padding: 8px 20px; border: 1.5px solid rgba(106,156,137,0.4);
+      background: transparent; color: #6a9c89; border-radius: 8px;
+      cursor: pointer; font-family: inherit; font-size: 13px; transition: all 0.3s;
+    }
+    .skel-btn:hover { background: rgba(106,156,137,0.1); }
+    .skel-btn.active { background: rgba(106,156,137,0.15); border-color: #6a9c89; }
+    .toggle-row { display: flex; gap: 16px; align-items: center; font-size: 13px; color: #a8a198; }
+    .toggle-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .skel-info { max-width: 500px; font-size: 13px; color: #a8a198; line-height: 1.7; }
+    .skel-info strong { color: #6a9c89; }
+
+    .comparison-table { width: 100%; max-width: 700px; margin: 40px auto 0; border-collapse: collapse; font-size: 13px; }
+    .comparison-table th, .comparison-table td { padding: 10px 14px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .comparison-table th { color: #c8a951; font-weight: 600; }
+    .comparison-table td { color: #a8a198; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .badge-green { background: rgba(106,156,137,0.2); color: #6a9c89; }
+    .badge-yellow { background: rgba(200,169,110,0.2); color: #c8a951; }
+    .badge-red { background: rgba(200,75,49,0.2); color: #c84b31; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Live2D 平替方案对比</h1>
+  <p>帧动画（静态图切换） vs 骨骼动画（实时驱动）</p>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('pixi')">方案 A：帧动画</button>
+  <button class="tab-btn" onclick="switchTab('skel')">方案 B：骨骼动画</button>
+</div>
+
+<!-- ════ Tab A: Frame Animation ════ -->
+<div id="pixi-demo" class="demo-section active">
+  <div class="pixi-container">
+    <div class="stage-wrapper">
+      <img class="character-img active" id="char-img" src="/models/haru/textures/daily_classic.png" alt="">
+      <div class="blink-overlay"></div>
+    </div>
+    <div class="costume-panel">
+      <h3>切换服装</h3>
+      <button class="costume-btn active" onclick="switchCostume('daily_classic',this)">
+        <div class="costume-swatch" style="background:linear-gradient(135deg,#E8E2D6,#C8BFB0)"></div><span>素雅禅衣</span>
+      </button>
+      <button class="costume-btn" onclick="switchCostume('daily_modern',this)">
+        <div class="costume-swatch" style="background:linear-gradient(135deg,#D4C5B0,#A89880)"></div><span>新中式便装</span>
+      </button>
+      <button class="costume-btn" onclick="switchCostume('daily_artistic',this)">
+        <div class="costume-swatch" style="background:linear-gradient(135deg,#B8C4B8,#8FA08F)"></div><span>水墨雅服</span>
+      </button>
+      <button class="costume-btn" onclick="switchCostume('festival_spring',this)">
+        <div class="costume-swatch" style="background:linear-gradient(135deg,#C84B31,#E8A040)"></div><span>锦绣红袍</span>
+      </button>
+      <button class="costume-btn" onclick="switchCostume('festival_midautumn',this)">
+        <div class="costume-swatch" style="background:linear-gradient(135deg,#C8A951,#F0E6C0)"></div><span>月华裳</span>
+      </button>
+      <button class="costume-btn" onclick="switchCostume('festival_dragon',this)">
+        <div class="costume-swatch" style="background:linear-gradient(135deg,#3A6EA5,#A0C4E8)"></div><span>龙舟竞渡</span>
+      </button>
+    </div>
+  </div>
+  <div class="demo-desc">
+    <strong>方案说明：</strong>用已有的 AI 效果图做淡入淡出切换，配合 CSS 呼吸动画 + 眨眼遮罩。<br>
+    <strong>优势：</strong>零成本、即用现有资源、换装效果最好看。<br>
+    <strong>局限：</strong>没有骨骼动画，本质是"会呼吸的立绘"。
+  </div>
+</div>
+
+<!-- ════ Tab B: Skeleton Animation ════ -->
+<div id="skel-demo" class="demo-section">
+  <div class="skel-container">
+    <div class="skel-canvas-wrap">
+      <canvas id="skel-canvas" width="500" height="400"></canvas>
+    </div>
+    <div class="skel-controls">
+      <button class="skel-btn active" onclick="playAnim('idle',this)">待机</button>
+      <button class="skel-btn" onclick="playAnim('walk',this)">走路</button>
+      <button class="skel-btn" onclick="playAnim('wave',this)">挥手</button>
+    </div>
+    <div class="toggle-row">
+      <label><input type="checkbox" id="chk-bones" checked onchange="render()"> 显示骨骼</label>
+      <label><input type="checkbox" id="chk-skin" checked onchange="render()"> 显示皮肤</label>
+    </div>
+    <div class="skel-info">
+      <strong>骨骼动画原理演示</strong><br><br>
+      这个小人由 11 根骨骼组成：头、身体、上臂x2、前臂x2、大腿x2、小腿x2。<br>
+      动画就是<strong>随时间改变每根骨骼的角度</strong>——和 Spine / Live2D 原理完全一致。<br><br>
+      骨骼动画只存储角度关键帧数据（< 1KB），运行时实时计算渲染。<br>
+      不像帧动画需要存储每张完整图片（几百 KB ~ 几 MB）。<br><br>
+      <strong>如果接入项目：</strong>可以用 <code>spine-ts</code>（需许可证）或开源的 <code>pixi-spine</code>，<br>
+      或用 AI 生成角色图后手动绑定骨骼（类似 Live2D 但更灵活）。
+    </div>
+  </div>
+</div>
+
+<!-- ════ Comparison Table ════ -->
+<table class="comparison-table">
+  <thead><tr><th>对比项</th><th>帧动画</th><th>骨骼动画</th><th>Live2D</th></tr></thead>
+  <tbody>
+    <tr><td>开发成本</td><td><span class="badge badge-green">极低</span></td><td><span class="badge badge-yellow">中等</span></td><td><span class="badge badge-yellow">中等</span></td></tr>
+    <tr><td>换装效果</td><td><span class="badge badge-green">最好</span>（AI完整图）</td><td><span class="badge badge-green">好</span>（皮肤切换）</td><td><span class="badge badge-red">差</span>（UV对齐）</td></tr>
+    <tr><td>动画流畅度</td><td><span class="badge badge-red">一般</span></td><td><span class="badge badge-green">最好</span></td><td><span class="badge badge-green">好</span></td></tr>
+    <tr><td>免费中国风</td><td><span class="badge badge-green">有</span>（AI生成）</td><td><span class="badge badge-green">可自建</span></td><td><span class="badge badge-red">几乎没有</span></td></tr>
+    <tr><td>代码复用</td><td><span class="badge badge-green">高</span></td><td><span class="badge badge-yellow">中</span></td><td><span class="badge badge-green">已有</span></td></tr>
+  </tbody>
+</table>
+
+<script>
+/* ── Tab ── */
+let skelRAF = null;
+function switchTab(t) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (t==='pixi'?i===0:i===1)));
+  document.querySelectorAll('.demo-section').forEach(s => s.classList.remove('active'));
+  document.getElementById(t === 'pixi' ? 'pixi-demo' : 'skel-demo').classList.add('active');
+  if (t === 'skel') startSkel(); else { if (skelRAF) cancelAnimationFrame(skelRAF); skelRAF = null; }
+}
+
+/* ── Costume ── */
+function switchCostume(name, btn) {
+  const img = document.getElementById('char-img');
+  img.style.opacity = '0';
+  setTimeout(() => { img.src = '/models/haru/textures/' + name + '.png'; img.onload = () => img.style.opacity = '1'; }, 300);
+  document.querySelectorAll('.costume-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+/* ── Skeleton Engine ── */
+const C = document.getElementById('skel-canvas');
+const X = C.getContext('2d');
+let anim = 'idle', t = 0;
+
+function playAnim(a, btn) {
+  anim = a; t = 0;
+  document.querySelectorAll('.skel-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// Bone: [parent, length, restAngle, name]
+const B = [
+  [-1,  0,  0,          'hip'],
+  [ 0, 50, -Math.PI/2,  'spine'],
+  [ 1, 25, -Math.PI/2,  'head'],
+  [ 1, 30,  Math.PI*0.7, 'L_arm'],
+  [ 3, 28,  Math.PI*0.1, 'L_fore'],
+  [ 1, 30,  Math.PI*0.3, 'R_arm'],
+  [ 5, 28, -Math.PI*0.1, 'R_fore'],
+  [ 0, 35,  Math.PI*0.55,'L_thigh'],
+  [ 7, 33,  0,           'L_shin'],
+  [ 0, 35,  Math.PI*0.45,'R_thigh'],
+  [ 9, 33,  0,           'R_shin'],
+];
+
+function boneAngle(i, t) {
+  let a = B[i][2];
+  if (anim === 'idle') {
+    if (i===1) a += Math.sin(t*1.5)*0.03;
+    if (i===2) a += Math.sin(t*1.5)*0.03;
+    if (i===3) a += Math.sin(t*1.2)*0.08;
+    if (i===5) a += Math.sin(t*1.2+1)*0.08;
+  } else if (anim === 'walk') {
+    const s = Math.sin(t*3);
+    if (i===7) a += s*0.35;
+    if (i===9) a -= s*0.35;
+    if (i===8) a += Math.max(0,-s)*0.5;
+    if (i===10) a += Math.max(0,s)*0.5;
+    if (i===3) a -= s*0.2;
+    if (i===5) a += s*0.2;
+    if (i===1) a += Math.sin(t*6)*0.04;
+  } else if (anim === 'wave') {
+    if (i===5) a = -Math.PI*0.5 + Math.sin(t*4)*0.4;
+    if (i===6) a = -Math.PI*0.2 + Math.sin(t*4+0.5)*0.3;
+    if (i===1) a += Math.sin(t*2)*0.03;
+  }
+  return a;
+}
+
+function positions(t) {
+  const P = [];
+  const A = [];
+  const ox = 250, oy = 340;
+  for (let i = 0; i < B.length; i++) {
+    A[i] = boneAngle(i, t);
+    if (B[i][0] === -1) { P[i] = [ox, oy]; continue; }
+    const p = P[B[i][0]];
+    let pa = A[B[i][0]];
+    // Arms relative to spine direction
+    if (i >= 3 && i <= 6) {
+      P[i] = [
+        p[0] + Math.cos(pa + (A[i] - B[i][2])) * B[i][1],
+        p[1] + Math.sin(pa + (A[i] - B[i][2])) * B[i][1],
+      ];
+    } else {
+      P[i] = [
+        p[0] + Math.cos(A[i]) * B[i][1],
+        p[1] + Math.sin(A[i]) * B[i][1],
+      ];
+    }
+  }
+  return { P, A };
+}
+
+function render() {
+  X.clearRect(0, 0, 500, 400);
+  const { P, A } = positions(t);
+  const showB = document.getElementById('chk-bones').checked;
+  const showS = document.getElementById('chk-skin').checked;
+
+  // Skin
+  if (showS) {
+    const hip=P[0], spine=P[1], head=P[2];
+    // Body
+    X.fillStyle = 'rgba(200,169,110,0.25)';
+    X.strokeStyle = 'rgba(200,169,110,0.5)';
+    X.lineWidth = 1.5;
+    X.beginPath();
+    X.moveTo(hip[0]-14, hip[1]);
+    X.lineTo(spine[0]-10, spine[1]-30);
+    X.lineTo(spine[0]+10, spine[1]-30);
+    X.lineTo(hip[0]+14, hip[1]);
+    X.closePath(); X.fill(); X.stroke();
+    // Head
+    X.fillStyle = 'rgba(224,221,213,0.4)';
+    X.beginPath(); X.arc(head[0], head[1]-12, 16, 0, Math.PI*2); X.fill(); X.stroke();
+    // Arms
+    X.strokeStyle = 'rgba(224,221,213,0.6)'; X.lineWidth = 7; X.lineCap = 'round';
+    [[spine, P[3], P[4]], [spine, P[5], P[6]]].forEach(chain => {
+      X.beginPath(); X.moveTo(chain[0][0], chain[0][1]-25);
+      X.lineTo(chain[1][0], chain[1][1]); X.lineTo(chain[2][0], chain[2][1]); X.stroke();
+    });
+    // Legs
+    X.strokeStyle = 'rgba(100,100,120,0.6)'; X.lineWidth = 9;
+    [[hip, P[7], P[8]], [hip, P[9], P[10]]].forEach(chain => {
+      X.beginPath(); X.moveTo(chain[0][0]-8, chain[0][1]);
+      X.lineTo(chain[1][0], chain[1][1]); X.lineTo(chain[2][0], chain[2][1]); X.stroke();
+    });
+    // Hair
+    X.fillStyle = 'rgba(80,70,90,0.5)';
+    X.beginPath(); X.arc(head[0], head[1]-16, 17, Math.PI, Math.PI*2); X.fill();
+  }
+
+  // Bones
+  if (showB) {
+    X.strokeStyle = '#6a9c89'; X.lineWidth = 1.5;
+    X.fillStyle = '#c8a951';
+    for (let i = 1; i < B.length; i++) {
+      const p = P[B[i][0]], c = P[i];
+      X.beginPath(); X.moveTo(p[0], p[1]); X.lineTo(c[0], c[1]); X.stroke();
+      X.beginPath(); X.arc(c[0], c[1], 3.5, 0, Math.PI*2); X.fill();
+    }
+    X.fillStyle = '#c84b31';
+    X.beginPath(); X.arc(P[0][0], P[0][1], 4, 0, Math.PI*2); X.fill();
+  }
+
+  // Label
+  X.fillStyle = 'rgba(200,169,110,0.5)'; X.font = '12px serif';
+  X.fillText('anim: ' + anim + '  |  bones: ' + (B.length-1) + '  |  data: <1KB', 10, 20);
+}
+
+function loop() {
+  t += 0.016;
+  render();
+  skelRAF = requestAnimationFrame(loop);
+}
+
+function startSkel() { if (!skelRAF) loop(); }
+</script>
+</body>
+</html>

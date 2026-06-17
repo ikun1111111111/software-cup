@@ -164,7 +164,7 @@
 ## 七、文件结构
 
 ```
-frontend/src/
+software/web/src/
 ├── styles/
 │   └── tokens.css          # 设计系统变量 + 工具类 + 动画
 ├── index.css               # 仅 @import tokens.css

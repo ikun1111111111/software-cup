@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     cosyvoice_endpoint: str = "http://localhost:5001"
     tts_stream_chunk_size: int = 4096  # bytes per SSE chunk
 
+    # Azure Speech Services (TTS)
+    azure_speech_key: str = ""
+    azure_speech_region: str = "eastasia"  # eastasia, japaneast, etc.
+    tts_provider: str = "edge"  # "edge" | "azure"
+
     # TTS Voice presets: voice_id -> edge-tts voice mapping
     tts_voices: dict = {
         "mandarin": {"speaker_id": "zh-CN-XiaoxiaoNeural", "description": "普通话"},

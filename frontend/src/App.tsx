@@ -12,12 +12,14 @@ import {
   MessageOutlined,
 } from '@ant-design/icons';
 
+import { PageGuideProvider } from './contexts/PageGuideContext';
 import HomePage from './pages/tourist/HomePage';
 import AttractionList from './pages/tourist/AttractionList';
 import AttractionDetail from './pages/tourist/AttractionDetail';
 import NotFound from './pages/NotFound';
 import FloatingAssistant from './components/DigitalHuman/FloatingAssistant';
 import InkEntryOverlay from './components/DigitalHuman/InkEntryOverlay';
+import GuideAssistant from './components/DigitalHuman/GuideAssistant';
 import PushCard from './components/Notification/PushCard';
 import { usePushNotification } from './hooks/usePushNotification';
 import { FloatingParticles } from './components/ui';
@@ -448,6 +450,7 @@ function App() {
 
   return (
     <ConfigProvider locale={zhCN} theme={theme}>
+      <PageGuideProvider>
       <div style={{
         minHeight: '100vh',
         backgroundColor: 'transparent',
@@ -509,6 +512,8 @@ function App() {
 
         {!isAdmin && <InkEntryOverlay />}
 
+        {!isAdmin && <GuideAssistant />}
+
         {pushNotification && (
           <PushCard
             notification={pushNotification}
@@ -518,6 +523,7 @@ function App() {
           />
         )}
       </div>
+      </PageGuideProvider>
     </ConfigProvider>
   );
 }

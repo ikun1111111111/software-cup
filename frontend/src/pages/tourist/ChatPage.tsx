@@ -29,7 +29,7 @@ import { useCostume } from '../../hooks/useCostume';
 
 function detectEmotion(text: string): Emotion {
   if (!text) return 'neutral';
-  if (/[开心高兴棒好赞喜欢满意]/.test(text)) return 'smile';
+  if (/[开心高兴棒好赞喜欢满意]/.test(text)) return 'neutral';
   if (/[抱歉遗憾难过不幸问题错]/.test(text)) return 'sorry';
   if (/[？?什么为什么怎么]/.test(text)) return 'think';
   if (/[！!哇厉害惊讶]/.test(text)) return 'surprise';
@@ -257,7 +257,7 @@ const ErrorToast: React.FC<{ message: string; onClose: () => void }> = ({ messag
 
 const ChatPage: React.FC = () => {
   const location = useLocation();
-  const { cssFilter } = useCostume();
+  const { costumeId } = useCostume();
   const [inputText, setInputText] = useState('');
   const [emotion, setEmotion] = useState<Emotion>('neutral');
   const [isAvatarSpeaking, setIsAvatarSpeaking] = useState(false);
@@ -327,6 +327,7 @@ const ChatPage: React.FC = () => {
       const duration = result.durationMs || Math.max(text.length * 250, 3000);
       setTimeout(() => {
         setIsAvatarSpeaking(false);
+        setEmotion('neutral');
         setAudioChunks([]);
         setPhonemes(null);
       }, duration);
@@ -586,8 +587,8 @@ const ChatPage: React.FC = () => {
         ...(isMobile
           ? { padding: '12px 16px 4px', flexShrink: 0 }
           : {
-              width: 380,
-              minWidth: 320,
+              width: 480,
+              minWidth: 420,
               borderRight: '1px solid var(--border-light)',
               padding: '24px 16px',
             }),
@@ -634,12 +635,12 @@ const ChatPage: React.FC = () => {
       <div className="animate-float">
         <DigitalHuman
           emotion={emotion}
-          cssFilter={cssFilter}
+          costumeId={costumeId}
           isSpeaking={isAvatarSpeaking}
           audioChunks={audioChunks}
           phonemes={phonemes}
-          width={isMobile ? 180 : 320}
-          height={isMobile ? 240 : 500}
+          width={isMobile ? 260 : 440}
+          height={isMobile ? 360 : 720}
           onReady={() => console.log('[ChatPage] Digital human ready')}
         />
       </div>
@@ -648,8 +649,8 @@ const ChatPage: React.FC = () => {
       {!isMobile && (
         <div style={{
           position: 'relative',
-          width: 240,
-          height: 48,
+          width: 300,
+          height: 56,
           margin: '-8px auto 0',
           pointerEvents: 'none',
         }}>
@@ -1108,7 +1109,7 @@ const ChatPage: React.FC = () => {
           display: 'flex',
           flexDirection: isMobile ? 'column' : 'row',
           height: isMobile
-            ? 'calc(100vh - 60px)'
+            ? 'calc(100vh - 60px - env(safe-area-inset-top, 0px))'
             : 'calc(100vh - 60px)',
           overflow: 'hidden',
         }}

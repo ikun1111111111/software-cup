@@ -1,0 +1,26 @@
+def _classify_mouth_shape(char: str) -> str:
+    """Classify a Chinese character's mouth shape for lip-sync.
+
+    Returns:
+        "closed" for initials (声母)
+        "open" for finals (韵母)
+        "half" for nasal/special sounds
+    """
+    import pypinyin
+
+    if not char.strip() or not ('一' <= char <= '鿿' or 'ぁ' <= char <= 'ん'):
+        return "closed"
+
+    try:
+        pinyin_list = pypinyin.lazy_pinyin(char, style=pypinyin.Style.INITIALS)
+        initial = pypinyin_list[0] if pypinyin_list else ""
+
+        if initial in ("b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h",
+                        "j", "q", "x", "zh", "ch", "sh", "z", "c", "s", "r"):
+            return "closed"
+        elif initial in ("y", "w"):
+            return "half"
+        else:
+            return "open"
+    except Exception:
+        return "half"

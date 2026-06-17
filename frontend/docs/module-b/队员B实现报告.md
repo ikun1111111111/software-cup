@@ -29,8 +29,8 @@
 
 | 文件 | 说明 |
 |------|------|
-| `frontend/src/pages/tourist/AttractionList.tsx` | 景点列表页，分类筛选（核心景点/特色景点/文化设施），搜索框，印章风格标签 |
-| `frontend/src/pages/tourist/AttractionDetail.tsx` | 景点详情页，文化内涵/历史沿革/游览建议，快捷提问按钮，数字人对话入口 |
+| `software/web/src/pages/tourist/AttractionList.tsx` | 景点列表页，分类筛选（核心景点/特色景点/文化设施），搜索框，印章风格标签 |
+| `software/web/src/pages/tourist/AttractionDetail.tsx` | 景点详情页，文化内涵/历史沿革/游览建议，快捷提问按钮，数字人对话入口 |
 
 **技术要点**：
 - 复用已有 `api/spots.ts` 的 `listSpots()` 和 `getSpotById()` 接口
@@ -61,9 +61,9 @@
 
 | 文件 | 说明 |
 |------|------|
-| `frontend/src/components/tourist/CrowdHeatmap.tsx` | 景区热力图，按景点显示客流 + 拥挤度颜色 |
-| `frontend/src/components/tourist/CrowdIndicator.tsx` | 拥挤度指示器（🟢空闲/🟡适中/🔴拥挤） |
-| `frontend/src/components/tourist/BestTimeCard.tsx` | 最佳时段推荐卡片 |
+| `software/web/src/components/tourist/CrowdHeatmap.tsx` | 景区热力图，按景点显示客流 + 拥挤度颜色 |
+| `software/web/src/components/tourist/CrowdIndicator.tsx` | 拥挤度指示器（🟢空闲/🟡适中/🔴拥挤） |
+| `software/web/src/components/tourist/BestTimeCard.tsx` | 最佳时段推荐卡片 |
 
 **算法说明**：
 - 使用历史访问数据的日均值作为基线
@@ -101,7 +101,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `frontend/src/components/DigitalHuman/RoleSelector.tsx` | 多角色选择器，Tab 切换 + 角色描述 + 颜色区分 |
+| `software/web/src/components/DigitalHuman/RoleSelector.tsx` | 多角色选择器，Tab 切换 + 角色描述 + 颜色区分 |
 
 **角色设计**：
 
@@ -138,9 +138,9 @@
 
 | 文件 | 说明 |
 |------|------|
-| `frontend/src/api/history.ts` | 历史 API 封装 |
-| `frontend/src/components/tourist/TimelineView.tsx` | 横向可滚动时间轴（唐→宋→明→清→现代），朝代颜色区分 |
-| `frontend/src/pages/tourist/HistoryExplore.tsx` | 历史探索页（时间线 + 解谜 + 印章三 Tab） |
+| `software/web/src/api/history.ts` | 历史 API 封装 |
+| `software/web/src/components/tourist/TimelineView.tsx` | 横向可滚动时间轴（唐→宋→明→清→现代），朝代颜色区分 |
+| `software/web/src/pages/tourist/HistoryExplore.tsx` | 历史探索页（时间线 + 解谜 + 印章三 Tab） |
 
 **历史数据覆盖**：
 
@@ -179,8 +179,8 @@
 
 | 文件 | 说明 |
 |------|------|
-| `frontend/src/api/zen.ts` | 禅修 API 封装 |
-| `frontend/src/components/tourist/BreathAnimation.tsx` | 4-7-8 呼吸引导动画（吸气4秒→屏息7秒→呼气8秒） |
+| `software/web/src/api/zen.ts` | 禅修 API 封装 |
+| `software/web/src/components/tourist/BreathAnimation.tsx` | 4-7-8 呼吸引导动画（吸气4秒→屏息7秒→呼气8秒） |
 
 **景点-声音映射**：
 
@@ -221,10 +221,10 @@
 
 | 文件 | 说明 |
 |------|------|
-| `frontend/src/api/puzzle.ts` | 谜题 API 封装 |
-| `frontend/src/components/tourist/PuzzleGame.tsx` | 谜题游戏（选择题 + 即时反馈 + 解析展示） |
-| `frontend/src/components/tourist/StampWall.tsx` | 数字印章墙（收集状态网格展示） |
-| `frontend/src/pages/tourist/Leaderboard.tsx` | 排行榜页面 |
+| `software/web/src/api/puzzle.ts` | 谜题 API 封装 |
+| `software/web/src/components/tourist/PuzzleGame.tsx` | 谜题游戏（选择题 + 即时反馈 + 解析展示） |
+| `software/web/src/components/tourist/StampWall.tsx` | 数字印章墙（收集状态网格展示） |
+| `software/web/src/pages/tourist/Leaderboard.tsx` | 排行榜页面 |
 
 **成就体系**：
 

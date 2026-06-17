@@ -203,9 +203,6 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
     }
   }, [onModelRef]);
 
-  // Costume textures are baked into model settings at load time.
-  // When texturePaths changes, the model reloads below with the new textures.
-
   // Update color filter ref when cssFilter changes (ticker applies it per-frame)
   useEffect(() => {
     colorFilterRef.current = buildColorFilter(cssFilter);
@@ -223,10 +220,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
     }
   }, []);
 
-  // Serialize costume texture paths for use as a useEffect dependency key
-  const textureKey = JSON.stringify(texturePaths || texturePath || '');
-
-  // Initialize PIXI app and load model — re-runs when modelPath or costume textures change.
+  // Initialize PIXI app and load model — only re-runs when modelPath changes.
   // Size/position changes are handled by ResizeObserver (no full reload).
   useEffect(() => {
     if (!canvasRef.current || !modelPath) return;
@@ -297,30 +291,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
 
         appRef.current = app;
 
-        // Build model source: if costume textures are specified,
-        // fetch the settings JSON and override texture paths before loading.
-        let modelSource: string | object = modelPath;
-        const costumePaths = texturePaths || (texturePath ? [texturePath] : null);
-        if (costumePaths && costumePaths.length > 0) {
-          try {
-            const resp = await fetch(modelPath);
-            const settings = await resp.json();
-            // Convert absolute costume paths to relative (relative to model dir)
-            const modelDir = modelPath.substring(0, modelPath.lastIndexOf('/') + 1);
-            settings.url = modelPath;
-            settings.FileReferences.Textures = costumePaths.map((p: string) => {
-              // If path starts with modelDir, strip it to make relative
-              if (p.startsWith(modelDir)) return p.slice(modelDir.length);
-              // Otherwise use the path as-is
-              return p.startsWith('/') ? p.slice(1) : p;
-            });
-            modelSource = settings;
-          } catch (e) {
-            console.warn('[Live2DStage] Failed to fetch model settings, using original path:', e);
-          }
-        }
-
-        const model = await Live2DModel.from(modelSource, {
+        const model = await Live2DModel.from(modelPath, {
           motionPreload: MotionPreloadStrategy.IDLE,
           autoInteract: false,
         });
@@ -362,6 +333,27 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
 
         app.stage.addChild(model);
         modelRef.current = model;
+
+        // Set arms to natural hanging position and play idle motion
+        try {
+          const core = model.internalModel?.coreModel;
+          if (core) {
+            // Arms hanging down naturally
+            const armParams: Record<string, number> = {
+              'ParamArmLA': 0,
+              'ParamArmRA': 0,
+              'ParamArmLB': 0,
+              'ParamArmRB': 0,
+              'ParamHandL': 0,
+              'ParamHandR': 0,
+            };
+            for (const [id, val] of Object.entries(armParams)) {
+              try { core.setParameterValueById(id, val); } catch { /* param may not exist */ }
+            }
+          }
+          // Play idle motion to establish default pose
+          model.motion('Idle', 0);
+        } catch { /* ignore motion errors */ }
 
         // ResizeObserver handles all size changes — no need to recreate the app
         const ro = new ResizeObserver((entries) => {
@@ -460,7 +452,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         modelRef.current = null;
       }
     };
-  }, [modelPath, handleClick, textureKey]);
+  }, [modelPath, handleClick]);
 
   return (
     <div

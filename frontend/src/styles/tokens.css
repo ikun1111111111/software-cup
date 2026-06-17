@@ -667,13 +667,21 @@ a {
   display: none;
 }
 
-/* ── Safe Area (for mobile notch) ── */
+/* ── Safe Area (for mobile notch / home indicator) ── */
 .safe-area-top {
   padding-top: env(safe-area-inset-top);
 }
 
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 全局：固定定位底部元素自动适配安全区域 */
+html {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
 }
 
 /* ============================================

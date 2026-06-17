@@ -1,0 +1,65 @@
+import React, { useEffect } from 'react';
+import { View, StyleSheet, Dimensions } from 'react-native';
+import Animated, {
+  useSharedValue, useAnimatedStyle, withTiming, Easing,
+} from 'react-native-reanimated';
+
+const { width: W, height: H } = Dimensions.get('window');
+const CIRCLE_SIZE = Math.max(W, H) * 2.5;
+
+// ─── 简单全局事件 ───
+type TriggerCb = () => void;
+let _listener: TriggerCb | null = null;
+
+export const InkTransition = {
+  /** 在导航前调用，墨滴扩散后回调 */
+  trigger(onMid?: () => void) {
+    if (_listener) _listener();
+    // 300ms 后（墨滴覆盖屏幕时）执行导航
+    if (onMid) setTimeout(onMid, 280);
+  },
+};
+
+export function InkOverlay() {
+  const scale = useSharedValue(0);
+  const opacity = useSharedValue(1);
+
+  useEffect(() => {
+    _listener = () => {
+      // 展开
+      scale.value = 0;
+      opacity.value = 1;
+      scale.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.ease) }, (finished) => {
+        if (finished) {
+          // 收缩
+          scale.value = withTiming(0, { duration: 300, easing: Easing.in(Easing.ease) });
+          opacity.value = withTiming(0, { duration: 300 });
+        }
+      });
+    };
+    return () => { _listener = null; };
+  }, []);
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Animated.View style={[styles.ink, style]} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  ink: {
+    position: 'absolute',
+    top: H / 2 - CIRCLE_SIZE / 2,
+    left: W / 2 - CIRCLE_SIZE / 2,
+    width: CIRCLE_SIZE,
+    height: CIRCLE_SIZE,
+    borderRadius: CIRCLE_SIZE / 2,
+    backgroundColor: 'rgba(44,36,32,0.92)',
+  },
+});

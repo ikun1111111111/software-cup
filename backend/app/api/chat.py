@@ -215,15 +215,20 @@ async def chat_stream(
                     "sentiment_label": sentiment_label,
                 }
 
-                # Persist turn and cache
-                await _set_exact_cache(session_id, question, done_result)
-                await finalize_chat(session_id, question, full_answer, "rag")
-                await _log_interaction(
-                    db, session_id, question, full_answer, "rag",
-                    chunks, sentiment_score, sentiment_label, latency_ms,
-                )
-
+                # Send done immediately — don't block on cache/log writes
                 yield f"event: done\ndata: {json.dumps(done_result, ensure_ascii=False)}\n\n"
+
+                # Persist in background (non-blocking)
+                import asyncio
+
+                async def _background_persist():
+                    await _set_exact_cache(session_id, question, done_result)
+                    await finalize_chat(session_id, question, full_answer, "rag")
+                    await _log_interaction(
+                        db, session_id, question, full_answer, "rag",
+                        chunks, sentiment_score, sentiment_label, latency_ms,
+                    )
+                asyncio.create_task(_background_persist())
 
             except Exception as e:
                 logger.error("Stream generation failed: %s", e)

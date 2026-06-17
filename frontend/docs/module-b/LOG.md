@@ -4,7 +4,7 @@
 
 ## 2026-06-01 23:07:34
 
-### 测试文件：frontend/src/api/request.ts
+### 测试文件：software/web/src/api/request.ts
 
 **测试方案：**
 1. 单元测试：测试模块初始化、请求方法存在性、功能验证
@@ -43,7 +43,7 @@ request.ts模块正确创建了axios实例，配置了请求和响应拦截器�
 
 ## 2026-06-02 10:25:36
 
-### 测试文件：frontend/src/stores/chatStore.ts
+### 测试文件：software/web/src/stores/chatStore.ts
 
 **测试方案：**
 1. 单元测试：测试状态管理功能
@@ -117,7 +117,7 @@ chatStore.ts使用Zustand实现了对话状态管理，包含消息列表、会�
 
 ## 2026-06-02 10:29:41
 
-### 测试文件：frontend/src/stores/userStore.ts
+### 测试文件：software/web/src/stores/userStore.ts
 
 **测试方案：**
 1. 单元测试：测试用户状态管理功能
@@ -170,7 +170,7 @@ userStore.ts使用Zustand实现了用户状态管理，包含用户信息、偏�
 
 ## 2026-06-02 10:31:24
 
-### 测试文件：frontend/src/hooks/useSSE.ts
+### 测试文件：software/web/src/hooks/useSSE.ts
 
 **测试方案：**
 1. 单元测试：测试SSE连接管理
@@ -216,7 +216,7 @@ useSSE.ts使用fetch API实现了SSE流式接收，支持GET/POST请求，处理
 
 ## 2026-06-02 10:34:03
 
-### 测试文件：frontend/src/hooks/useWebSocket.ts
+### 测试文件：software/web/src/hooks/useWebSocket.ts
 
 **测试方案：**
 1. 单元测试：测试WebSocket连接管理
@@ -269,7 +269,7 @@ useWebSocket.ts使用WebSocket API实现了双向通信，支持连接管理、�
 
 ## 2026-06-02 10:36:49
 
-### 测试文件：frontend/src/hooks/useVoiceRecord.ts
+### 测试文件：software/web/src/hooks/useVoiceRecord.ts
 
 **测试方案：**
 1. 单元测试：测试录音状态管理
@@ -336,7 +336,7 @@ useVoiceRecord.ts使用MediaRecorder API实现了语音录制功能，支持开�
 
 ## 2026-06-02 10:39:53
 
-### 测试文件：frontend/src/components/DigitalHuman/ChatBubble.tsx
+### 测试文件：software/web/src/components/DigitalHuman/ChatBubble.tsx
 
 **测试方案：**
 1. 单元测试：测试气泡渲染、样式、状态
@@ -408,7 +408,7 @@ ChatBubble.tsx实现了对话气泡组件，支持用户/AI消息样式区分、
 
 ## 2026-06-02 10:42:20
 
-### 测试文件：frontend/src/components/DigitalHuman/VoiceInput.tsx
+### 测试文件：software/web/src/components/DigitalHuman/VoiceInput.tsx
 
 **测试方案：**
 1. 单元测试：测试按钮渲染、长按检测、样式变化
@@ -484,7 +484,7 @@ VoiceInput.tsx实现了语音输入按钮组件，支持长按录音、松开发
 
 ## 2026-06-02 10:45:38
 
-### 测试文件：frontend/src/pages/tourist/ChatPage.tsx
+### 测试文件：software/web/src/pages/tourist/ChatPage.tsx
 
 **测试方案：**
 1. 单元测试：测试页面渲染、输入、消息发送
@@ -556,7 +556,7 @@ ChatPage.tsx实现了对话主界面，整合了ChatBubble、VoiceInput组件和
 
 ## 2026-06-02 10:49:44
 
-### 测试文件：frontend/src/pages/tourist/RecommendPage.tsx
+### 测试文件：software/web/src/pages/tourist/RecommendPage.tsx
 
 **测试方案：**
 1. 单元测试：测试页面渲染、兴趣标签、路线列表
@@ -594,7 +594,7 @@ RecommendPage.tsx实现了个性化路线推荐页面，支持兴趣标签多选
 
 ## 2026-06-02 10:54:28
 
-### 测试文件：frontend/src/hooks/useLive2D.ts
+### 测试文件：software/web/src/hooks/useLive2D.ts
 
 **测试方案：**
 1. 单元测试：测试Live2D Hook状态管理、模型加载、表情/动作/参数控制
@@ -624,7 +624,7 @@ useLive2D.ts封装了Live2D模型加载和控制功能，使用模拟模型实�
 
 ## 2026-06-02 10:57:07
 
-### 测试文件：frontend/src/components/DigitalHuman/Live2DStage.tsx
+### 测试文件：software/web/src/components/DigitalHuman/Live2DStage.tsx
 
 **测试方案：**
 1. 单元测试：测试画布渲染、加载状态、错误处理、回调函数
@@ -651,7 +651,7 @@ Live2DStage.tsx实现了Live2D画布组件，使用Canvas 2D模拟模型渲染�
 
 ## 2026-06-02 10:58:21
 
-### 测试文件：frontend/src/components/DigitalHuman/LipSync.tsx
+### 测试文件：software/web/src/components/DigitalHuman/LipSync.tsx
 
 **测试方案：**
 1. 单元测试：测试口型映射、音频处理、平滑过渡
@@ -677,7 +677,7 @@ LipSync.tsx实现了口型同步组件，通过音频RMS值计算音量，映射
 
 ## 2026-06-02 10:59:44
 
-### 测试文件：frontend/src/components/DigitalHuman/EmotionController.tsx
+### 测试文件：software/web/src/components/DigitalHuman/EmotionController.tsx
 
 **测试方案：**
 1. 单元测试：测试情感映射、表达式控制、自动重置
@@ -703,7 +703,7 @@ EmotionController.tsx实现了表情控制器，将LLM情感分析结果映射�
 
 ## 2026-06-02 11:01:03
 
-### 测试文件：frontend/src/components/DigitalHuman/AudioSync.tsx
+### 测试文件：software/web/src/components/DigitalHuman/AudioSync.tsx
 
 **测试方案：**
 1. 单元测试：测试音频加载、播放控制、事件回调
@@ -730,7 +730,7 @@ AudioSync.tsx实现了音频同步组件，协调TTS音频播放和数字人动�
 
 ## 2026-06-02 11:02:12
 
-### 测试文件：frontend/src/api/knowledge.ts
+### 测试文件：software/web/src/api/knowledge.ts
 
 **测试方案：**
 1. 单元测试：测试模块导出、API函数存在性
@@ -755,7 +755,7 @@ knowledge.ts封装了知识库管理API，包括文档CRUD、分块查询、FAQ�
 
 ## 2026-06-02 11:03:36
 
-### 测试文件：frontend/src/components/admin/DocumentUpload.tsx
+### 测试文件：software/web/src/components/admin/DocumentUpload.tsx
 
 **测试方案：**
 1. 单元测试：测试渲染、文件选择、拖拽上传、进度显示
@@ -782,7 +782,7 @@ DocumentUpload.tsx实现了文档上传组件，支持点击选择和拖拽上�
 
 ## 2026-06-02 11:07:04
 
-### 测试文件：frontend/src/components/admin/ChunkPreview.tsx
+### 测试文件：software/web/src/components/admin/ChunkPreview.tsx
 
 **测试方案：**
 1. 单元测试：测试渲染、分块数据、交互、高亮
@@ -808,7 +808,7 @@ ChunkPreview.tsx实现了分块预览组件，展示文档被切分的chunk列�
 
 ## 2026-06-02 11:11:17
 
-### 测试文件：frontend/src/components/admin/FAQEditor.tsx
+### 测试文件：software/web/src/components/admin/FAQEditor.tsx
 
 **测试方案：**
 1. 单元测试：测试表单渲染、输入、关键词管理
@@ -836,7 +836,7 @@ FAQEditor.tsx实现了FAQ编辑组件，支持问题、答案、分类、关键�
 
 ## 2026-06-02 11:14:32
 
-### 测试文件：frontend/src/pages/admin/KnowledgePage.tsx
+### 测试文件：software/web/src/pages/admin/KnowledgePage.tsx
 
 **测试方案：**
 1. 单元测试：测试页面渲染、标签切换、文档管理
@@ -862,7 +862,7 @@ KnowledgePage.tsx实现了知识库管理页面，整合文档上传、分块预
 
 ## 2026-06-02 11:15:37
 
-### 测试文件：frontend/src/api/avatar.ts
+### 测试文件：software/web/src/api/avatar.ts
 
 **测试方案：**
 1. 单元测试：测试模块导出、API函数存在性
@@ -885,7 +885,7 @@ avatar.ts封装了数字人配置API，包括配置读写、声音列表、声�
 
 ## 2026-06-02 11:17:15
 
-### 测试文件：frontend/src/components/admin/AvatarAppearance.tsx
+### 测试文件：software/web/src/components/admin/AvatarAppearance.tsx
 
 **测试方案：**
 1. 单元测试：测试渲染、模型/肤色/发型/服装/配饰选择
@@ -913,7 +913,7 @@ AvatarAppearance.tsx实现了数字人外观配置组件，支持模型、肤色
 
 ## 2026-06-02 11:19:56
 
-### 测试文件：frontend/src/components/admin/VoiceSelector.tsx
+### 测试文件：software/web/src/components/admin/VoiceSelector.tsx
 
 **测试方案：**
 1. 单元测试：测试渲染、声音选择、声音预览
@@ -938,7 +938,7 @@ VoiceSelector.tsx实现了声音选择组件，支持声音列表展示、选择
 
 ## 2026-06-02 11:21:19
 
-### 测试文件：frontend/src/components/admin/WelcomeEditor.tsx
+### 测试文件：software/web/src/components/admin/WelcomeEditor.tsx
 
 **测试方案：**
 1. 单元测试：测试渲染、输入、预览、保存
@@ -964,7 +964,7 @@ WelcomeEditor.tsx实现了欢迎语编辑组件，支持文本输入、字数统
 
 ## 2026-06-02 11:23:49
 
-### 测试文件：frontend/src/pages/admin/AvatarPage.tsx
+### 测试文件：software/web/src/pages/admin/AvatarPage.tsx
 
 **测试方案：**
 1. 单元测试：测试页面渲染、配置修改、保存功能
@@ -988,7 +988,7 @@ AvatarPage.tsx实现了数字人配置页面，整合外观、声音、欢迎语
 
 ## 2026-06-02 11:25:17
 
-### 测试文件：frontend/src/api/analytics.ts
+### 测试文件：software/web/src/api/analytics.ts
 
 **测试方案：**
 1. 单元测试：测试模块导出、API函数存在性
@@ -1012,7 +1012,7 @@ analytics.ts封装了分析API，包括情感趋势、报告、大屏指标、�
 
 ## 2026-06-02 11:31:36
 
-### 测试文件：frontend/src/components/admin/SentimentChart.tsx
+### 测试文件：software/web/src/components/admin/SentimentChart.tsx
 
 **测试方案：**
 1. 单元测试：测试渲染、数据展示、日期筛选
@@ -1036,7 +1036,7 @@ SentimentChart.tsx实现了情感趋势图组件，展示positive/neutral/negati
 
 ## 2026-06-02 11:31:36
 
-### 测试文件：frontend/src/components/admin/WordCloud.tsx
+### 测试文件：software/web/src/components/admin/WordCloud.tsx
 
 **测试方案：**
 1. 单元测试：测试渲染、词语展示、交互
@@ -1060,7 +1060,7 @@ WordCloud.tsx实现了词云组件，展示用户高频提问关键词。支持�
 
 ## 2026-06-02 11:31:36
 
-### 测试文件：frontend/src/components/admin/MetricsCard.tsx
+### 测试文件：software/web/src/components/admin/MetricsCard.tsx
 
 **测试方案：**
 1. 单元测试：测试渲染、趋势、样式
@@ -1084,7 +1084,7 @@ MetricsCard.tsx实现了指标卡片组件，展示关键指标和趋势。支�
 
 ## 2026-06-02 11:31:36
 
-### 测试文件：frontend/src/components/admin/HotQuestions.tsx
+### 测试文件：software/web/src/components/admin/HotQuestions.tsx
 
 **测试方案：**
 1. 单元测试：测试渲染、问题列表、交互
@@ -1108,7 +1108,7 @@ HotQuestions.tsx实现了热门问答排行榜组件，展示Top10热门问题�
 
 ## 2026-06-02 11:31:36
 
-### 测试文件：frontend/src/components/admin/RealtimeMonitor.tsx
+### 测试文件：software/web/src/components/admin/RealtimeMonitor.tsx
 
 **测试方案：**
 1. 单元测试：测试渲染、连接状态、数据展示
@@ -1132,7 +1132,7 @@ RealtimeMonitor.tsx实现了实时监控组件，通过WebSocket接收实时交�
 
 ## 2026-06-02 11:31:36
 
-### 测试文件：frontend/src/pages/admin/ReportPage.tsx
+### 测试文件：software/web/src/pages/admin/ReportPage.tsx
 
 **测试方案：**
 1. 单元测试：测试页面渲染、导出功能
@@ -1155,7 +1155,7 @@ ReportPage.tsx实现了感受度报告页面，整合情感趋势、词云、盲
 
 ## 2026-06-02 11:31:36
 
-### 测试文件：frontend/src/pages/admin/DashboardPage.tsx
+### 测试文件：software/web/src/pages/admin/DashboardPage.tsx
 
 **测试方案：**
 1. 单元测试：测试页面渲染、子组件
@@ -1178,7 +1178,7 @@ DashboardPage.tsx实现了数据大屏页面，展示实时运营数据。整合
 
 ## 2026-06-02 11:31:36
 
-### 测试文件：frontend/src/pages/tourist/QRScan.tsx
+### 测试文件：software/web/src/pages/tourist/QRScan.tsx
 
 **测试方案：**
 1. 单元测试：测试渲染、扫描功能
@@ -1201,7 +1201,7 @@ QRScan.tsx实现了二维码扫码定位页面，支持扫码确定位置。模�
 
 ## 2026-06-02 11:33:25
 
-### 测试文件：frontend/src/components/common/MapSelector.tsx
+### 测试文件：software/web/src/components/common/MapSelector.tsx
 
 **测试方案：**
 1. 单元测试：测试渲染、位置选择

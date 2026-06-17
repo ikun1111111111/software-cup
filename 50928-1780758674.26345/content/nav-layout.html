@@ -1,0 +1,46 @@
+<h2>导航布局方式</h2>
+<p class="subtitle">沉浸式后台的导航应该像空气一样存在——需要时触手可及，不需要时完全不打扰</p>
+
+<div class="options">
+  <div class="option" data-choice="left-glass" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>左侧玻璃拟态窄栏</h3>
+      <p>固定在左侧的 64px 超窄栏，图标-only，hover 时玻璃模糊面板滑出显示文字</p>
+      <ul style="margin:8px 0 0 0; padding-left:18px; font-size:13px; color:#666;">
+        <li>最大内容区宽度，沉浸感最强</li>
+        <li>玻璃拟态（backdrop-filter: blur）与渐变背景自然融合</li>
+        <li>选中项有微光指示器（glow indicator）</li>
+        <li>适合：强调内容阅读和数据可视化的页面</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="option" data-choice="bottom-dock" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>底部 Dock 导航栏</div>
+      <p>类似 macOS Dock 的底部浮动栏，图标居中排列，hover 有放大弹性动效</p>
+      <ul style="margin:8px 0 0 0; padding-left:18px; font-size:13px; color:#666;">
+        <li>完全解放左右边距，内容区真正全屏</li>
+        <li>底部阴影 + 圆角胶囊容器，像浮在画面之上</li>
+        <li>选中项有聚光灯高亮（spotlight highlight）</li>
+        <li>适合：大屏数据展示、监控类后台</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="option" data-choice="top-minimal" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>顶部极简导航 + 全出血内容</h3>
+      <p>顶部一条极细的分割线导航（文字链接），内容区直接顶到浏览器边缘</p>
+      <ul style="margin:8px 0 0 0; padding-left:18px; font-size:13px; color:#666;">
+        <li>最极致的留白，像在看一幅画而不是一个系统</li>
+        <li>顶部导航hover时有下划线墨水扩散动效</li>
+        <li>页面切换用整张页面的淡入淡出（cross-fade）</li>
+        <li>适合：追求极致简约和艺术感的场景</li>
+      </ul>
+    </div>
+  </div>
+</div>

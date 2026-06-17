@@ -212,7 +212,7 @@ const HeroSection: React.FC = () => {
       <div style={{
         position: 'absolute',
         inset: 0,
-        backgroundImage: 'url(/image/AigcAssets3.png)',
+        backgroundImage: 'url(/image/img-era-bg-tang.png)',
         backgroundSize: 'cover',
         backgroundPosition: `center ${50 + parallaxOffset * 0.1}%`,
         transform: prefersReducedMotion ? 'scale(1)' : (loaded ? 'scale(1.08)' : 'scale(1.15)'),
@@ -770,15 +770,15 @@ const DigitalHumanSection: React.FC = () => (
         }} />
 
         <div style={{
-          width: 280,
-          height: 380,
+          width: 360,
+          height: 480,
           borderRadius: '50% 48% 52% 50%',
           overflow: 'hidden',
           background: 'linear-gradient(180deg, #F0F4FF 0%, #E8F0FE 50%, #F8F6F2 100%)',
           boxShadow: '0 0 0 2px rgba(106,156,137,0.3), 0 0 0 6px rgba(106,156,137,0.1), 0 0 0 12px rgba(106,156,137,0.05), 0 12px 40px rgba(26,22,20,0.12)',
           position: 'relative',
         }}>
-          <DigitalHuman width={280} height={380} />
+          <DigitalHuman width={360} height={480} />
 
           {/* 宣纸纹理叠层 */}
           <div style={{

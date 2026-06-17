@@ -1,39 +1,84 @@
-import React, { useCallback, useRef, useState } from 'react';
-import Live2DStage, { Live2DModelActions } from './Live2DStage';
+import React, { useCallback, useState, useRef } from 'react';
+import VRMStage from '../VRM/VRMStage';
+import type { DemoExpression, OutfitPreset } from '../VRM/VRMStage';
 import EmotionController, { Emotion } from './EmotionController';
 import LipSync, { type Phoneme } from './LipSync';
 import AudioSync from './AudioSync';
-import { useIdleAnimation } from '../../hooks/useIdleAnimation';
+import SpeakingExpressionController from './SpeakingExpressionController';
+import SpeakingGestureController from './SpeakingGestureController';
+import type { BoneTargets } from './SpeakingGestureController';
 
 export interface DigitalHumanProps {
   modelPath?: string;
-  /** Costume texture path from useCostume hook. */
   texturePath?: string;
-  /** Costume texture paths (2 files: texture_00 and texture_01). */
   texturePaths?: [string, string];
-  /** CSS filter for costume visual variation. */
   cssFilter?: string;
   width?: number;
   height?: number;
   emotion?: Emotion;
-  /** Direct Live2D expression name (e.g. 'f00', 'f01'). Takes precedence over emotion when set. */
   expression?: string | null;
   audioUrl?: string;
-  /** Streaming audio chunks as base64 (from TTS SSE). */
   audioChunks?: string[];
-  /** Phoneme timestamps for lip-sync. */
   phonemes?: Phoneme[] | null;
   isSpeaking?: boolean;
+  /** Text being spoken (for expression generation) */
+  speakingText?: string;
   onReady?: () => void;
+  costumeId?: string;
 }
 
-const DEFAULT_MODEL = '/models/haru/haru_greeter_t03.model3.json';
+const COSTUME_TO_VRM: Record<string, OutfitPreset> = {
+  'festival-spring': 'festive',
+  'festival-lantern': 'lantern',
+  'festival-qingming': 'spring',
+  'festival-dragon': 'festive',
+  'festival-midautumn': 'moonlight',
+  'festival-national': 'festive',
+};
+
+const COSTUME_TO_MODEL: Record<string, string> = {
+  'festival-spring': '/models/8024308560058477433.vrm',
+  'festival-lantern': '/models/4353238926149796085.vrm',
+  'festival-qingming': '/models/5186055420774500970.vrm',
+  'festival-dragon': '/models/4104272907947728185.vrm',
+  'festival-midautumn': '/models/5784779633385764689.vrm',
+  'festival-national': '/models/8511002460770470367.vrm',
+};
+
+const COSTUME_STAGE_CONFIG: Record<string, { cameraDistance?: number; modelOffsetY?: number }> = {
+  'festival-spring':    { cameraDistance: 2.2, modelOffsetY: -0.04 },
+  'festival-lantern':   { cameraDistance: 2.0 },
+  'festival-qingming':  { cameraDistance: 2.2, modelOffsetY: -0.06 },
+  'festival-dragon':    { cameraDistance: 2.0 },
+  'festival-midautumn': { cameraDistance: 2.2, modelOffsetY: -0.06 },
+  'festival-national':  { cameraDistance: 2.0, modelOffsetY: 0.05 },
+};
+
+const EXPRESSION_TO_VRM: Record<string, DemoExpression> = {
+  f00: 'neutral',
+  f01: 'happy',
+  f02: 'relaxed',
+  f03: 'surprised',
+  f04: 'happy',
+  f05: 'relaxed',
+  f06: 'angry',
+  f07: 'sad',
+  smile: 'happy',
+  happy: 'happy',
+  think: 'relaxed',
+  thinking: 'relaxed',
+  sorry: 'sad',
+  sad: 'sad',
+  surprise: 'surprised',
+  surprised: 'surprised',
+  neutral: 'neutral',
+  default: 'neutral',
+};
+
+const DEFAULT_VRM_URL = '/models/8024308560058477433.vrm';
 
 const DigitalHuman: React.FC<DigitalHumanProps> = ({
-  modelPath = DEFAULT_MODEL,
-  texturePath,
-  texturePaths,
-  cssFilter,
+  modelPath,
   width = 280,
   height = 380,
   emotion = 'neutral',
@@ -42,70 +87,64 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
   audioChunks,
   phonemes,
   isSpeaking = false,
+  speakingText = '',
   onReady,
+  costumeId = 'festival-spring',
 }) => {
-  const actionsRef = useRef<Live2DModelActions | null>(null);
-  const [audioData, setAudioData] = useState<Float32Array | null>(null);
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
-  const [mouthValue, setMouthValue] = useState(0);
+  const [mouthOpen, setMouthOpen] = useState(0);
+  const [lookAtX, setLookAtX] = useState(0);
+  const [audioDurationSec, setAudioDurationSec] = useState(0);
+  const [speakingExpression, setSpeakingExpression] = useState<string>('neutral');
+  const [gestureTargets, setGestureTargets] = useState<BoneTargets | null>(null);
 
-  // Idle animations (blinking + breathing)
-  const setParam = useCallback((id: string, value: number) => {
-    actionsRef.current?.setParameter(id, value);
-  }, []);
-
-  useIdleAnimation(setParam, { enabled: !isSpeaking });
-
-  // Handle model loaded
-  const handleModelLoaded = useCallback((model: any) => {
-    onReady?.();
-  }, [onReady]);
-
-  // Store model actions from Live2DStage
-  const handleModelRef = useCallback((actions: Live2DModelActions) => {
-    actionsRef.current = actions;
-  }, []);
-
-  // Direct expression control
   React.useEffect(() => {
-    if (expression && actionsRef.current) {
-      actionsRef.current.setExpression(expression);
-    }
-  }, [expression]);
+    onReady?.();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Expression change from EmotionController
-  const handleExpressionChange = useCallback((expression: string) => {
-    actionsRef.current?.setExpression(expression);
-  }, []);
+  const handleExpressionChange = useCallback((_expr: string) => {}, []);
 
-  // Lip sync parameter change — also track mouth value for debugging
   const handleLipParamChange = useCallback((paramId: string, value: number) => {
-    actionsRef.current?.setParameter(paramId, value);
     if (paramId === 'ParamMouthOpenY') {
-      setMouthValue(value);
+      setMouthOpen(value);
+    } else if (paramId === 'ParamAngleZ') {
+      setLookAtX(value / 30);
     }
   }, []);
 
-  // Update current time in ms for phoneme matching
   const handleTimeUpdateMs = useCallback((ms: number) => {
     setCurrentTimeMs(ms);
   }, []);
 
-  // Fallback audio data generation when no phonemes available
+  const handleTimeUpdate = useCallback((_time: number, duration: number) => {
+    setAudioDurationSec(duration);
+  }, []);
+
   React.useEffect(() => {
-    if (isSpeaking && !phonemes?.length) {
-      const interval = setInterval(() => {
-        const simulated = new Float32Array(128);
-        for (let i = 0; i < 128; i++) {
-          simulated[i] = (Math.random() * 0.5 + 0.2) * Math.sin(Date.now() / 100);
-        }
-        setAudioData(simulated);
-      }, 50);
-      return () => clearInterval(interval);
-    } else {
-      setAudioData(null);
+    if (!isSpeaking) {
+      setMouthOpen(0);
+      setLookAtX(0);
+      setCurrentTimeMs(0);
     }
-  }, [isSpeaking, phonemes]);
+  }, [isSpeaking]);
+
+  // Silent mode fallback: advance time when no audio source is driving currentTimeMs
+  const silentStartRef = useRef(0);
+  React.useEffect(() => {
+    if (!isSpeaking || audioUrl || audioChunks?.length) return;
+    silentStartRef.current = performance.now();
+    const id = setInterval(() => {
+      setCurrentTimeMs(performance.now() - silentStartRef.current);
+    }, 50);
+    return () => clearInterval(id);
+  }, [isSpeaking, audioUrl, audioChunks]);
+
+  const vrmPreset: OutfitPreset = COSTUME_TO_VRM[costumeId] || 'modern';
+  const vrmUrl = modelPath || COSTUME_TO_MODEL[costumeId] || DEFAULT_VRM_URL;
+  // Use speaking expression when speaking, otherwise use manual expression or emotion
+  const activeExpression = isSpeaking ? speakingExpression : (expression || emotion);
+  const vrmExpression: DemoExpression = EXPRESSION_TO_VRM[activeExpression] || 'neutral';
+  const stageConfig = COSTUME_STAGE_CONFIG[costumeId] || {};
 
   return (
     <div
@@ -119,23 +158,39 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
         overflow: 'hidden',
       }}
     >
-      {/* Live2D Model — z-index:2 ensures it renders above overlays */}
       <div style={{ position: 'relative', zIndex: 2, width: '100%', height: '100%' }}>
-        <Live2DStage
-          modelPath={modelPath}
-          texturePath={texturePath}
-          texturePaths={texturePaths}
-          cssFilter={cssFilter}
-          width={width}
-          height={height}
-          scale={0.18}
-          y={-30}
-          onModelLoaded={handleModelLoaded}
-          onModelRef={handleModelRef}
+        <VRMStage
+          url={vrmUrl}
+          expression={vrmExpression}
+          mouthOpen={mouthOpen}
+          outfitPreset={vrmPreset}
+          lookAt={{ x: lookAtX, y: 0 }}
+          cameraDistance={stageConfig.cameraDistance}
+          modelOffsetY={stageConfig.modelOffsetY}
+          isSpeaking={isSpeaking}
+          gestureTargets={gestureTargets}
+          style={{ width: '100%', height: '100%' }}
         />
       </div>
 
-      {/* Emotion Controller */}
+      {/* Speaking expression controller - changes expressions during speech */}
+      <SpeakingExpressionController
+        isSpeaking={isSpeaking}
+        audioTimeSec={currentTimeMs / 1000}
+        audioDurationSec={audioDurationSec}
+        text={speakingText}
+        onExpressionChange={setSpeakingExpression}
+      />
+
+      {/* Speaking gesture controller - semantic-based arm gestures */}
+      <SpeakingGestureController
+        isSpeaking={isSpeaking}
+        audioTimeSec={currentTimeMs / 1000}
+        audioDurationSec={audioDurationSec}
+        text={speakingText}
+        onGestureChange={setGestureTargets}
+      />
+
       <EmotionController
         emotion={expression ? 'neutral' : emotion}
         onExpressionChange={expression ? undefined : handleExpressionChange}
@@ -143,24 +198,22 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
         resetDelay={5000}
       />
 
-      {/* Lip Sync */}
       <LipSync
-        audioData={audioData}
+        audioData={null}
         phonemes={phonemes}
         currentTimeMs={currentTimeMs}
         onParameterChange={handleLipParamChange}
         enabled={isSpeaking}
       />
 
-      {/* Audio Sync */}
       <AudioSync
         audioUrl={audioUrl}
         audioChunks={audioChunks}
         autoPlay={isSpeaking}
         onTimeUpdateMs={handleTimeUpdateMs}
+        onTimeUpdate={handleTimeUpdate}
       />
 
-      {/* Speaking indicator */}
       {isSpeaking && (
         <div style={{
           position: 'absolute',
