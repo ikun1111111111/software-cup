@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VRM 浮动角色 - 尺寸 & 相机调试</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    font-family: 'Segoe UI', sans-serif;
+    color: #e0e0e0;
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  #scene-container {
+    position: absolute;
+    bottom: 110px;
+    right: 14px;
+    z-index: 10;
+  }
+
+  #avatar-wrap {
+    width: 120px;
+    height: 170px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+  }
+
+  #avatar-render {
+    width: 100px;
+    height: 160px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: transparent;
+  }
+
+  #name-tag {
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(106,156,137,0.9);
+    border-radius: 10px;
+    padding: 3px 10px;
+    font-size: 11px;
+    color: #fff;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  #ring {
+    position: absolute;
+    width: 120px;
+    height: 120px;
+    border-radius: 60px;
+    background: rgba(106,156,137,0.15);
+    pointer-events: none;
+    transition: transform 0.3s, opacity 0.3s;
+  }
+  #ring.pulse {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+
+  /* Debug overlay */
+  #debug-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 320px;
+    background: rgba(0,0,0,0.85);
+    border-radius: 0 0 12px 0;
+    padding: 16px;
+    z-index: 100;
+    max-height: 100vh;
+    overflow-y: auto;
+  }
+  #debug-overlay h2 {
+    font-size: 14px;
+    color: #6a9c89;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 6px;
+  }
+  .ctrl-group {
+    margin-bottom: 10px;
+  }
+  .ctrl-group label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #aaa;
+    margin-bottom: 3px;
+  }
+  .ctrl-group label span {
+    color: #6a9c89;
+    font-family: monospace;
+    font-size: 12px;
+  }
+  .ctrl-group input[type=range] {
+    width: 100%;
+    height: 4px;
+    -webkit-appearance: none;
+    background: #333;
+    border-radius: 2px;
+    outline: none;
+  }
+  .ctrl-group input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #6a9c89;
+    cursor: pointer;
+  }
+  .section-title {
+    font-size: 11px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 14px;
+    margin-bottom: 6px;
+  }
+  #code-output {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid #333;
+  }
+  #code-output h3 {
+    font-size: 12px;
+    color: #6a9c89;
+    margin-bottom: 6px;
+  }
+  #code-output pre {
+    font-size: 10px;
+    color: #8fbc8f;
+    background: #111;
+    padding: 8px;
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .btn-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .btn-row button {
+    flex: 1;
+    padding: 6px;
+    border: none;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+    background: #6a9c89;
+    color: #fff;
+    font-weight: 600;
+  }
+  .btn-row button.secondary {
+    background: #333;
+  }
+
+  /* Bounds indicator */
+  #bounds-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(255,100,100,0.4);
+    pointer-events: none;
+  }
+  #bounds-label {
+    position: absolute;
+    right: 4px;
+    font-size: 9px;
+    color: rgba(255,100,100,0.6);
+  }
+  /* Gesture trigger buttons */
+  #gesture-panel {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    z-index: 200;
+    background: rgba(0,0,0,0.7);
+    padding: 10px 16px;
+    border-radius: 12px;
+  }
+  #gesture-panel button {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+    background: #6a9c89;
+    color: #fff;
+    font-weight: 600;
+    transition: background 0.15s;
+  }
+  #gesture-panel button:hover {
+    background: #7db89e;
+  }
+  #gesture-panel button:active {
+    background: #4e7a68;
+  }
+</style>
+</head>
+<body>
+
+<!-- Gesture trigger buttons -->
+<div id="gesture-panel">
+  <button onclick="playGesture('salute')">🙏 拱手 salute</button>
+  <button onclick="playGesture('none')">↩ 重置</button>
+</div>
+
+<!-- Scene container (mimics the mobile floating position) -->
+<div id="scene-container">
+  <div id="avatar-wrap">
+    <div id="ring"></div>
+    <div id="avatar-render"></div>
+    <div id="name-tag">小灵</div>
+  </div>
+</div>
+
+<!-- Screen bottom indicator -->
+<div id="bounds-line">
+  <span id="bounds-label">bottom: 110</span>
+</div>
+
+<!-- Control panel -->
+<div id="debug-overlay">
+  <h2>VRM 浮动角色调试面板</h2>
+
+  <div class="section-title">容器位置 (container)</div>
+  <div class="ctrl-group">
+    <label>bottom <span id="val-bottom">110</span></label>
+    <input type="range" id="ctrl-bottom" min="40" max="300" value="110" step="5">
+  </div>
+  <div class="ctrl-group">
+    <label>right <span id="val-right">14</span></label>
+    <input type="range" id="ctrl-right" min="0" max="100" value="14" step="2">
+  </div>
+
+  <div class="section-title">avatarWrap 尺寸</div>
+  <div class="ctrl-group">
+    <label>width <span id="val-wrapW">120</span></label>
+    <input type="range" id="ctrl-wrapW" min="60" max="200" value="120" step="5">
+  </div>
+  <div class="ctrl-group">
+    <label>height <span id="val-wrapH">170</span></label>
+    <input type="range" id="ctrl-wrapH" min="80" max="300" value="170" step="5">
+  </div>
+
+  <div class="section-title">avatar 渲染容器</div>
+  <div class="ctrl-group">
+    <label>width <span id="val-avW">100</span></label>
+    <input type="range" id="ctrl-avW" min="40" max="180" value="100" step="5">
+  </div>
+  <div class="ctrl-group">
+    <label>height <span id="val-avH">160</span></label>
+    <input type="range" id="ctrl-avH" min="60" max="280" value="160" step="5">
+  </div>
+
+  <div class="section-title">相机参数 (camera)</div>
+  <div class="ctrl-group">
+    <label>position X <span id="val-camX">0.0</span></label>
+    <input type="range" id="ctrl-camX" min="-2" max="2" value="0" step="0.1">
+  </div>
+  <div class="ctrl-group">
+    <label>position Y <span id="val-camY">0.9</span></label>
+    <input type="range" id="ctrl-camY" min="-1" max="3" value="0.9" step="0.05">
+  </div>
+  <div class="ctrl-group">
+    <label>position Z (distance) <span id="val-camZ">2.0</span></label>
+    <input type="range" id="ctrl-camZ" min="0.5" max="5" value="2.0" step="0.1">
+  </div>
+  <div class="ctrl-group">
+    <label>lookAt Y (焦点高度) <span id="val-lookY">0.5</span></label>
+    <input type="range" id="ctrl-lookY" min="0" max="1.5" value="0.5" step="0.05">
+  </div>
+  <div class="ctrl-group">
+    <label>FOV <span id="val-fov">30</span></label>
+    <input type="range" id="ctrl-fov" min="15" max="60" value="30" step="1">
+  </div>
+
+  <div class="section-title">快捷预设</div>
+  <div class="btn-row">
+    <button onclick="applyPreset('original')">原版 (84×96)</button>
+    <button onclick="applyPreset('current')">当前值</button>
+  </div>
+  <div class="btn-row">
+    <button onclick="applyPreset('tall')">高瘦全身</button>
+    <button onclick="applyPreset('wide')">宽屏全身</button>
+  </div>
+
+  <div id="code-output">
+    <h3>生成的代码片段</h3>
+    <pre id="code-text"></pre>
+    <div class="btn-row">
+      <button onclick="copyCode()">复制代码</button>
+      <button class="secondary" onclick="copyVRMView()">复制 VRMView 代码</button>
+      <button class="secondary" onclick="playGesture('none')">重置姿态</button>
+    </div>
+  </div>
+</div>
+
+<!-- Three.js via CDN -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const renderEl = document.getElementById('avatar-render');
+let renderer, scene, camera, humanoid, mixer;
+let leftArmPivot, rightArmPivot, leftHandMesh, rightHandMesh;
+let currentArmPose = { lRx: 0, lRz: 0, rRx: 0, rRz: 0 };
+let targetArmPose  = { lRx: 0, lRz: 0, rRx: 0, rRz: 0 };
+const LERP_SPEED = 0.08;
+
+function init() {
+  const w = renderEl.clientWidth;
+  const h = renderEl.clientHeight;
+  if (w === 0 || h === 0) return;
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 0);
+  renderEl.appendChild(renderer.domElement);
+
+  scene = new THREE.Scene();
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+  keyLight.position.set(3, 5, 4);
+  scene.add(keyLight);
+  const fillLight = new THREE.DirectionalLight(0xB4D4FF, 0.3);
+  fillLight.position.set(-2, 3, -1);
+  scene.add(fillLight);
+  const rimLight = new THREE.DirectionalLight(0xFFE4C4, 0.2);
+  rimLight.position.set(0, 2, -3);
+  scene.add(rimLight);
+
+  // Humanoid placeholder
+  humanoid = buildHumanoid();
+  scene.add(humanoid);
+
+  // Idle animation
+  mixer = new THREE.AnimationMixer(humanoid);
+  const idleClip = new THREE.AnimationClip('idle', 3, [
+    new THREE.NumberKeyframeTrack('.position[y]', [0, 1.5, 3], [0, 0.03, 0]),
+  ]);
+  mixer.clipAction(idleClip).play();
+
+  applyCameraFromUI();
+  animate();
+}
+
+function buildHumanoid() {
+  const group = new THREE.Group();
+  const skinMat = new THREE.MeshStandardMaterial({ color: 0xE8C4A0, roughness: 0.8 });
+  const dressMat = new THREE.MeshStandardMaterial({ color: 0x5F8A8B, roughness: 0.6 });
+  const hairMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+  const shoeMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.7 });
+
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.12, 16, 16), skinMat);
+  head.position.set(0, 1.55, 0);
+  group.add(head);
+
+  // Hair (back)
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 16, 0, Math.PI * 2, 0, Math.PI * 0.6), hairMat);
+  hair.position.set(0, 1.58, -0.02);
+  group.add(hair);
+
+  // Neck
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.08, 8), skinMat);
+  neck.position.set(0, 1.42, 0);
+  group.add(neck);
+
+  // Body / dress (top part)
+  const bodyTop = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.35, 12), dressMat);
+  bodyTop.position.set(0, 1.2, 0);
+  group.add(bodyTop);
+
+  // Dress (skirt part)
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.22, 0.55, 12), dressMat);
+  skirt.position.set(0, 0.72, 0);
+  group.add(skirt);
+
+  // Arms — pivot at shoulder for gesture animation
+  const armGeo = new THREE.CylinderGeometry(0.035, 0.03, 0.5, 8);
+  const handGeo = new THREE.SphereGeometry(0.035, 8, 8);
+
+  leftArmPivot = new THREE.Group();
+  leftArmPivot.position.set(-0.18, 1.38, 0);
+  const leftArmMesh = new THREE.Mesh(armGeo, skinMat);
+  leftArmMesh.position.set(0, -0.25, 0);
+  leftArmPivot.add(leftArmMesh);
+  leftHandMesh = new THREE.Mesh(handGeo, skinMat);
+  leftHandMesh.position.set(0, -0.5, 0);
+  leftArmPivot.add(leftHandMesh);
+  group.add(leftArmPivot);
+
+  rightArmPivot = new THREE.Group();
+  rightArmPivot.position.set(0.18, 1.38, 0);
+  const rightArmMesh = new THREE.Mesh(armGeo, skinMat);
+  rightArmMesh.position.set(0, -0.25, 0);
+  rightArmPivot.add(rightArmMesh);
+  rightHandMesh = new THREE.Mesh(handGeo, skinMat);
+  rightHandMesh.position.set(0, -0.5, 0);
+  rightArmPivot.add(rightHandMesh);
+  group.add(rightArmPivot);
+
+  // Legs
+  const legGeo = new THREE.CylinderGeometry(0.04, 0.035, 0.4, 8);
+  const leftLeg = new THREE.Mesh(legGeo, skinMat);
+  leftLeg.position.set(-0.06, 0.25, 0);
+  group.add(leftLeg);
+  const rightLeg = new THREE.Mesh(legGeo, skinMat);
+  rightLeg.position.set(0.06, 0.25, 0);
+  group.add(rightLeg);
+
+  // Shoes
+  const shoeGeo = new THREE.BoxGeometry(0.07, 0.05, 0.12);
+  const leftShoe = new THREE.Mesh(shoeGeo, shoeMat);
+  leftShoe.position.set(-0.06, 0.025, 0.02);
+  group.add(leftShoe);
+  const rightShoe = new THREE.Mesh(shoeGeo, shoeMat);
+  rightShoe.position.set(0.06, 0.025, 0.02);
+  group.add(rightShoe);
+
+  // Ground shadow
+  const shadowGeo = new THREE.CircleGeometry(0.3, 16);
+  const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.1 });
+  const shadow = new THREE.Mesh(shadowGeo, shadowMat);
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = -0.01;
+  group.add(shadow);
+
+  return group;
+}
+
+function applyCameraFromUI() {
+  if (!camera) {
+    const w = renderEl.clientWidth;
+    const h = renderEl.clientHeight;
+    const fov = parseFloat(document.getElementById('ctrl-fov').value);
+    camera = new THREE.PerspectiveCamera(fov, w / Math.max(h, 1), 0.1, 20);
+  }
+  camera.fov = parseFloat(document.getElementById('ctrl-fov').value);
+  camera.position.set(
+    parseFloat(document.getElementById('ctrl-camX').value),
+    parseFloat(document.getElementById('ctrl-camY').value),
+    parseFloat(document.getElementById('ctrl-camZ').value)
+  );
+  camera.lookAt(0, parseFloat(document.getElementById('ctrl-lookY').value), 0);
+  camera.updateProjectionMatrix();
+}
+
+function updateArmAnimation() {
+  currentArmPose.lRx += (targetArmPose.lRx - currentArmPose.lRx) * LERP_SPEED;
+  currentArmPose.lRz += (targetArmPose.lRz - currentArmPose.lRz) * LERP_SPEED;
+  currentArmPose.rRx += (targetArmPose.rRx - currentArmPose.rRx) * LERP_SPEED;
+  currentArmPose.rRz += (targetArmPose.rRz - currentArmPose.rRz) * LERP_SPEED;
+  if (leftArmPivot) {
+    leftArmPivot.rotation.x = currentArmPose.lRx;
+    leftArmPivot.rotation.z = currentArmPose.lRz;
+  }
+  if (rightArmPivot) {
+    rightArmPivot.rotation.x = currentArmPose.rRx;
+    rightArmPivot.rotation.z = currentArmPose.rRz;
+  }
+  // Hands converge toward center during gesture
+  if (leftHandMesh) {
+    leftHandMesh.position.x = 0.04 * Math.min(1, Math.abs(currentArmPose.lRx) / 1.2);
+    leftHandMesh.rotation.z = currentArmPose.lRx * 0.3;
+  }
+  if (rightHandMesh) {
+    rightHandMesh.position.x = -0.04 * Math.min(1, Math.abs(currentArmPose.rRx) / 1.2);
+    rightHandMesh.rotation.z = currentArmPose.rRx * 0.3;
+  }
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (mixer) mixer.update(0.016);
+  updateArmAnimation();
+  if (renderer && scene && camera) renderer.render(scene, camera);
+}
+
+// UI bindings
+const controls = [
+  ['bottom', 'val-bottom', 'ctrl-bottom', v => {
+    document.getElementById('scene-container').style.bottom = v + 'px';
+    document.getElementById('bounds-line').style.bottom = v + 'px';
+    document.getElementById('bounds-label').textContent = `bottom: ${v}`;
+  }],
+  ['right', 'val-right', 'ctrl-right', v => {
+    document.getElementById('scene-container').style.right = v + 'px';
+  }],
+  ['wrapW', 'val-wrapW', 'ctrl-wrapW', v => {
+    document.getElementById('avatar-wrap').style.width = v + 'px';
+    document.getElementById('ring').style.width = v + 'px';
+  }],
+  ['wrapH', 'val-wrapH', 'ctrl-wrapH', v => {
+    document.getElementById('avatar-wrap').style.height = v + 'px';
+  }],
+  ['avW', 'val-avW', 'ctrl-avW', v => {
+    renderEl.style.width = v + 'px';
+    resizeRenderer();
+  }],
+  ['avH', 'val-avH', 'ctrl-avH', v => {
+    renderEl.style.height = v + 'px';
+    resizeRenderer();
+  }],
+];
+
+controls.forEach(([name, valId, ctrlId, applyFn]) => {
+  const el = document.getElementById(ctrlId);
+  el.addEventListener('input', () => {
+    const v = el.value;
+    document.getElementById(valId).textContent = v;
+    applyFn(v);
+    if (name.startsWith('cam') || name === 'fov') {
+      applyCameraFromUI();
+    }
+    updateCode();
+  });
+});
+
+// Camera controls
+['ctrl-camX', 'ctrl-camY', 'ctrl-camZ', 'ctrl-lookY', 'ctrl-fov'].forEach(id => {
+  const valId = id.replace('ctrl-', 'val-');
+  document.getElementById(id).addEventListener('input', () => {
+    document.getElementById(valId).textContent = document.getElementById(id).value;
+    applyCameraFromUI();
+    updateCode();
+  });
+});
+
+function resizeRenderer() {
+  if (!renderer) return;
+  const w = renderEl.clientWidth;
+  const h = renderEl.clientHeight;
+  if (w > 0 && h > 0) {
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+}
+
+function updateCode() {
+  const bottom = document.getElementById('ctrl-bottom').value;
+  const right = document.getElementById('ctrl-right').value;
+  const wrapW = document.getElementById('ctrl-wrapW').value;
+  const wrapH = document.getElementById('ctrl-wrapH').value;
+  const avW = document.getElementById('ctrl-avW').value;
+  const avH = document.getElementById('ctrl-avH').value;
+  const camX = document.getElementById('ctrl-camX').value;
+  const camY = document.getElementById('ctrl-camY').value;
+  const camZ = document.getElementById('ctrl-camZ').value;
+  const lookY = document.getElementById('ctrl-lookY').value;
+  const fov = document.getElementById('ctrl-fov').value;
+
+  const code = `// VRMFloating.tsx
+container: { bottom: ${bottom}, right: ${right} }
+avatarWrap: { width: ${wrapW}, height: ${wrapH} }
+avatar: { width: ${avW}, height: ${avH} }
+BTN_SIZE = ${wrapW}
+BTN_HEIGHT = ${wrapH}
+bubble.bottom = ${parseInt(bottom) + parseInt(wrapH) - 10}
+
+// VRMView.tsx
+camera.position.set(${camX}, ${camY}, ${camZ})
+camera.lookAt(0, ${lookY}, 0)
+FOV = ${fov}`;
+
+  document.getElementById('code-text').textContent = code;
+}
+
+// Presets
+window.applyPreset = function(name) {
+  const presets = {
+    original: { bottom:92, right:14, wrapW:84, wrapH:84, avW:72, avH:96, camX:0, camY:1.3, camZ:2.5, lookY:1.0, fov:30 },
+    current: { bottom:110, right:14, wrapW:120, wrapH:170, avW:100, avH:160, camX:0, camY:0.9, camZ:2.0, lookY:0.5, fov:30 },
+    tall: { bottom:100, right:14, wrapW:100, wrapH:200, avW:90, avH:190, camX:0, camY:0.8, camZ:2.5, lookY:0.4, fov:28 },
+    wide: { bottom:120, right:14, wrapW:140, wrapH:180, avW:130, avH:175, camX:0, camY:0.7, camZ:2.8, lookY:0.5, fov:25 },
+  };
+  const p = presets[name];
+  if (!p) return;
+
+  const setVal = (id, val) => { document.getElementById(id).value = val; document.getElementById(id.replace('ctrl-','val-')).textContent = val; };
+  setVal('ctrl-bottom', p.bottom); setVal('ctrl-right', p.right);
+  setVal('ctrl-wrapW', p.wrapW); setVal('ctrl-wrapH', p.wrapH);
+  setVal('ctrl-avW', p.avW); setVal('ctrl-avH', p.avH);
+  setVal('ctrl-camX', p.camX); setVal('ctrl-camY', p.camY);
+  setVal('ctrl-camZ', p.camZ); setVal('ctrl-lookY', p.lookY);
+  setVal('ctrl-fov', p.fov);
+
+  controls.forEach(([nm, valId, ctrlId, applyFn]) => applyFn(document.getElementById(ctrlId).value));
+  applyCameraFromUI();
+  updateCode();
+};
+
+window.copyCode = function() {
+  const text = document.getElementById('code-text').textContent;
+  navigator.clipboard.writeText(text).then(() => alert('已复制到剪贴板'));
+};
+
+window.copyVRMView = function() {
+  const camX = document.getElementById('ctrl-camX').value;
+  const camY = document.getElementById('ctrl-camY').value;
+  const camZ = document.getElementById('ctrl-camZ').value;
+  const lookY = document.getElementById('ctrl-lookY').value;
+  const fov = document.getElementById('ctrl-fov').value;
+  const text = `const camera = new THREE.PerspectiveCamera(${fov}, width / Math.max(height, 1), 0.1, 20);
+camera.position.set(${camX}, ${camY}, ${camZ});
+camera.lookAt(0, ${lookY}, 0);`;
+  navigator.clipboard.writeText(text).then(() => alert('已复制 VRMView 相机代码'));
+};
+
+// ── Gesture System ──────────────────────────────────
+const GESTURES = {
+  none:   { lRx: 0,    lRz: 0,    rRx: 0,    rRz: 0    },
+  salute: { lRx: -1.2, lRz: 0.3,  rRx: -1.2, rRz: -0.3 },
+};
+
+window.playGesture = function(name) {
+  const g = GESTURES[name];
+  if (g) targetArmPose = { ...g };
+};
+
+// Init
+init();
+updateCode();
+</script>
+</body>
+</html>

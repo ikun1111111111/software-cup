@@ -1,0 +1,55 @@
+export const Colors = {
+  primary: '#6A9C89',
+  primaryLight: '#8CBFAD',
+  primaryLighter: '#B8D4C8',
+  primaryBg: '#E8F2EE',
+  primaryDark: '#4A7A68',
+
+  accent: '#C84B31',
+  accentLight: '#E85D3A',
+  accentBg: '#FCECE9',
+
+  vermilion: '#C84B31',
+  vermilionLight: '#E85D3A',
+  ink: '#2A2520',
+  celadon: '#6BA292',
+  paper: '#F7F5F0',
+  paperWarm: '#FDFBF7',
+
+  auxiliary: '#2A4D6E',
+  auxiliaryLight: '#4A6D8E',
+  auxiliaryBg: '#E8EEF4',
+
+  ochre: '#B87333',
+  lotus: '#D4A5A5',
+  gold: '#C8A951',
+
+  success: '#2D8B57',
+  successBg: '#E6F7ED',
+  warning: '#E8A838',
+  warningBg: '#FDF6E3',
+  error: '#DC4444',
+  errorBg: '#FDECEA',
+
+  gray50: '#FAF9F6',
+  gray100: '#F0EDE8',
+  gray200: '#E0DCD5',
+  gray300: '#C4BFB6',
+  gray400: '#9E988E',
+  gray500: '#7A7468',
+  gray600: '#5C554C',
+  gray700: '#3D3832',
+  gray800: '#2A2520',
+  gray900: '#1A1614',
+
+  surfaceBg: '#F8F6F2',
+  surfaceCard: '#FFFFFF',
+  textPrimary: '#1A1614',
+  textSecondary: '#5C554C',
+  textTertiary: '#9E988E',
+  textInverse: '#FFFFFF',
+  textLink: '#6A9C89',
+
+  borderLight: '#E8E5DF',
+  borderDefault: '#D4D0C8',
+} as const;
