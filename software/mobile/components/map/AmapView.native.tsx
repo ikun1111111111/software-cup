@@ -4,7 +4,20 @@ import WebView from 'react-native-webview';
 import { LINGSHAN_CENTER, buildHTML, type AmapViewRef, type AmapViewProps } from './AmapView.shared';
 
 const NativeAmapView = forwardRef<AmapViewRef, AmapViewProps>(function NativeAmapView(
-  { spots, center = LINGSHAN_CENTER, zoom = 15, height, onSpotTap, showUserLocation, userLocation, style },
+  {
+    spots,
+    center = LINGSHAN_CENTER,
+    zoom = 15,
+    height,
+    onSpotTap,
+    showUserLocation,
+    userLocation,
+    routeSpotIds = [],
+    activeSpotId = null,
+    style,
+    onMapReady,
+    onMapError,
+  },
   ref,
 ) {
   const webRef = useRef<WebView>(null);
@@ -35,20 +48,33 @@ const NativeAmapView = forwardRef<AmapViewRef, AmapViewProps>(function NativeAma
       if (data.type === 'spotTap' && onSpotTap) {
         const spot = spots.find((s) => s.id === data.spotId);
         if (spot) onSpotTap(spot);
+      } else if (data.type === 'mapReady') {
+        onMapReady?.();
+      } else if (data.type === 'mapError') {
+        onMapError?.(data.message || '地图服务暂时不可用');
       }
     } catch {}
-  }, [spots, onSpotTap]);
+  }, [spots, onSpotTap, onMapReady, onMapError]);
 
   const html = buildHTML(spots, center, zoom,
-    'window.ReactNativeWebView.postMessage(JSON.stringify({type:"spotTap",spotId:s.id}))');
+    'window.ReactNativeWebView.postMessage(JSON.stringify({type:"spotTap",spotId:s.id}))',
+    routeSpotIds,
+    activeSpotId);
 
   return (
-    <View style={[{ height: height ?? 280, overflow: 'hidden', borderRadius: 12 }, style]}>
+    <View style={[{
+      height: style ? undefined : height ?? 280,
+      flex: style && height == null ? 1 : undefined,
+      overflow: 'hidden',
+      borderRadius: 12,
+    }, style]}>
       <WebView
         ref={webRef}
         source={{ html }}
         style={{ flex: 1 }}
         onMessage={handleMessage}
+        onLoadEnd={() => onMapReady?.()}
+        onError={() => onMapError?.('地图 WebView 加载失败')}
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled

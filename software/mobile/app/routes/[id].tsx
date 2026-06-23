@@ -1,26 +1,30 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import InlineModal from '@/components/ui/InlineModal';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { VRMFloating, type VRMFloatingRef } from '@/components/vrm/VRMFloating';
 import { VRMManager } from '@/components/vrm/VRMManager';
 import { getRouteById, type TourRouteDetail } from '@/api/routes';
 import { getSpotById, type SpotDetail } from '@/api/spots';
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
 import { ROUTE_TYPE_META } from '@/constants/scenic';
+import { useTour } from '@/context/TourContext';
+import type { Route as TourRouteType } from '@/hooks/useTourOrchestrator';
+import TourProgressIndicator from '@/components/guide/TourProgressIndicator';
 
 export default function RouteDetailPage() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const vrmRef = useRef<VRMFloatingRef>(null);
 
   const [route, setRoute] = useState<TourRouteDetail | null>(null);
   const [spotDetails, setSpotDetails] = useState<Record<string, SpotDetail>>({});
   const [loading, setLoading] = useState(true);
   const [expandedSpot, setExpandedSpot] = useState<string | null>(null);
+
+  const [tourState, tourActions] = useTour();
 
   useEffect(() => {
     if (!id) return;
@@ -47,23 +51,72 @@ export default function RouteDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  // 进入路线详情，数字人介绍路线亮点
   useEffect(() => {
     if (route) {
-      VRMManager.setPageContext('explore', { routeName: route.name });
-      const t = setTimeout(() => {
-        vrmRef.current?.speak(`${route.name}，全程约${route.duration}。${route.description}`, 'neutral');
-      }, 800);
-      return () => clearTimeout(t);
+      VRMManager.setPageContext('route-detail', { routeName: route.name });
+
+      if (tourState.preferences.mode === 'tour' && tourState.currentRoute?.id === route.id) {
+        // 导览模式：介绍路线亮点和进度
+        const t = setTimeout(() => {
+          VRMManager.speak(
+            `${route.name}，全程约${route.duration}，包含${(route.spot_order || []).length}个景点。${route.description}`,
+            'happy'
+          );
+        }, 800);
+        return () => clearTimeout(t);
+      } else {
+        // 自由模式：简单介绍
+        const t = setTimeout(() => {
+          VRMManager.speak(
+            `${route.name}，${route.description}。您可以点击景点查看详情`,
+            'neutral'
+          );
+        }, 800);
+        return () => clearTimeout(t);
+      }
     }
-  }, [route]);
+  }, [route, tourState.preferences.mode, tourState.currentRoute]);
 
   const handleSpotPress = useCallback((spotId: string) => {
     const spot = spotDetails[spotId];
     if (spot) {
-      vrmRef.current?.speak(`${spot.name}，${spot.overview}`, 'neutral');
+      VRMManager.speak(`${spot.name}，${spot.overview}`, 'neutral');
     }
     setExpandedSpot(expandedSpot === spotId ? null : spotId);
   }, [spotDetails, expandedSpot]);
+
+  // 开始导览
+  const handleStartTour = useCallback(() => {
+    if (!route) return;
+    const tourRoute: TourRouteType = {
+      id: route.id,
+      name: route.name,
+      description: route.description,
+      spots: (route.spot_order || []).map((sid) => ({
+        id: sid,
+        name: spotDetails[sid]?.name || sid,
+      })),
+      duration: route.duration,
+      route_type: route.route_type,
+    };
+    tourActions.startTour(tourRoute);
+    VRMManager.speak(`好的，我们开始${route.name}，现在前往第一个景点`, 'happy');
+
+    // 导航到第一个景点
+    const firstSpot = route.spot_order?.[0];
+    if (firstSpot && spotDetails[firstSpot]) {
+      setTimeout(() => {
+        router.push(`/attractions/${firstSpot}`);
+      }, 1200);
+    }
+  }, [route, spotDetails, tourActions.startTour]);
+
+  // 继续导览（恢复已暂停的导览）
+  const handleResumeTour = useCallback(() => {
+    tourActions.resumeTour();
+    VRMManager.speak('好的，我们继续导览', 'neutral');
+  }, [tourActions.resumeTour]);
 
   if (loading) {
     return (
@@ -84,9 +137,23 @@ export default function RouteDetailPage() {
 
   const meta = ROUTE_TYPE_META[route.route_type] || ROUTE_TYPE_META.nature;
   const spotOrder = route.spot_order || [];
+  const isCurrentTour = tourState.currentRoute?.id === route.id;
 
   return (
     <View style={styles.root}>
+      {/* 导览进度指示器 */}
+      {isCurrentTour && tourState.progress.total > 0 && (
+        <View style={styles.progressOverlay}>
+          <TourProgressIndicator
+            progress={tourState.progress}
+            currentRoute={tourState.currentRoute}
+            status={tourState.status}
+            onResume={handleResumeTour}
+            onEnd={tourActions.endTour}
+          />
+        </View>
+      )}
+
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Hero */}
         <View style={[styles.hero, { paddingTop: insets.top }]}>
@@ -96,7 +163,7 @@ export default function RouteDetailPage() {
 
           <Pressable
             style={[styles.backBtn, { top: insets.top + 8 }]}
-            onPress={() => router.replace('/routes')}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/routes'))}
           >
             <Text style={styles.backText}>← 返回</Text>
           </Pressable>
@@ -113,6 +180,46 @@ export default function RouteDetailPage() {
             </View>
           </View>
         </View>
+
+        {/* 导览模式下的操作按钮 */}
+        {tourState.preferences.mode === 'tour' && (
+          <View style={styles.tourActions}>
+            {!isCurrentTour ? (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.tourActionBtn,
+                  styles.startTourBtn,
+                  pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+                ]}
+                onPress={handleStartTour}
+              >
+                <Text style={styles.startTourBtnText}>🧭 开始导览</Text>
+              </Pressable>
+            ) : tourState.status === 'completed' ? (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.tourActionBtn,
+                  styles.resumeTourBtn,
+                  pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+                ]}
+                onPress={() => router.push('/memory')}
+              >
+                <Text style={styles.resumeTourBtnText}>查看灵山手帐</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.tourActionBtn,
+                  styles.resumeTourBtn,
+                  pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
+                ]}
+                onPress={handleResumeTour}
+              >
+                <Text style={styles.resumeTourBtnText}>▶ 继续导览</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
 
         {/* Description */}
         <View style={styles.descSection}>
@@ -132,27 +239,49 @@ export default function RouteDetailPage() {
             const spotMeta = route.spot_details?.[spotId];
             const isLast = idx === spotOrder.length - 1;
 
+            // 检查是否已完成
+            const isCompleted = isCurrentTour && idx < tourState.progress.completed;
+            const isCurrent = isCurrentTour && idx === tourState.progress.current - 1;
+
             return (
               <Animated.View key={spotId} entering={FadeInUp.delay(idx * 60).duration(350)}>
                 <View style={styles.timelineItem}>
                   {/* Timeline line */}
-                  {!isLast && <View style={styles.timelineLine} />}
+                  {!isLast && (
+                    <View style={[
+                      styles.timelineLine,
+                      isCompleted && styles.timelineLineCompleted,
+                    ]} />
+                  )}
 
                   {/* Number badge */}
-                  <View style={[styles.timelineBadge, { backgroundColor: meta.color }]}>
-                    <Text style={styles.timelineNum}>{idx + 1}</Text>
+                  <View style={[
+                    styles.timelineBadge,
+                    { backgroundColor: isCompleted ? Colors.primary : isCurrent ? Colors.accent : meta.color },
+                  ]}>
+                    <Text style={styles.timelineNum}>
+                      {isCompleted ? '✓' : idx + 1}
+                    </Text>
                   </View>
 
                   {/* Content */}
                   <Pressable
                     style={({ pressed }) => [
                       styles.timelineContent,
+                      isCompleted && styles.timelineContentCompleted,
+                      isCurrent && styles.timelineContentCurrent,
                       pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] },
                     ]}
                     onPress={() => handleSpotPress(spotId)}
                   >
                     <View style={styles.timelineHeader}>
-                      <Text style={styles.timelineSpotName}>{spot?.name || spotId}</Text>
+                      <Text style={[
+                        styles.timelineSpotName,
+                        isCompleted && styles.timelineSpotNameCompleted,
+                        isCurrent && styles.timelineSpotNameCurrent,
+                      ]}>
+                        {spot?.name || spotId}
+                      </Text>
                       <Pressable
                         hitSlop={8}
                         onPress={() => spot && router.push(`/attractions/${spotId}`)}
@@ -168,6 +297,9 @@ export default function RouteDetailPage() {
                       <Text style={styles.timelineOverview} numberOfLines={isExpanded ? undefined : 2}>
                         {spot.overview}
                       </Text>
+                    )}
+                    {spotMeta?.['建议停留时间' as keyof typeof spotMeta] && (
+                      <Text style={styles.suggestedTime}>⏱ {spotMeta['建议停留时间' as keyof typeof spotMeta]}</Text>
                     )}
 
                     {/* Expanded details */}
@@ -205,15 +337,22 @@ export default function RouteDetailPage() {
         </View>
 
         <View style={{ height: 120 }} />
-      </ScrollView>
-
-      <VRMFloating ref={vrmRef} position="bottom-right" />
-    </View>
+    </ScrollView>
+  </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.paper },
+
+  // 导览进度覆盖层
+  progressOverlay: {
+    position: 'absolute',
+    top: 60,
+    left: 12,
+    right: 12,
+    zIndex: 50,
+  },
 
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.paper },
   loadingText: { fontSize: 14, color: Colors.gray400, letterSpacing: 3, marginTop: 16 },
@@ -248,6 +387,37 @@ const styles = StyleSheet.create({
   heroDot: { fontSize: 13, color: Colors.gray400 },
   heroSpotCount: { fontSize: 13, color: Colors.gray500 },
 
+  // 导览模式操作按钮
+  tourActions: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(106,156,137,0.05)',
+  },
+  tourActionBtn: {
+    paddingVertical: 14,
+    borderRadius: Radius.lg,
+    alignItems: 'center',
+  },
+  startTourBtn: {
+    backgroundColor: Colors.primary,
+  },
+  startTourBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 2,
+  },
+  resumeTourBtn: {
+    borderWidth: 1.5,
+    borderColor: Colors.primary,
+    backgroundColor: '#fff',
+  },
+  resumeTourBtnText: {
+    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
   // Description
   descSection: { padding: 16 },
   sectionTitle: {
@@ -272,6 +442,9 @@ const styles = StyleSheet.create({
     left: 19, top: 32, bottom: -8,
     width: 2, backgroundColor: Colors.borderLight,
   },
+  timelineLineCompleted: {
+    backgroundColor: Colors.primary,
+  },
   timelineBadge: {
     width: 32, height: 32, borderRadius: 16,
     justifyContent: 'center', alignItems: 'center',
@@ -285,14 +458,33 @@ const styles = StyleSheet.create({
     shadowColor: Colors.ink, shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04, shadowRadius: 3, elevation: 1,
   },
+  timelineContentCompleted: {
+    backgroundColor: 'rgba(106,156,137,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(106,156,137,0.15)',
+  },
+  timelineContentCurrent: {
+    borderWidth: 2,
+    borderColor: Colors.accent,
+    shadowColor: Colors.accent,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+  },
   timelineHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: 4,
   },
   timelineSpotName: { fontSize: 14, fontWeight: '600', color: Colors.ink, flex: 1 },
+  timelineSpotNameCompleted: { color: Colors.primary, fontWeight: '500' },
+  timelineSpotNameCurrent: { color: Colors.accent, fontWeight: '700' },
   arrowBtn: { padding: 4 },
   timelineArrow: { fontSize: 14, color: Colors.gray400 },
   timelineOverview: { fontSize: 12, color: Colors.gray500, lineHeight: 18 },
+  suggestedTime: {
+    fontSize: 11,
+    color: Colors.gray400,
+    marginTop: 4,
+  },
 
   // Expanded detail
   spotDetailBlock: { marginTop: 10, gap: 8 },

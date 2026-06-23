@@ -1,4 +1,5 @@
 import request from './request';
+import type { AxiosRequestConfig } from 'axios';
 
 export interface TimelineEvent {
   era: string;
@@ -22,9 +23,14 @@ export interface TodayCard {
   description: string;
 }
 
-export const getTimeline = (spotName?: string) => {
+type HistoryRequestConfig = AxiosRequestConfig & {
+  retries?: number;
+  retryDelay?: number;
+};
+
+export const getTimeline = (spotName?: string, config?: HistoryRequestConfig) => {
   const params = spotName ? { spot_name: spotName } : {};
-  return request.get<TimelineResponse>('/history/timeline', { params });
+  return request.get<TimelineResponse>('/history/timeline', { params, ...config });
 };
 
 export const getTodayInHistory = () => {

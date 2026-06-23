@@ -83,11 +83,23 @@ export function applyIdleAnimation(vrm: VRM, elapsed: number, dt: number, speaki
   }
 }
 
+// 口型平滑过渡
+let currentMouthValue = 0;
+const MOUTH_SMOOTHING = 0.3;
+
 export function applyMouthOpen(vrm: VRM, value: number): void {
-  vrm.expressionManager?.setValue('aa', Math.max(0, Math.min(1, value)));
+  currentMouthValue = currentMouthValue * MOUTH_SMOOTHING + value * (1 - MOUTH_SMOOTHING);
+  vrm.expressionManager?.setValue('aa', Math.max(0, Math.min(1, currentMouthValue)));
 }
 
+// 记录上次设置的表情，避免每帧重复设置
+let lastAppliedExpression: string | null = null;
+
 export function applyExpression(vrm: VRM, emotion: string): void {
+  // 只在表情变化时才设置，避免覆盖组合表情
+  if (lastAppliedExpression === emotion) return;
+  lastAppliedExpression = emotion;
+
   const expressions = ['happy', 'sad', 'angry', 'relaxed', 'surprised', 'neutral'];
   expressions.forEach((name) => {
     vrm.expressionManager?.setValue(name, name === emotion ? 1 : 0);
@@ -103,6 +115,7 @@ export function applyExpression(vrm: VRM, emotion: string): void {
     }
   }
 
+  // 注意：不设置 'aa'（嘴型），由 applyMouthOpen 单独控制
   // neutral: 保持自然中性表情
 }
 
@@ -262,7 +275,7 @@ export function applyAction(
         const curl = 0.8 * raiseCurve;
         ['rightMiddleProximal','rightRingProximal','rightLittleProximal',
          'rightMiddleIntermediate','rightRingIntermediate','rightLittleIntermediate'].forEach(name => {
-          const bone = vrm.humanoid?.getNormalizedBoneNode(name);
+          const bone = vrm.humanoid?.getNormalizedBoneNode(name as any);
           if (bone) (bone as any).rotation.x = curl;
         });
         const thumb = vrm.humanoid?.getNormalizedBoneNode('rightThumbProximal');

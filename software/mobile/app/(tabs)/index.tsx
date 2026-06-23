@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Dimensions,
 } from 'react-native';
@@ -9,14 +9,23 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { VRMFloating, type VRMFloatingRef } from '@/components/vrm/VRMFloating';
-import { VRMManager } from '@/components/vrm/VRMManager';
+import { setDigitalHumanPageContext, speakWithDigitalHuman } from '@/services/digitalHuman';
+
 import { InkTransition } from '@/components/ui/InkTransition';
 import { BrushDivider } from '@/components/ui/BrushDivider';
 import { Colors } from '@/constants/colors';
+import TourProgressIndicator from '@/components/guide/TourProgressIndicator';
+import { GuidePlanModal, type RouteOption } from '@/components/guide/GuidePlanModal';
+import { MemoryPrompt } from '@/components/guide/MemoryPrompt';
+import { useTour } from '@/context/TourContext';
+import { useUserStore } from '@/stores/userStore';
+import type { Route } from '@/hooks/useTourOrchestrator';
+import { useTourGeolocation } from '@/hooks/useTourGeolocation';
+import { useTourGuide } from '@/hooks/useTourGuide';
+import { enrichSpotsWithLocations } from '@/constants/spot-locations';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const HERO_H = 520;
+const HERO_H = 560;
 const CAROUSEL_W = 230;
 
 // ─── 景点图片映射 ───
@@ -43,13 +52,12 @@ const SPOT_IMAGES: Record<string, any> = {
 };
 
 const FEATURES = [
-  { to: '/chat', label: '对话导览', desc: '与数字人对话', icon: '💬', color: '#6A9C89', bg: '#E8F2EE' },
-  { to: '/attractions', label: '景点探索', desc: '浏览所有景点', icon: '🔍', color: '#C84B31', bg: '#FCECE9' },
-  { to: '/map', label: '景区导航', desc: '实时导航', icon: '🧭', color: '#2A4D6E', bg: '#E8EEF4' },
-  { to: '/explore', label: '路线导航', desc: '数字人带路', icon: '🏮', color: '#4A7C6E', bg: '#E8F2EE' },
-  { to: '/history', label: '时空穿越', desc: '穿越千年', icon: '🏛️', color: '#6BA292', bg: '#E8F2EE' },
-  { to: '/memory', label: '旅行记忆', desc: '记录旅途', icon: '💭', color: '#C8A951', bg: '#FDF6E3' },
-  { to: '/guide-demo', label: '导览Demo', desc: 'VRM数字人演示', icon: '🗿', color: '#B87333', bg: '#FDF6E3' },
+  { to: '/chat', label: '对话导览', desc: '与数字人对话', icon: '话', color: '#6A9C89', bg: '#E8F2EE' },
+  { to: '/attractions', label: '景点探索', desc: '浏览所有景点', icon: '景', color: '#C84B31', bg: '#FCECE9' },
+  { to: '/map', label: '景区导航', desc: '实时导航', icon: '导', color: '#2A4D6E', bg: '#E8EEF4' },
+  { to: '/explore', label: '路线导航', desc: '数字人带路', icon: '路', color: '#4A7C6E', bg: '#E8F2EE' },
+  { to: '/history', label: '时空穿越', desc: '穿越千年', icon: '古', color: '#6BA292', bg: '#E8F2EE' },
+  { to: '/memory', label: '旅行记忆', desc: '记录旅途', icon: '忆', color: '#C8A951', bg: '#FDF6E3' },
 ];
 
 const SPOTS = [
@@ -120,14 +128,17 @@ function Particle({ config }: { config: {
 }
 
 function FloatingParticles() {
-  const particles = Array.from({ length: 10 }, (_, i) => ({
-    size: 3 + Math.random() * 5,
-    x: 5 + Math.random() * 90,
-    delay: Math.random() * 4000,
-    duration: 8000 + Math.random() * 7000,
-    sway: 8 + Math.random() * 15,
-    color: PARTICLE_COLORS[i % PARTICLE_COLORS.length],
-  }));
+  const particles = useMemo(
+    () => Array.from({ length: 10 }, (_, i) => ({
+      size: 3 + Math.random() * 5,
+      x: 5 + Math.random() * 90,
+      delay: Math.random() * 4000,
+      duration: 8000 + Math.random() * 7000,
+      sway: 8 + Math.random() * 15,
+      color: PARTICLE_COLORS[i % PARTICLE_COLORS.length],
+    })),
+    [],
+  );
   return (
     <View style={styles.particlesWrap} pointerEvents="none">
       {particles.map((p, i) => <Particle key={i} config={p} />)}
@@ -135,17 +146,20 @@ function FloatingParticles() {
   );
 }
 
-// ─── Hero 大图 + 弧形过渡 + 数字人半露 ───
+// ─── Hero 大图 + 双入口卡片 + 数字人半露 ───
 function HeroSection({
   scrollY,
-  vrmSpeak,
+  onFreeExplore,
+  onGuidedTour,
 }: {
   scrollY: Animated.SharedValue<number>;
-  vrmSpeak: (text: string, emotion?: string) => void;
+  onFreeExplore: () => void;
+  onGuidedTour: () => void;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [loaded, setLoaded] = useState(false);
+  const { user } = useUserStore();
 
   // 印章摇动动画
   const sealRotation = useSharedValue(0);
@@ -173,8 +187,8 @@ function HeroSection({
   }));
   // 内容渐隐
   const contentStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 300], [1, 0], { extrapolateRight: Extrapolation.CLAMP }),
-    transform: [{ translateY: interpolate(scrollY.value, [0, 300], [0, -20], { extrapolateRight: Extrapolation.CLAMP }) }],
+    opacity: interpolate(scrollY.value, [0, 350], [1, 0], { extrapolateRight: Extrapolation.CLAMP }),
+    transform: [{ translateY: interpolate(scrollY.value, [0, 350], [0, -20], { extrapolateRight: Extrapolation.CLAMP }) }],
   }));
   // 印章摇动样式
   const sealStyle = useAnimatedStyle(() => ({
@@ -192,7 +206,7 @@ function HeroSection({
         />
       </Animated.View>
 
-      {/* 深色渐变叠加 - 更有层次感 */}
+      {/* 深色渐变叠加 */}
       <View style={styles.heroOverlayDeep} />
       <View style={styles.heroOverlayVignette} />
 
@@ -206,48 +220,74 @@ function HeroSection({
 
       {/* Hero内容区 */}
       <Animated.View style={[styles.heroContent, { paddingTop: insets.top + 10 }, contentStyle]}>
+        {/* 用户入口 */}
+        <Pressable
+          style={styles.userEntryBtn}
+          onPress={() => router.push(user ? '/(tabs)/profile' : '/auth/login')}
+          accessibilityRole="button"
+          accessibilityLabel={user ? '打开个人中心' : '登录账号'}
+        >
+          <Text style={styles.userEntryIcon}>{user ? '🧘' : '👤'}</Text>
+          <Text style={styles.userEntryText}>{user ? (user.nickname || user.username) : '登录'}</Text>
+        </Pressable>
         {/* 印章 */}
         <Animated.View style={[styles.seal, loaded && styles.sealIn, sealStyle]}>
           <Text style={styles.sealTxt}>灵</Text>
           <View style={styles.sealInner} />
         </Animated.View>
 
-        <Text style={styles.heroTitle}>灵山胜境</Text>
-        <Text style={styles.heroSubEn}>LINGSHAN SACRED LAND</Text>
+        <Text style={styles.heroTitle}>灵山数字导览人</Text>
+        <Text style={styles.heroSubEn}>LINGSHAN DIGITAL GUIDE</Text>
         <View style={styles.heroDivider} />
-        <Text style={styles.heroPoem}>一步一景 · 一景一画</Text>
+        <Text style={styles.heroPoem}>AI 数字人 · 全程智慧伴游</Text>
 
-        <View style={styles.heroBtns}>
+        {/* ─── 双入口卡片 ─── */}
+        <View style={styles.entryCards}>
+          {/* 独自游览 */}
           <Pressable
-            style={({ pressed, hovered }: any) => [
-              styles.heroBtnPrimary,
-              hovered && styles.heroBtnPrimaryHover,
-              pressed && styles.heroBtnPrimaryPressed,
+            style={({ pressed }) => [
+              styles.entryCard,
+              pressed && { transform: [{ scale: 0.96 }] },
             ]}
-            onPress={() => InkTransition.trigger(() => router.push('/attractions'))}
+            onPress={onFreeExplore}
+            accessibilityRole="button"
+            accessibilityLabel="开始独自游览"
           >
-            {({ pressed, hovered }: any) => (
-              <Text style={[styles.heroBtnPrimaryTxt, (hovered || pressed) && styles.heroBtnPrimaryTxtHover]}>
-                开启旅程
-              </Text>
-            )}
+            <View style={styles.entryCardInner}>
+              <View style={[styles.entryIconWrap, { backgroundColor: 'rgba(106,156,137,0.18)' }]}>
+                <Text style={[styles.entryIconText, { color: '#6A9C89' }]}>游</Text>
+              </View>
+              <Text style={styles.entryTitle}>独自游览</Text>
+              <Text style={styles.entryDesc}>小灵陪你一个人走完整条路线</Text>
+              <View style={styles.entryCtaRow}>
+                <Text style={styles.entryCta}>开始独游</Text>
+                <Text style={[styles.entryCtaArrow, { color: '#6A9C89' }]}>→</Text>
+              </View>
+            </View>
           </Pressable>
+
+          {/* 主动导览 */}
           <Pressable
-            style={({ pressed, hovered }: any) => [
-              styles.heroBtnSecondary,
-              hovered && styles.heroBtnSecondaryHover,
-              pressed && styles.heroBtnSecondaryPressed,
+            style={({ pressed }) => [
+              styles.entryCard,
+              styles.entryCardActive,
+              pressed && { transform: [{ scale: 0.96 }] },
             ]}
-            onPress={() => {
-              vrmSpeak('有什么想了解的，尽管问我', 'neutral');
-              setTimeout(() => InkTransition.trigger(() => router.push('/chat')), 800);
-            }}
+            onPress={onGuidedTour}
+            accessibilityRole="button"
+            accessibilityLabel="选择主动导览方案"
           >
-            {({ pressed, hovered }: any) => (
-              <Text style={[styles.heroBtnSecondaryTxt, (hovered || pressed) && styles.heroBtnSecondaryTxtHover]}>
-                对话导览
-              </Text>
-            )}
+            <View style={styles.entryCardInner}>
+              <View style={[styles.entryIconWrap, { backgroundColor: 'rgba(200,75,49,0.15)' }]}>
+                <Text style={[styles.entryIconText, { color: '#C84B31' }]}>导</Text>
+              </View>
+              <Text style={styles.entryTitle}>主动导览</Text>
+              <Text style={styles.entryDesc}>数字人全程讲解带路</Text>
+              <View style={styles.entryCtaRow}>
+                <Text style={[styles.entryCta, { color: '#C84B31' }]}>选择方案</Text>
+                <Text style={[styles.entryCtaArrow, { color: '#C84B31' }]}>→</Text>
+              </View>
+            </View>
           </Pressable>
         </View>
       </Animated.View>
@@ -270,9 +310,9 @@ function FeatureCard({ feature, index, inView }: {
   const hovered = useSharedValue(false);
 
   const cardStyle = useAnimatedStyle(() => ({
-    opacity: inView.value ? withTiming(1, { delay: index * 80, duration: 400 }) : 0,
+    opacity: inView.value ? withDelay(index * 80, withTiming(1, { duration: 400 })) : 0,
     transform: [
-      { translateY: inView.value ? withTiming(0, { delay: index * 80, duration: 400 }) : 30 },
+      { translateY: inView.value ? withDelay(index * 80, withTiming(0, { duration: 400 })) : 30 },
       { scale: hovered.value ? withTiming(1.05) : 1 },
     ],
     shadowColor: hovered.value ? Colors.primary : Colors.ink,
@@ -291,6 +331,8 @@ function FeatureCard({ feature, index, inView }: {
         onHoverOut={() => { hovered.value = false; }}
         onPress={() => InkTransition.trigger(() => router.push(feature.to as any))}
         style={styles.featCardInner}
+        accessibilityRole="button"
+        accessibilityLabel={feature.label}
       >
         <Animated.View style={[styles.featIcon, { backgroundColor: feature.bg, borderColor: feature.color + '30' }, iconStyle]}>
           <Text style={[styles.featChar, { color: feature.color }]}>{feature.icon}</Text>
@@ -363,8 +405,8 @@ function IntroSection() {
   }));
 
   const text2Style = useAnimatedStyle(() => ({
-    opacity: inView.value ? withTiming(1, { duration: 600, delay: 200 }) : 0,
-    transform: [{ translateY: inView.value ? withTiming(0, { duration: 600, delay: 200 }) : 20 }],
+    opacity: inView.value ? withDelay(200, withTiming(1, { duration: 600 })) : 0,
+    transform: [{ translateY: inView.value ? withDelay(200, withTiming(0, { duration: 600 })) : 20 }],
   }));
 
   const cornerStyle = useAnimatedStyle(() => ({
@@ -373,16 +415,12 @@ function IntroSection() {
 
   return (
     <View ref={sectionRef} style={styles.intro}>
-      {/* 水墨晕染背景 */}
       <View style={styles.inkBlot1} />
       <View style={styles.inkBlot2} />
-
-      {/* 四角装饰 */}
       <Animated.View style={[styles.cornerTL, cornerStyle]} />
       <Animated.View style={[styles.cornerTR, cornerStyle]} />
       <Animated.View style={[styles.cornerBL, cornerStyle]} />
       <Animated.View style={[styles.cornerBR, cornerStyle]} />
-
       <View style={styles.secHead}>
         <Text style={styles.secTitle}>关于灵山</Text>
         <Text style={styles.secSub}>ABOUT LINGSHAN</Text>
@@ -480,7 +518,6 @@ function FeaturedSpots() {
         </Pressable>
       </View>
 
-      {/* 滑动引导提示 */}
       {showHint && (
         <View style={styles.swipeHint}>
           <Text style={styles.swipeHintText}>← 左右滑动探索更多 →</Text>
@@ -507,7 +544,6 @@ function FeaturedSpots() {
         ))}
       </ScrollView>
 
-      {/* 分页圆点 */}
       <View style={styles.dotsRow}>
         {SPOTS.map((_, i) => (
           <View
@@ -538,24 +574,155 @@ function FooterSection() {
 // ─── 主组件 ───
 export default function HomePage() {
   const router = useRouter();
-  const vrmRef = useRef<VRMFloatingRef>(null);
   const scrollY = useSharedValue(0);
+  const [indicatorCollapsed, setIndicatorCollapsed] = useState(false);
+  const [showGuidePlan, setShowGuidePlan] = useState(false);
+  const [showMemoryPrompt, setShowMemoryPrompt] = useState(false);
+  const [tourState, tourActions] = useTour();
 
   const onScroll = useCallback((e: any) => {
     scrollY.value = e.nativeEvent.contentOffset.y;
   }, [scrollY]);
 
-  const vrmSpeak = useCallback((text: string, emotion?: string) => {
-    vrmRef.current?.speak(text, emotion);
-  }, []);
+  // GPS定位
+  const { distanceInfo } = useTourGeolocation(
+    tourState.preferences.mode === 'tour' && tourState.currentSpot
+      ? {
+          id: tourState.currentSpot.id,
+          name: tourState.currentSpot.name,
+          latitude: tourState.currentSpot.latitude,
+          longitude: tourState.currentSpot.longitude,
+        }
+      : null,
+    { enabled: tourState.preferences.mode === 'tour' && !!tourState.currentRoute },
+  );
 
+  // 数字人GPS距离引导
+  useTourGuide(distanceInfo, {
+    vrmSpeak: speakWithDigitalHuman,
+    enabled: tourState.preferences.mode === 'tour' && !!tourState.currentRoute,
+  });
+
+  // ─── 到达景点 → 跳转到详情页 ───
+  const hasNavigatedToSpotRef = useRef<string | null>(null);
   useEffect(() => {
-    VRMManager.setPageContext('home');
+    if (tourState.status === 'navigate' && tourState.currentSpot) {
+      if (hasNavigatedToSpotRef.current === tourState.currentSpot.id) return;
+      hasNavigatedToSpotRef.current = tourState.currentSpot.id;
+      router.push(`/attractions/${tourState.currentSpot.id}`);
+    }
+  }, [tourState.status, tourState.currentSpot?.id, router]);
+
+  // 打卡成功时重置
+  useEffect(() => {
+    if (tourState.checkinResult?.success) {
+      setIndicatorCollapsed(false);
+      hasNavigatedToSpotRef.current = null;
+    }
+  }, [tourState.checkinResult?.success]);
+
+  // 首次加载：数字人欢迎
+  useEffect(() => {
+    setDigitalHumanPageContext('home');
     const t = setTimeout(() => {
-      vrmSpeak('欢迎来到灵山胜境，我是您的数字导览员小灵', 'neutral');
+      speakWithDigitalHuman('欢迎来到灵山胜境，我是您的数字导览员小灵', 'neutral');
     }, 1000);
     return () => clearTimeout(t);
   }, []);
+
+  // ─── 独自游览 ───
+  const handleFreeExplore = useCallback(() => {
+    speakWithDigitalHuman('好的，今天我陪你一个人逛。先选一个独游节奏，我来安排路线。', 'happy');
+    setShowGuidePlan(true);
+  }, []);
+
+  // ─── 主动导览 → 打开方案弹窗 ───
+  const handleGuidedTour = useCallback(() => {
+    setShowGuidePlan(true);
+  }, []);
+
+  // ─── 方案弹窗: 协同导览 ───
+  const handleCollabTour = useCallback(() => {
+    setShowGuidePlan(false);
+    router.push('/explore');
+  }, [router]);
+
+  // ─── 方案弹窗: 选择路线 ───
+  const handleSelectRoute = useCallback((route: RouteOption) => {
+    setShowGuidePlan(false);
+    const tourRoute: Route = {
+      id: route.id,
+      name: route.name.replace(/^[^\s]+\s/, ''),
+      description: route.description,
+      spots: enrichSpotsWithLocations(route.spots.map(s => ({ ...s, description: '', latitude: 0, longitude: 0 }))),
+      duration: route.duration,
+      route_type: route.difficulty === 'easy' ? 'zen' : route.difficulty === 'medium' ? 'classic' : 'nature',
+    };
+    tourActions.startTour(tourRoute);
+    speakWithDigitalHuman(`好的，我们选择${route.name}，全程约${route.duration}，现在出发！`, 'happy');
+  }, [tourActions.startTour]);
+
+  // ─── 方案弹窗: 关闭 ───
+  const handleCloseGuidePlan = useCallback(() => {
+    setShowGuidePlan(false);
+  }, []);
+
+  // ─── CheckinPanel: 拍照打卡 ───
+  const handleCheckinPhoto = useCallback(() => {
+    tourActions.setCheckinIntent('photo');
+    if (tourState.currentSpot) {
+      tourActions.setPendingCheckin({
+        spotId: tourState.currentSpot.id,
+        spotName: tourState.currentSpot.name,
+        type: 'photo',
+        timestamp: Date.now(),
+      });
+    }
+    router.push('/explore');
+  }, [tourActions, tourState.currentSpot, router]);
+
+  // ─── CheckinPanel: 扫码打卡 ───
+  const handleCheckinScan = useCallback(() => {
+    tourActions.setCheckinIntent('scan');
+    if (tourState.currentSpot) {
+      tourActions.setPendingCheckin({
+        spotId: tourState.currentSpot.id,
+        spotName: tourState.currentSpot.name,
+        type: 'scan',
+        timestamp: Date.now(),
+      });
+    }
+    router.push('/explore');
+  }, [tourActions, tourState.currentSpot, router]);
+
+  // ─── CheckinPanel: 直接打卡 ───
+  const handleCheckinDirect = useCallback(async () => {
+    if (tourState.currentSpot) {
+      const result = await tourActions.completeSpot(tourState.currentSpot);
+      if (result.success) {
+        tourActions.setPendingCheckin({
+          spotId: tourState.currentSpot.id,
+          spotName: tourState.currentSpot.name,
+          type: 'direct',
+          timestamp: Date.now(),
+        });
+        setShowMemoryPrompt(true);
+        speakWithDigitalHuman(`打卡成功！${tourState.currentSpot.name}已记录`, 'happy');
+      }
+    }
+  }, [tourActions, tourState.currentSpot]);
+
+  // ─── MemoryPrompt: 加入记忆 ───
+  const handleAddMemory = useCallback(() => {
+    setShowMemoryPrompt(false);
+    router.push('/memory');
+  }, [router]);
+
+  // ─── MemoryPrompt: 跳过 ───
+  const handleSkipMemory = useCallback(() => {
+    setShowMemoryPrompt(false);
+    tourActions.clearPendingCheckin();
+  }, [tourActions.clearPendingCheckin]);
 
   return (
     <View style={styles.root}>
@@ -565,7 +732,11 @@ export default function HomePage() {
         scrollEventThrottle={16}
         showsVerticalScrollIndicator={false}
       >
-        <HeroSection scrollY={scrollY} vrmSpeak={vrmSpeak} />
+        <HeroSection
+          scrollY={scrollY}
+          onFreeExplore={handleFreeExplore}
+          onGuidedTour={handleGuidedTour}
+        />
         <FeatureSection />
         <BrushDivider />
         <IntroSection />
@@ -573,7 +744,45 @@ export default function HomePage() {
         <FeaturedSpots />
         <FooterSection />
       </ScrollView>
-      <VRMFloating ref={vrmRef} position="bottom-right" />
+
+      {/* 导览进度指示器 */}
+      {tourState.currentRoute && tourState.progress.total > 0 && (
+        <View style={styles.progressOverlay}>
+          <TourProgressIndicator
+            progress={tourState.progress}
+            currentRoute={tourState.currentRoute}
+            status={tourState.status}
+            distance={distanceInfo?.distance}
+            collapsed={indicatorCollapsed}
+            onToggleCollapse={() => setIndicatorCollapsed(!indicatorCollapsed)}
+            onResume={() => {
+              if (tourState.status === 'paused') {
+                tourActions.resumeTour();
+              }
+            }}
+            onEnd={tourActions.endTour}
+          />
+        </View>
+      )}
+
+      {/* 导览方案选择弹窗 */}
+      <GuidePlanModal
+        visible={showGuidePlan}
+        onSelectRoute={handleSelectRoute}
+        onCollabTour={handleCollabTour}
+        onClose={handleCloseGuidePlan}
+      />
+
+      {/* 记忆写入询问弹窗 */}
+      {tourState.pendingCheckin && (
+        <MemoryPrompt
+          visible={showMemoryPrompt}
+          spotName={tourState.pendingCheckin.spotName}
+          photoUri={tourState.pendingCheckin.photoUri}
+          onAddMemory={handleAddMemory}
+          onSkip={handleSkipMemory}
+        />
+      )}
     </View>
   );
 }
@@ -582,22 +791,28 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.paper },
   scroll: { flex: 1 },
 
+  // 进度指示器覆盖层
+  progressOverlay: {
+    position: 'absolute',
+    top: 60,
+    left: 12,
+    right: 12,
+    zIndex: 50,
+  },
+
   // ─────────────────────────────────────
   //  HERO 大图 + 弧形过渡 + 数字人半露
   // ─────────────────────────────────────
   heroWrap: {
     width: '100%', height: HERO_H, position: 'relative',
   },
-  // 深邃渐变 - 增加层次感
   heroOverlayDeep: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(20,30,25,0.15)',
   },
-  // 暗角效果 - 聚焦中心
   heroOverlayVignette: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.1)',
-    // 模拟径向渐变
   },
 
   // 装饰性云层
@@ -633,12 +848,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28,
     zIndex: 2,
   },
-  // 印章 - 更精致
+  userEntryBtn: {
+    position: 'absolute', top: 12, right: 16, zIndex: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
+    minHeight: 44,
+  },
+  userEntryIcon: { fontSize: 14 },
+  userEntryText: { fontSize: 13, color: '#fff', fontWeight: '600', letterSpacing: 0.5 },
+  // 印章
   seal: {
     width: 52, height: 52,
     borderWidth: 2.5, borderColor: 'rgba(200,75,49,0.9)',
     borderRadius: 6, justifyContent: 'center', alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
     opacity: 0, transform: [{ rotate: '-15deg' }, { scale: 1.5 }],
     shadowColor: 'rgba(200,75,49,0.4)', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5, shadowRadius: 12,
@@ -649,57 +874,95 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 4, left: 4, right: 4, bottom: 4,
     borderWidth: 1.5, borderColor: 'rgba(200,75,49,0.4)', borderRadius: 3,
   },
-  // 标题 - 更大气
   heroTitle: {
-    fontSize: 38, fontWeight: '900', color: '#fff', letterSpacing: 14, marginBottom: 10,
+    fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: 4, marginBottom: 8,
     textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 3 }, textShadowRadius: 20,
+    textAlign: 'center',
   },
   heroSubEn: {
-    fontSize: 11, letterSpacing: 6, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', marginBottom: 18,
+    fontSize: 11, letterSpacing: 6, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', marginBottom: 14,
   },
   heroDivider: {
-    width: 120, height: 1.5, marginBottom: 18,
+    width: 120, height: 1.5, marginBottom: 14,
     backgroundColor: 'rgba(200,75,49,0.6)',
   },
   heroPoem: {
-    fontSize: 16, letterSpacing: 8, color: 'rgba(255,255,255,0.95)', marginBottom: 40,
+    fontSize: 16, letterSpacing: 8, color: 'rgba(255,255,255,0.95)', marginBottom: 28,
     textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 12,
   },
-  // 按钮 - 更精致
-  heroBtns: { flexDirection: 'row', gap: 16 },
-  heroBtnPrimary: {
-    paddingHorizontal: 30, paddingVertical: 15,
-    backgroundColor: Colors.accent, borderRadius: 8,
-    shadowColor: Colors.accent, shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4, shadowRadius: 18,
+
+  // ─── 双入口卡片 ───
+  entryCards: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+    paddingHorizontal: 4,
   },
-  heroBtnPrimaryHover: {
-    transform: [{ scale: 1.08 }],
-    shadowOpacity: 0.6, shadowRadius: 28,
+  entryCard: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  heroBtnPrimaryPressed: {
-    transform: [{ scale: 0.95 }],
-    shadowOpacity: 0.7, shadowRadius: 32,
+  entryCardActive: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    shadowColor: '#C84B31',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 5,
   },
-  heroBtnPrimaryTxt: { color: '#fff', fontSize: 15, fontWeight: '700', letterSpacing: 4 },
-  heroBtnPrimaryTxtHover: { letterSpacing: 6 },
-  heroBtnSecondary: {
-    paddingHorizontal: 30, paddingVertical: 15,
-    backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 8,
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.5)',
+  entryCardInner: {
+    padding: 16,
+    alignItems: 'center',
+    minHeight: 148,
   },
-  heroBtnSecondaryHover: {
-    transform: [{ scale: 1.08 }],
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderColor: 'rgba(255,255,255,0.8)',
+  entryIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
   },
-  heroBtnSecondaryPressed: {
-    transform: [{ scale: 0.95 }],
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderColor: 'rgba(255,255,255,0.9)',
+  entryIconText: {
+    fontSize: 20,
+    fontWeight: '700',
+    fontFamily: 'MaShanZheng',
   },
-  heroBtnSecondaryTxt: { color: '#fff', fontSize: 15, fontWeight: '600', letterSpacing: 4 },
-  heroBtnSecondaryTxtHover: { letterSpacing: 6 },
+  entryTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1A1614',
+    letterSpacing: 2,
+    marginBottom: 4,
+  },
+  entryDesc: {
+    fontSize: 11,
+    color: 'rgba(26,22,20,0.55)',
+    textAlign: 'center',
+    marginBottom: 10,
+    lineHeight: 16,
+  },
+  entryCtaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  entryCta: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6A9C89',
+    letterSpacing: 1,
+  },
+  entryCtaArrow: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
 
   // ─── 弧形过渡区域 ───
   heroCurveWrap: {
@@ -734,13 +997,14 @@ const styles = StyleSheet.create({
   },
   featCardInner: {
     paddingVertical: 14, paddingHorizontal: 6, alignItems: 'center', gap: 5,
+    minHeight: 112,
   },
   featIcon: {
     width: 42, height: 42, borderRadius: 8,
     justifyContent: 'center', alignItems: 'center',
     borderWidth: 1,
   },
-  featChar: { fontSize: 20, fontWeight: '700' },
+  featChar: { fontSize: 20, fontWeight: '700', fontFamily: 'MaShanZheng' },
   featLabel: { fontSize: 12, fontWeight: '700', color: Colors.ink, letterSpacing: 1 },
   featDesc: { fontSize: 10, color: Colors.gray400, textAlign: 'center', lineHeight: 14 },
 

@@ -1,177 +1,494 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, TextInput, Pressable, StyleSheet,
-  ActivityIndicator, Image,
+  InteractionManager,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
-import Animated, {
-  FadeInUp, useSharedValue, useAnimatedStyle,
-  interpolate, Extrapolation,
-} from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { VRMFloating, type VRMFloatingRef } from '@/components/vrm/VRMFloating';
-import { VRMManager } from '@/components/vrm/VRMManager';
-import { listSpots, type Spot } from '@/api/spots';
-import { listRoutes, type TourRoute } from '@/api/routes';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  Extrapolation,
+  FadeInUp,
+  interpolate,
+  type SharedValue,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
+
+import { type Spot, type SpotDetail } from '@/api/spots';
+import { type TourRoute } from '@/api/routes';
+import { VRMView } from '@/components/vrm/VRMView';
+import { AttractionListSkeleton } from '@/components/ui/SkeletonLoader';
+import { setDigitalHumanPageContext } from '@/services/digitalHuman';
+import { spotCacheService } from '@/services/spotCache';
+import { memoryCache, CACHE_KEYS } from '@/services/memoryCache';
+import * as localDb from '@/services/localDatabase';
+import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import { getDemoRoutes, getDemoSpotById, getDemoSpots } from '@/utils/localDemoData';
 import { Colors } from '@/constants/colors';
-import { Radius } from '@/constants/spacing';
-import { SPOT_IMAGES, CATEGORIES, CAT_COLORS } from '@/constants/scenic';
+import { CATEGORIES, CAT_COLORS, SPOT_IMAGES } from '@/constants/scenic';
+import type { Emotion } from '@/components/vrm/VRMTypes';
+import type { Action } from '@/utils/textTimeline';
+import type { HeadRotation } from '@/utils/digitalHumanDriver';
 
 const PAGE_SIZE = 6;
+const FEATURED_LIMIT = 5;
+const HERO_SPOT_PRIORITY = ['ling-shan-da-fo', 'fan-gong', 'jiu-long-guan-yu'];
 
-// ─── Hero Section ───
-function HeroHeader({ scrollY, insets, spotCount, routeCount }: {
-  scrollY: Animated.SharedValue<number>;
-  insets: any;
+const ConsoleColors = {
+  obsidian: '#171411',
+  obsidian2: '#211D18',
+  cinnabar: '#C84B31',
+  cinnabarSoft: '#FCECE9',
+  pine: '#6A9C89',
+  pineDeep: '#4A7A68',
+  gold: '#C8A951',
+  paper: '#F7F3EA',
+  paperWarm: '#FFF8EA',
+  line: 'rgba(200,169,81,0.24)',
+};
+
+type Insets = {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+};
+
+type SpotStoryMeta = {
+  reason: string;
+  duration: string;
+  bestTime: string;
+};
+
+type HeroGuideProps = {
+  scrollY: SharedValue<number>;
+  insets: Insets;
   spotCount: number;
   routeCount: number;
-}) {
-  const router = useRouter();
+  featuredSpot: Spot | null;
+  expression: Emotion;
+  mouthOpen: number;
+  isSpeaking: boolean;
+  subtitle: string;
+  action: Action;
+  actionDurationMs: number;
+  headRotation: HeadRotation;
+  onBack: () => void;
+  onHearRecommendation: () => void;
+  onOpenExplore: () => void;
+  onStartRoute: () => void;
+};
 
-  const bgStyle = useAnimatedStyle(() => ({
+const SPOT_STORY_META: Record<string, SpotStoryMeta> = {
+  'ling-shan-da-fo': {
+    reason: '先看大佛高度与太湖天光，最能建立灵山的第一印象。',
+    duration: '45 分钟',
+    bestTime: '上午或夕照前',
+  },
+  'fan-gong': {
+    reason: '金色穹顶、壁画与仪式空间集中，适合作为文化深读的核心站。',
+    duration: '50 分钟',
+    bestTime: '上午',
+  },
+  'jiu-long-guan-yu': {
+    reason: '音乐、喷泉、动态群雕同时出现，适合用一场表演打开游览情绪。',
+    duration: '25 分钟',
+    bestTime: '表演前 10 分钟',
+  },
+  'wu-yin-tan-cheng': {
+    reason: '从五方佛与坛城空间读懂藏传佛教的宇宙秩序。',
+    duration: '35 分钟',
+    bestTime: '午后',
+  },
+  'xiang-fu-chan-si': {
+    reason: '古寺钟声与庭院节奏更慢，适合把脚步放轻。',
+    duration: '30 分钟',
+    bestTime: '清晨',
+  },
+  'fo-shou-guang-chang': {
+    reason: '广场尺度开阔，适合拍照、集合，也适合作为游线转换点。',
+    duration: '18 分钟',
+    bestTime: '全天',
+  },
+  'ling-shan-da-zhao-bi': {
+    reason: '照壁是进入胜境前的序章，小灵会从这里讲起灵山的仪式感。',
+    duration: '15 分钟',
+    bestTime: '入园后',
+  },
+};
+
+function getSpotMeta(spot: Spot | null | undefined): SpotStoryMeta {
+  if (!spot) {
+    return {
+      reason: '小灵会先帮你挑出最值得停留的一站。',
+      duration: '自由探索',
+      bestTime: '现在',
+    };
+  }
+  if (SPOT_STORY_META[spot.id]) return SPOT_STORY_META[spot.id];
+  if (spot.category === '核心景点') {
+    return {
+      reason: spot.overview || '这是灵山游览里最值得优先抵达的一站。',
+      duration: '35 分钟',
+      bestTime: '上午',
+    };
+  }
+  if (spot.category === '文化设施') {
+    return {
+      reason: spot.overview || '这里适合听一段背景故事，再慢慢看细节。',
+      duration: '30 分钟',
+      bestTime: '午后',
+    };
+  }
+  return {
+    reason: spot.overview || '这一站适合边走边听讲解，轻松补全游览体验。',
+    duration: '25 分钟',
+    bestTime: '全天',
+  };
+}
+
+function normalizeLocalSpot(s: Awaited<ReturnType<typeof localDb.getAllSpots>>[number]): Spot {
+  return {
+    id: s.id,
+    name: s.name,
+    overview: s.overview || '',
+    category: s.category || '',
+    tags: [],
+    latitude: s.latitude ?? null,
+    longitude: s.longitude ?? null,
+    qr_code: null,
+  };
+}
+
+function sortByVisualPriority(spots: Spot[]): Spot[] {
+  return [...spots].sort((a, b) => {
+    const aPriority = HERO_SPOT_PRIORITY.indexOf(a.id);
+    const bPriority = HERO_SPOT_PRIORITY.indexOf(b.id);
+    if (aPriority !== -1 || bPriority !== -1) {
+      return (aPriority === -1 ? 99 : aPriority) - (bPriority === -1 ? 99 : bPriority);
+    }
+
+    const aHasImage = !!SPOT_IMAGES[a.id];
+    const bHasImage = !!SPOT_IMAGES[b.id];
+    if (aHasImage && !bHasImage) return -1;
+    if (!aHasImage && bHasImage) return 1;
+    return a.name.localeCompare(b.name, 'zh-Hans-CN');
+  });
+}
+
+function DigitalHumanHero({
+  scrollY,
+  insets,
+  spotCount,
+  routeCount,
+  featuredSpot,
+  expression,
+  mouthOpen,
+  isSpeaking,
+  subtitle,
+  action,
+  actionDurationMs,
+  headRotation,
+  onBack,
+  onHearRecommendation,
+  onOpenExplore,
+  onStartRoute,
+}: HeroGuideProps) {
+  const meta = getSpotMeta(featuredSpot);
+
+  const heroStyle = useAnimatedStyle(() => ({
     transform: [{
-      translateY: interpolate(scrollY.value, [0, 300], [0, 80], { extrapolateRight: Extrapolation.CLAMP }),
+      translateY: interpolate(scrollY.value, [0, 320], [0, 34], Extrapolation.CLAMP),
     }],
-  }));
-  const contentStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(scrollY.value, [0, 200], [1, 0], { extrapolateRight: Extrapolation.CLAMP }),
-    transform: [{ translateY: interpolate(scrollY.value, [0, 200], [0, -30], { extrapolateRight: Extrapolation.CLAMP }) }],
+    opacity: interpolate(scrollY.value, [0, 360], [1, 0.84], Extrapolation.CLAMP),
   }));
 
   return (
-    <View style={[heroStyles.wrap, { paddingTop: insets.top }]}>
-      {/* Background with parallax */}
-      <Animated.View style={[heroStyles.bgWrap, bgStyle]}>
-        <Image
-          source={require('../../assets/images/hero-bg-attractions.png')}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-        />
-      </Animated.View>
-      <View style={heroStyles.overlay} />
-      <View style={heroStyles.overlayVignette} />
+    <View style={[heroStyles.wrap, { paddingTop: insets.top + 8 }]}>
+      <View style={heroStyles.skylineA} />
+      <View style={heroStyles.skylineB} />
+      <View style={heroStyles.gridLineOne} />
+      <View style={heroStyles.gridLineTwo} />
+      <View style={heroStyles.gridLineThree} />
 
-      {/* Back button */}
-      <Pressable
-        style={[heroStyles.backBtn, { top: insets.top + 4 }]}
-        onPress={() => router.replace('/explore')}
-        hitSlop={8}
-      >
-        <Text style={heroStyles.backText}>← 返回</Text>
+      <Pressable style={heroStyles.backBtn} onPress={onBack} hitSlop={8}>
+        <Text style={heroStyles.backGlyph}>‹</Text>
+        <Text style={heroStyles.backText}>返回</Text>
       </Pressable>
 
-      {/* Content */}
-      <Animated.View style={[heroStyles.content, contentStyle]}>
-        <View style={heroStyles.sealWrap}>
-          <View style={heroStyles.seal}>
-            <Text style={heroStyles.sealTxt}>景</Text>
+      <Animated.View style={[heroStyles.content, heroStyle]}>
+        <View style={heroStyles.copyCol}>
+          <Text style={heroStyles.kicker}>AI GUIDE CONSOLE</Text>
+          <Text style={heroStyles.title}>小灵导览台</Text>
+          <Text style={heroStyles.subtitle}>景点由小灵先讲，再由你决定去哪一站。</Text>
+
+          <View style={heroStyles.statRow}>
+            <View style={heroStyles.statBlock}>
+              <Text style={heroStyles.statNum}>{spotCount || '--'}</Text>
+              <Text style={heroStyles.statLabel}>景点</Text>
+            </View>
+            <View style={heroStyles.statBlock}>
+              <Text style={heroStyles.statNum}>{routeCount || '--'}</Text>
+              <Text style={heroStyles.statLabel}>路线</Text>
+            </View>
+            <View style={heroStyles.statBlock}>
+              <Text style={heroStyles.statNum}>3</Text>
+              <Text style={heroStyles.statLabel}>分类</Text>
+            </View>
           </View>
         </View>
-        <Text style={heroStyles.title}>灵山胜境</Text>
-        <Text style={heroStyles.subEn}>LINGSHAN SACRED LAND</Text>
-        <View style={heroStyles.divider} />
-        <Text style={heroStyles.poem}>探索景点 · 感受千年佛教文化</Text>
-        <View style={heroStyles.statsRow}>
-          <View style={heroStyles.statItem}>
-            <Text style={heroStyles.statNum}>{spotCount}</Text>
-            <Text style={heroStyles.statLabel}>景点</Text>
+
+        <View style={heroStyles.stageCol}>
+          <View style={heroStyles.avatarStage}>
+            <View style={heroStyles.stageStripeTall} />
+            <View style={heroStyles.stageStripeShort} />
+            <VRMView
+              mode="float"
+              expression={expression}
+              mouthOpen={mouthOpen}
+              speaking={isSpeaking}
+              action={action}
+              actionDuration={actionDurationMs}
+              headRotation={headRotation}
+              costumeId="festival-spring"
+            />
           </View>
-          <View style={heroStyles.statDivider} />
-          <View style={heroStyles.statItem}>
-            <Text style={heroStyles.statNum}>{routeCount}</Text>
-            <Text style={heroStyles.statLabel}>路线</Text>
-          </View>
-          <View style={heroStyles.statDivider} />
-          <View style={heroStyles.statItem}>
-            <Text style={heroStyles.statNum}>3</Text>
-            <Text style={heroStyles.statLabel}>分类</Text>
+          <View style={heroStyles.namePlate}>
+            <Text style={heroStyles.namePlateText}>小灵 · 数字导览员</Text>
           </View>
         </View>
       </Animated.View>
 
-      {/* Bottom curve */}
-      <View style={heroStyles.curveWrap}>
-        <View style={heroStyles.curve} />
+      <Animated.View entering={FadeInUp.delay(120).duration(420)} style={heroStyles.speechPanel}>
+        <View style={heroStyles.speechHeader}>
+          <Text style={heroStyles.speechLabel}>{isSpeaking ? '正在讲解' : '今日推荐'}</Text>
+          <View style={heroStyles.signalBars}>
+            <View style={[heroStyles.signalBar, isSpeaking && heroStyles.signalBarLive]} />
+            <View style={[heroStyles.signalBar, heroStyles.signalBarMid, isSpeaking && heroStyles.signalBarLive]} />
+            <View style={[heroStyles.signalBar, heroStyles.signalBarTall, isSpeaking && heroStyles.signalBarLive]} />
+          </View>
+        </View>
+        <Text style={heroStyles.speechText} numberOfLines={3}>
+          {subtitle || (featuredSpot ? `${featuredSpot.name}：${meta.reason}` : meta.reason)}
+        </Text>
+      </Animated.View>
+
+      <View style={heroStyles.recommendCard}>
+        <View style={heroStyles.recommendRule} />
+        <View style={heroStyles.recommendContent}>
+          <Text style={heroStyles.recommendKicker}>小灵优先带你看</Text>
+          <Text style={heroStyles.recommendTitle} numberOfLines={1}>
+            {featuredSpot?.name || '灵山大佛'}
+          </Text>
+          <Text style={heroStyles.recommendBody} numberOfLines={2}>{meta.reason}</Text>
+          <View style={heroStyles.metaRow}>
+            <Text style={heroStyles.metaPill}>{meta.duration}</Text>
+            <Text style={heroStyles.metaPill}>{meta.bestTime}</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={heroStyles.actionRow}>
+        <Pressable style={({ pressed }) => [heroStyles.primaryAction, pressed && styles.pressed]} onPress={onHearRecommendation}>
+          <Text style={heroStyles.primaryActionText}>听小灵推荐</Text>
+        </Pressable>
+        <Pressable style={({ pressed }) => [heroStyles.secondaryAction, pressed && styles.pressed]} onPress={onOpenExplore}>
+          <Text style={heroStyles.secondaryActionText}>拍照识景</Text>
+        </Pressable>
+        <Pressable style={({ pressed }) => [heroStyles.secondaryAction, pressed && styles.pressed]} onPress={onStartRoute}>
+          <Text style={heroStyles.secondaryActionText}>开始路线</Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
-// ─── Spot Card (Image-rich) ───
-function SpotCard({ spot, index, onPress }: {
+function SearchAndFilter({
+  activeCategory,
+  searchText,
+  searchFocused,
+  resultCount,
+  onSearchChange,
+  onFocusChange,
+  onCategoryChange,
+  onClear,
+}: {
+  activeCategory: string;
+  searchText: string;
+  searchFocused: boolean;
+  resultCount: number;
+  onSearchChange: (text: string) => void;
+  onFocusChange: (focused: boolean) => void;
+  onCategoryChange: (key: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <View style={styles.controlArea}>
+      <View style={[styles.searchBar, searchFocused && styles.searchBarFocused]}>
+        <Text style={styles.searchGlyph}>⌕</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="想看大佛、梵宫还是亲子路线？"
+          placeholderTextColor={Colors.gray400}
+          value={searchText}
+          onChangeText={onSearchChange}
+          onFocus={() => onFocusChange(true)}
+          onBlur={() => onFocusChange(false)}
+          returnKeyType="search"
+        />
+        {searchText.length > 0 && (
+          <Pressable style={styles.clearBtn} onPress={onClear} hitSlop={8}>
+            <Text style={styles.clearText}>×</Text>
+          </Pressable>
+        )}
+      </View>
+
+      <View style={styles.filterHeader}>
+        <Text style={styles.filterTitle}>小灵筛选</Text>
+        <Text style={styles.filterCount}>当前 {resultCount} 处</Text>
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
+        {CATEGORIES.map((cat) => {
+          const active = cat.key === activeCategory;
+          const color = cat.key ? (CAT_COLORS[cat.key] || ConsoleColors.pine) : ConsoleColors.obsidian;
+          return (
+            <Pressable
+              key={cat.key}
+              style={({ pressed }) => [
+                styles.catChip,
+                active && { backgroundColor: color, borderColor: color },
+                pressed && styles.pressed,
+              ]}
+              onPress={() => onCategoryChange(cat.key)}
+            >
+              <Text style={[styles.catText, active && styles.catTextActive]}>{cat.label}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+function FeaturedRail({
+  spots,
+  onPress,
+}: {
+  spots: Spot[];
+  onPress: (spot: Spot) => void;
+}) {
+  if (spots.length === 0) return null;
+
+  return (
+    <View style={styles.featuredSection}>
+      <View style={styles.sectionHead}>
+        <Text style={styles.sectionKicker}>XIAOLING PICKS</Text>
+        <Text style={styles.sectionTitle}>先听这几站</Text>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featuredRow}>
+        {spots.map((spot, index) => {
+          const meta = getSpotMeta(spot);
+          const image = SPOT_IMAGES[spot.id];
+          return (
+            <Animated.View key={spot.id} entering={FadeInUp.delay(index * 60).duration(380)}>
+              <Pressable style={({ pressed }) => [styles.featuredCard, pressed && styles.pressed]} onPress={() => onPress(spot)}>
+                <View style={styles.featuredImageWrap}>
+                  {image ? (
+                    <Image
+                      source={image}
+                      style={styles.featuredImage}
+                      contentFit="cover"
+                      transition={180}
+                      cachePolicy="memory-disk"
+                    />
+                  ) : (
+                    <View style={styles.featuredFallback}>
+                      <Text style={styles.featuredFallbackText}>{spot.name.charAt(0)}</Text>
+                    </View>
+                  )}
+                  <View style={styles.featuredBadge}>
+                    <Text style={styles.featuredBadgeText}>{index === 0 ? '首推' : spot.category || '景点'}</Text>
+                  </View>
+                </View>
+                <View style={styles.featuredInfo}>
+                  <Text style={styles.featuredName} numberOfLines={1}>{spot.name}</Text>
+                  <Text style={styles.featuredReason} numberOfLines={2}>{meta.reason}</Text>
+                  <Text style={styles.featuredTime}>{meta.duration}</Text>
+                </View>
+              </Pressable>
+            </Animated.View>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+const SpotStoryCard = React.memo(function SpotStoryCard({
+  spot,
+  index,
+  onPress,
+}: {
   spot: Spot;
   index: number;
   onPress: () => void;
 }) {
-  const hasImage = !!SPOT_IMAGES[spot.id];
-  const catColor = CAT_COLORS[spot.category] || Colors.gray400;
+  const image = SPOT_IMAGES[spot.id];
+  const meta = getSpotMeta(spot);
+  const catColor = CAT_COLORS[spot.category] || ConsoleColors.pine;
 
-  if (hasImage) {
-    // Large image card
-    return (
-      <Animated.View entering={FadeInUp.delay(index * 70).duration(400)}>
-        <Pressable
-          style={({ pressed }) => [
-            cardStyles.imageCard,
-            pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] },
-          ]}
-          onPress={onPress}
-        >
-          <View style={cardStyles.imageWrap}>
-            <Image source={SPOT_IMAGES[spot.id]} style={cardStyles.image} resizeMode="cover" />
-            <View style={cardStyles.imageOverlay} />
-            {/* Category badge */}
-            <View style={[cardStyles.catBadge, { backgroundColor: catColor + 'DD' }]}>
-              <Text style={cardStyles.catBadgeText}>{spot.category}</Text>
-            </View>
-            {/* Content overlay */}
-            <View style={cardStyles.imageContent}>
-              <Text style={cardStyles.imageName}>{spot.name}</Text>
-              <Text style={cardStyles.imageOverview} numberOfLines={2}>{spot.overview}</Text>
-              {spot.tags && spot.tags.length > 0 && (
-                <View style={cardStyles.imageTags}>
-                  {spot.tags.slice(0, 3).map((tag) => (
-                    <View key={tag} style={cardStyles.imageTag}>
-                      <Text style={cardStyles.imageTagText}>{tag}</Text>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </View>
-          </View>
-        </Pressable>
-      </Animated.View>
-    );
-  }
-
-  // Text-only compact card
   return (
-    <Animated.View entering={FadeInUp.delay(index * 70).duration(400)}>
-      <Pressable
-        style={({ pressed }) => [
-          cardStyles.compactCard,
-          pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] },
-        ]}
-        onPress={onPress}
-      >
-        <View style={cardStyles.compactLeft}>
-          <View style={[cardStyles.compactIcon, { backgroundColor: catColor + '15' }]}>
-            <Text style={[cardStyles.compactIconText, { color: catColor }]}>
-              {spot.name.charAt(0)}
-            </Text>
+    <Animated.View entering={FadeInUp.delay(index * 45).duration(340)}>
+      <Pressable style={({ pressed }) => [cardStyles.card, pressed && styles.pressed]} onPress={onPress}>
+        <View style={cardStyles.media}>
+          {image ? (
+            <Image
+              source={image}
+              style={cardStyles.image}
+              contentFit="cover"
+              transition={180}
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <View style={[cardStyles.fallback, { backgroundColor: catColor + '1F' }]}>
+              <Text style={[cardStyles.fallbackText, { color: catColor }]}>{spot.name.charAt(0)}</Text>
+            </View>
+          )}
+          <View style={[cardStyles.catMark, { backgroundColor: catColor }]}>
+            <Text style={cardStyles.catMarkText}>{spot.category || '景点'}</Text>
           </View>
         </View>
-        <View style={cardStyles.compactContent}>
-          <View style={cardStyles.compactHeader}>
-            <Text style={cardStyles.compactName} numberOfLines={1}>{spot.name}</Text>
-            <View style={[cardStyles.compactCatDot, { backgroundColor: catColor }]} />
+
+        <View style={cardStyles.body}>
+          <View style={cardStyles.titleRow}>
+            <Text style={cardStyles.name} numberOfLines={1}>{spot.name}</Text>
+            <Text style={cardStyles.arrow}>→</Text>
           </View>
-          <Text style={cardStyles.compactOverview} numberOfLines={2}>{spot.overview}</Text>
+          <Text style={cardStyles.guideLabel}>小灵推荐理由</Text>
+          <Text style={cardStyles.reason} numberOfLines={2}>{meta.reason}</Text>
+          <View style={cardStyles.metaRow}>
+            <View style={cardStyles.metaItem}>
+              <Text style={cardStyles.metaLabel}>停留</Text>
+              <Text style={cardStyles.metaValue}>{meta.duration}</Text>
+            </View>
+            <View style={cardStyles.metaItem}>
+              <Text style={cardStyles.metaLabel}>时段</Text>
+              <Text style={cardStyles.metaValue}>{meta.bestTime}</Text>
+            </View>
+          </View>
           {spot.tags && spot.tags.length > 0 && (
-            <View style={cardStyles.compactTags}>
+            <View style={cardStyles.tags}>
               {spot.tags.slice(0, 3).map((tag) => (
-                <View key={tag} style={cardStyles.compactTag}>
-                  <Text style={cardStyles.compactTagText}>{tag}</Text>
+                <View key={tag} style={cardStyles.tag}>
+                  <Text style={cardStyles.tagText}>{tag}</Text>
                 </View>
               ))}
             </View>
@@ -180,18 +497,59 @@ function SpotCard({ spot, index, onPress }: {
       </Pressable>
     </Animated.View>
   );
+});
+
+function RouteSection({
+  routes,
+  onPress,
+}: {
+  routes: TourRoute[];
+  onPress: (route: TourRoute) => void;
+}) {
+  if (routes.length === 0) return null;
+
+  return (
+    <View style={styles.routesSection}>
+      <View style={styles.sectionHead}>
+        <Text style={styles.sectionKicker}>GUIDED ROUTES</Text>
+        <Text style={styles.sectionTitle}>顺路走，不绕路</Text>
+      </View>
+      <View style={styles.routesList}>
+        {routes.map((route, idx) => (
+          <Animated.View key={route.id} entering={FadeInUp.delay(idx * 50).duration(320)}>
+            <Pressable style={({ pressed }) => [styles.routeCard, pressed && styles.pressed]} onPress={() => onPress(route)}>
+              <View style={styles.routeTop}>
+                <Text style={styles.routeBadge}>
+                  {route.route_type === 'history' ? '历史' : route.route_type === 'nature' ? '自然' : '亲子'}
+                </Text>
+                <Text style={styles.routeDuration}>{route.duration}</Text>
+              </View>
+              <Text style={styles.routeName}>{route.name}</Text>
+              <Text style={styles.routeDesc} numberOfLines={2}>{route.description}</Text>
+            </Pressable>
+          </Animated.View>
+        ))}
+      </View>
+    </View>
+  );
 }
 
-// ═══════════════════════════════════════
-//  Main Page
-// ═══════════════════════════════════════
 export default function AttractionListPage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const vrmRef = useRef<VRMFloatingRef>(null);
   const scrollY = useSharedValue(0);
+  const {
+    expression,
+    mouthOpen,
+    isSpeaking,
+    subtitle,
+    action,
+    actionDurationMs,
+    headRotation,
+    speak,
+    playAction,
+  } = useDigitalHumanDriver('tts');
 
-  const [spots, setSpots] = useState<Spot[]>([]);
   const [allSpots, setAllSpots] = useState<Spot[]>([]);
   const [routes, setRoutes] = useState<TourRoute[]>([]);
   const [loading, setLoading] = useState(true);
@@ -200,223 +558,320 @@ export default function AttractionListPage() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [page, setPage] = useState(1);
 
-  // Load all spots and routes
-  useEffect(() => {
-    Promise.all([
-      listSpots().catch(() => []),
-      listRoutes().catch(() => []),
-    ]).then(([spotsRes, routesRes]) => {
-      const spotsData = (spotsRes as any).data ?? spotsRes;
-      const spotsArr = Array.isArray(spotsData) ? spotsData : [];
-      setAllSpots(spotsArr);
-      setSpots(spotsArr);
+  const preloadedDetailIds = useRef(new Set<string>());
+  const routesRequestedRef = useRef(false);
+  const welcomedRef = useRef(false);
+  const lastSearchAnnouncementRef = useRef('');
 
-      const routesData = (routesRes as any).data ?? routesRes;
-      setRoutes(Array.isArray(routesData) ? routesData : []);
-    }).finally(() => setLoading(false));
+  const loadRoutesDeferred = useCallback(() => {
+    if (routesRequestedRef.current) return;
+    routesRequestedRef.current = true;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const task = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(() => {
+        const fallbackRoutes = getDemoRoutes() as unknown as TourRoute[];
+        setRoutes(fallbackRoutes);
+      }, 450);
+    });
+
+    return () => {
+      task.cancel();
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
-  // Filter locally
   useEffect(() => {
+    setDigitalHumanPageContext('attractions');
+
+    let cancelled = false;
+    let cleanupRoutes: (() => void) | undefined;
+
+    const commitSpots = (spots: Spot[]) => {
+      if (cancelled) return;
+      memoryCache.set(CACHE_KEYS.SPOTS_LIST, spots);
+      setAllSpots(spots);
+      setLoading(false);
+      cleanupRoutes = loadRoutesDeferred();
+    };
+
+    const refreshSpotsDeferred = () => {
+      const task = InteractionManager.runAfterInteractions(() => {
+        localDb.getAllSpots()
+          .then((dbSpots) => {
+            if (cancelled || dbSpots.length === 0) return;
+            const spots = dbSpots.map(normalizeLocalSpot);
+            memoryCache.set(CACHE_KEYS.SPOTS_LIST, spots);
+            setAllSpots(spots);
+          })
+          .catch(() => {});
+
+      });
+      return () => task.cancel();
+    };
+
+    const loadData = async () => {
+      const cachedSpots = memoryCache.get<Spot[]>(CACHE_KEYS.SPOTS_LIST);
+      if (cachedSpots && cachedSpots.length > 0) {
+        commitSpots(cachedSpots);
+        return;
+      }
+
+      const demoSpots = getDemoSpots() as unknown as Spot[];
+      commitSpots(demoSpots);
+      const cleanupRefresh = refreshSpotsDeferred();
+      const cleanupDeferredRoutes = cleanupRoutes;
+      cleanupRoutes = () => {
+        cleanupDeferredRoutes?.();
+        cleanupRefresh();
+      };
+    };
+
+    loadData();
+
+    return () => {
+      cancelled = true;
+      cleanupRoutes?.();
+    };
+  }, [loadRoutesDeferred]);
+
+  const filteredSpots = useMemo(() => {
     let result = allSpots;
     if (activeCategory) {
-      result = result.filter((s) => s.category === activeCategory);
+      result = result.filter((spot) => spot.category === activeCategory);
     }
-    if (searchText) {
-      const q = searchText.toLowerCase();
+    if (searchText.trim()) {
+      const q = searchText.trim().toLowerCase();
       result = result.filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) ||
-          s.overview.toLowerCase().includes(q) ||
-          (s.tags ?? []).some((t) => t.toLowerCase().includes(q)),
+        (spot) =>
+          spot.name.toLowerCase().includes(q) ||
+          spot.overview.toLowerCase().includes(q) ||
+          (spot.tags ?? []).some((tag) => tag.toLowerCase().includes(q)),
       );
     }
-    setSpots(result);
-    setPage(1);
-  }, [activeCategory, searchText, allSpots]);
+    return result;
+  }, [activeCategory, allSpots, searchText]);
 
-  const vrmSpeak = useCallback((text: string, emotion?: string) => {
-    vrmRef.current?.speak(text, emotion);
-  }, []);
+  const sortedSpots = useMemo(() => sortByVisualPriority(filteredSpots), [filteredSpots]);
+  const featuredSpots = useMemo(() => sortByVisualPriority(allSpots).slice(0, FEATURED_LIMIT), [allSpots]);
+  const heroSpot = featuredSpots[0] ?? sortedSpots[0] ?? null;
+  const totalPages = Math.max(1, Math.ceil(sortedSpots.length / PAGE_SIZE));
+  const visibleSpots = sortedSpots.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   useEffect(() => {
-    VRMManager.setPageContext('attractions');
+    setPage(1);
+  }, [activeCategory, searchText]);
+
+  useEffect(() => {
+    if (welcomedRef.current || loading) return;
+    welcomedRef.current = true;
+
     const t = setTimeout(() => {
-      vrmSpeak('为您推荐灵山大佛，来灵山不可错过', 'neutral');
-    }, 1200);
+      const spotName = heroSpot?.name || '灵山大佛';
+      const meta = getSpotMeta(heroSpot);
+      playAction('wave', 1200);
+      speak(`欢迎来到小灵导览台。今天先推荐${spotName}，${meta.reason}`, { emotion: 'happy' });
+    }, 700);
+
     return () => clearTimeout(t);
-  }, []);
+  }, [heroSpot, loading, playAction, speak]);
+
+  useEffect(() => {
+    if (searchText.trim().length < 2 || loading) return;
+    const query = searchText.trim();
+    const signature = `${query}:${sortedSpots.length}`;
+    if (signature === lastSearchAnnouncementRef.current) return;
+
+    const t = setTimeout(() => {
+      lastSearchAnnouncementRef.current = signature;
+      if (sortedSpots.length > 0) {
+        speak(`找到${sortedSpots.length}处相关景点，我把更适合先看的放在前面。`, { emotion: 'happy' });
+      } else {
+        speak('没有找到匹配景点，换一个关键词试试。', { emotion: 'sad' });
+      }
+    }, 550);
+
+    return () => clearTimeout(t);
+  }, [loading, searchText, sortedSpots.length, speak]);
+
+  useEffect(() => {
+    if (visibleSpots.length === 0) return;
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const task = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(() => {
+        visibleSpots.forEach((spot) => {
+          if (preloadedDetailIds.current.has(spot.id)) return;
+          preloadedDetailIds.current.add(spot.id);
+          const demoDetail = getDemoSpotById(spot.id) as unknown as SpotDetail | null;
+          if (demoDetail) {
+            spotCacheService.set(spot.id, demoDetail);
+          }
+        });
+      }, 500);
+    });
+
+    return () => {
+      task.cancel();
+      if (timer) clearTimeout(timer);
+    };
+  }, [visibleSpots]);
+
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/explore');
+  }, [router]);
+
+  const handleHearRecommendation = useCallback(() => {
+    const spot = heroSpot;
+    const meta = getSpotMeta(spot);
+    playAction('point', 1100);
+    speak(
+      spot
+        ? `${spot.name}适合作为第一站。${meta.reason}建议停留${meta.duration}，最佳时段是${meta.bestTime}。`
+        : '我会先帮你挑出最值得停留的一站。',
+      { emotion: 'happy' },
+    );
+  }, [heroSpot, playAction, speak]);
+
+  const handleOpenExplore = useCallback(() => {
+    speak('打开拍照识景后，把镜头对准景点，我会帮你识别并讲解。', { emotion: 'neutral' });
+    router.push('/explore');
+  }, [router, speak]);
+
+  const handleStartRoute = useCallback(() => {
+    if (routes[0]) {
+      speak(`我们从${routes[0].name}出发，全程约${routes[0].duration}。`, { emotion: 'happy' });
+      router.push(`/routes/${routes[0].id}`);
+      return;
+    }
+    speak('我先带你去路线页挑一条合适的游览方案。', { emotion: 'neutral' });
+    router.push('/routes');
+  }, [router, routes, speak]);
 
   const handleCategoryChange = useCallback((key: string) => {
     setActiveCategory(key);
-    const label = CATEGORIES.find((c) => c.key === key)?.label ?? '全部';
-    vrmSpeak(`正在查看${label}`, 'neutral');
-  }, [vrmSpeak]);
+    const label = CATEGORIES.find((cat) => cat.key === key)?.label ?? '全部';
+    speak(`正在查看${label}景点。`, { emotion: 'neutral' });
+  }, [speak]);
+
+  const handleClearFilters = useCallback(() => {
+    setSearchText('');
+    setActiveCategory('');
+    speak('筛选已清除，我们重新看全部景点。', { emotion: 'neutral' });
+  }, [speak]);
 
   const handleSpotPress = useCallback((spot: Spot) => {
-    vrmSpeak(`${spot.name}，${spot.overview}`, 'neutral');
-    setTimeout(() => router.push(`/attractions/${spot.id}`), 1000);
-  }, [vrmSpeak, router]);
+    const meta = getSpotMeta(spot);
+    playAction('point', 1200);
+    speak(`${spot.name}，${meta.reason}`, { emotion: 'happy' });
+    router.push(`/attractions/${spot.id}`);
+  }, [playAction, router, speak]);
 
-  // Sort: spots with images first
-  const sortedSpots = [...spots].sort((a, b) => {
-    const aHas = !!SPOT_IMAGES[a.id];
-    const bHas = !!SPOT_IMAGES[b.id];
-    if (aHas && !bHas) return -1;
-    if (!aHas && bHas) return 1;
-    return 0;
+  const handleRoutePress = useCallback((route: TourRoute) => {
+    speak(`${route.name}，全程约${route.duration}。`, { emotion: 'happy' });
+    router.push(`/routes/${route.id}`);
+  }, [router, speak]);
+
+  const handleScroll = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
   });
-  const totalPages = Math.ceil(sortedSpots.length / PAGE_SIZE);
 
   return (
     <View style={styles.root}>
-      <ScrollView
+      <Animated.ScrollView
         showsVerticalScrollIndicator={false}
-        onScroll={(e) => { scrollY.value = e.nativeEvent.contentOffset.y; }}
+        onScroll={handleScroll}
         scrollEventThrottle={16}
       >
-        {/* Hero */}
-        <HeroHeader
+        <DigitalHumanHero
           scrollY={scrollY}
           insets={insets}
           spotCount={allSpots.length}
           routeCount={routes.length}
+          featuredSpot={heroSpot}
+          expression={expression}
+          mouthOpen={mouthOpen}
+          isSpeaking={isSpeaking}
+          subtitle={subtitle}
+          action={action}
+          actionDurationMs={actionDurationMs}
+          headRotation={headRotation}
+          onBack={handleBack}
+          onHearRecommendation={handleHearRecommendation}
+          onOpenExplore={handleOpenExplore}
+          onStartRoute={handleStartRoute}
         />
 
-        {/* Search & Filter area */}
-        <View style={styles.controlArea}>
-          {/* Search bar */}
-          <View style={[
-            styles.searchBar,
-            searchFocused && styles.searchBarFocused,
-          ]}>
-            <View style={styles.searchIconWrap}>
-              <Text style={styles.searchIconGlyph}>⌕</Text>
-            </View>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="搜索景点名称、标签..."
-              placeholderTextColor={Colors.gray400}
-              value={searchText}
-              onChangeText={setSearchText}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              returnKeyType="search"
-            />
-            {searchText.length > 0 && (
-              <Pressable
-                onPress={() => setSearchText('')}
-                hitSlop={8}
-                style={styles.clearBtn}
-              >
-                <Text style={styles.clearBtnText}>✕</Text>
-              </Pressable>
-            )}
-          </View>
+        <SearchAndFilter
+          activeCategory={activeCategory}
+          searchText={searchText}
+          searchFocused={searchFocused}
+          resultCount={sortedSpots.length}
+          onSearchChange={setSearchText}
+          onFocusChange={setSearchFocused}
+          onCategoryChange={handleCategoryChange}
+          onClear={handleClearFilters}
+        />
 
-          {/* Category chips */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryRow}
-          >
-            {CATEGORIES.map((cat) => {
-              const active = cat.key === activeCategory;
-              const color = cat.key ? (CAT_COLORS[cat.key] || Colors.gray500) : Colors.ink;
-              return (
-                <Pressable
-                  key={cat.key}
-                  style={({ pressed }) => [
-                    styles.catChip,
-                    active && { backgroundColor: color, borderColor: color },
-                    pressed && { opacity: 0.85, transform: [{ scale: 0.95 }] },
-                  ]}
-                  onPress={() => handleCategoryChange(cat.key)}
-                >
-                  <Text style={[
-                    styles.catChipText,
-                    active && styles.catChipTextActive,
-                  ]}>
-                    {cat.label}
-                  </Text>
-                  {active && (
-                    <Text style={styles.catChipCount}>
-                      {spots.length}
-                    </Text>
-                  )}
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {/* Results */}
         {loading ? (
-          <View style={styles.loading}>
-            <ActivityIndicator size="large" color={Colors.primary} />
-            <Text style={styles.loadingText}>墨韵渐染...</Text>
-          </View>
+          <AttractionListSkeleton />
         ) : sortedSpots.length === 0 ? (
           <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>⌕</Text>
-            <Text style={styles.emptyTitle}>未找到匹配的景点</Text>
-            <Text style={styles.emptySub}>试试其他关键词或切换分类</Text>
-            <Pressable
-              style={styles.emptyBtn}
-              onPress={() => { setSearchText(''); setActiveCategory(''); }}
-            >
-              <Text style={styles.emptyBtnText}>清除筛选</Text>
+            <Text style={styles.emptyMark}>⌕</Text>
+            <Text style={styles.emptyTitle}>没有匹配的景点</Text>
+            <Text style={styles.emptySub}>换个关键词，或者让小灵重新显示全部。</Text>
+            <Pressable style={({ pressed }) => [styles.emptyBtn, pressed && styles.pressed]} onPress={handleClearFilters}>
+              <Text style={styles.emptyBtnText}>显示全部</Text>
             </Pressable>
           </View>
         ) : (
-          <View style={styles.listContent}>
-            {/* Result count */}
-            <View style={styles.resultCount}>
-              <Text style={styles.resultCountText}>
-                共 {sortedSpots.length} 个景点
-              </Text>
+          <View style={styles.content}>
+            <FeaturedRail spots={featuredSpots} onPress={handleSpotPress} />
+
+            <View style={styles.sectionHead}>
+              <Text style={styles.sectionKicker}>ALL ATTRACTIONS</Text>
+              <Text style={styles.sectionTitle}>完整景点流</Text>
             </View>
 
-            {/* Spot cards */}
             <View style={styles.cardList}>
-              {sortedSpots.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((spot, idx) => (
-                <SpotCard
+              {visibleSpots.map((spot, index) => (
+                <SpotStoryCard
                   key={spot.id}
                   spot={spot}
-                  index={idx}
+                  index={index}
                   onPress={() => handleSpotPress(spot)}
                 />
               ))}
             </View>
 
-            {/* Pagination */}
             {totalPages > 1 && (
               <View style={styles.pagination}>
                 <Pressable
                   style={({ pressed }) => [
                     styles.pageBtn,
                     page === 1 && styles.pageBtnDisabled,
-                    pressed && page > 1 && { opacity: 0.7 },
+                    pressed && page > 1 && styles.pressed,
                   ]}
                   onPress={() => page > 1 && setPage((p) => p - 1)}
                   disabled={page === 1}
                 >
                   <Text style={[styles.pageBtnText, page === 1 && styles.pageBtnTextDisabled]}>上一页</Text>
                 </Pressable>
-
                 <View style={styles.pageDots}>
                   {Array.from({ length: totalPages }, (_, i) => (
-                    <Pressable key={i} onPress={() => setPage(i + 1)}>
+                    <Pressable key={i} onPress={() => setPage(i + 1)} hitSlop={6}>
                       <View style={[styles.pageDot, page === i + 1 && styles.pageDotActive]} />
                     </Pressable>
                   ))}
                 </View>
-
                 <Pressable
                   style={({ pressed }) => [
                     styles.pageBtn,
                     page === totalPages && styles.pageBtnDisabled,
-                    pressed && page < totalPages && { opacity: 0.7 },
+                    pressed && page < totalPages && styles.pressed,
                   ]}
                   onPress={() => page < totalPages && setPage((p) => p + 1)}
                   disabled={page === totalPages}
@@ -426,220 +881,271 @@ export default function AttractionListPage() {
               </View>
             )}
 
-            {/* Routes section */}
-            {routes.length > 0 && (
-              <View style={styles.routesSection}>
-                <View style={styles.routesHeader}>
-                  <Text style={styles.routesTitle}>推荐路线</Text>
-                  <Text style={styles.routesSubtitle}>精选游览路线，深度体验灵山文化</Text>
-                </View>
-                <View style={styles.routesList}>
-                  {routes.map((route, idx) => (
-                    <Animated.View
-                      key={route.id}
-                      entering={FadeInUp.delay((sortedSpots.length + idx) * 70).duration(400)}
-                    >
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.routeCard,
-                          pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] },
-                        ]}
-                        onPress={() => router.push(`/routes/${route.id}`)}
-                      >
-                        <View style={styles.routeTypeBadge}>
-                          <Text style={styles.routeTypeText}>
-                            {route.route_type === 'history' ? '历史' :
-                             route.route_type === 'nature' ? '自然' : '亲子'}
-                          </Text>
-                        </View>
-                        <Text style={styles.routeName}>{route.name}</Text>
-                        <Text style={styles.routeDesc} numberOfLines={2}>{route.description}</Text>
-                        <View style={styles.routeFooter}>
-                          <View style={styles.routeDuration}>
-                            <Text style={styles.routeDurationIcon}>⏱</Text>
-                            <Text style={styles.routeDurationText}>{route.duration}</Text>
-                          </View>
-                          <Text style={styles.routeArrow}>→</Text>
-                        </View>
-                      </Pressable>
-                    </Animated.View>
-                  ))}
-                </View>
-              </View>
-            )}
+            <RouteSection routes={routes} onPress={handleRoutePress} />
           </View>
         )}
 
-        <View style={{ height: 100 }} />
-      </ScrollView>
-
-      <VRMFloating ref={vrmRef} position="bottom-right" />
+        <View style={{ height: insets.bottom + 88 }} />
+      </Animated.ScrollView>
     </View>
   );
 }
 
-// ═══════════════════════════════════════
-//  Styles
-// ═══════════════════════════════════════
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: Colors.paper },
-
+  root: {
+    flex: 1,
+    backgroundColor: ConsoleColors.paper,
+  },
+  pressed: {
+    opacity: 0.86,
+    transform: [{ scale: 0.98 }],
+  },
   controlArea: {
     paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingTop: 16,
   },
-
-  // Search
   searchBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 14, paddingVertical: 10,
-    backgroundColor: '#fff', borderRadius: Radius.md,
-    borderWidth: 1.5, borderColor: 'transparent',
-    shadowColor: Colors.ink, shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 4, elevation: 2,
-  },
-  searchBarFocused: {
-    borderColor: Colors.primary + '60',
-    shadowOpacity: 0.08, shadowRadius: 8,
-  },
-  searchIconWrap: { width: 20, alignItems: 'center' },
-  searchIconGlyph: { fontSize: 16, color: Colors.gray400 },
-  searchInput: { flex: 1, fontSize: 14, color: Colors.ink, padding: 0 },
-  clearBtn: { width: 24, height: 24, justifyContent: 'center', alignItems: 'center', borderRadius: 12, backgroundColor: Colors.gray200 },
-  clearBtnText: { fontSize: 10, color: Colors.gray500 },
-
-  // Categories
-  categoryRow: { gap: 8, paddingTop: 12, paddingBottom: 8 },
-  catChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 14, paddingVertical: 7,
-    borderRadius: Radius.pill,
-    borderWidth: 1, borderColor: Colors.borderLight,
-    backgroundColor: '#fff',
-  },
-  catChipText: { fontSize: 12, color: Colors.gray500, fontWeight: '500' },
-  catChipTextActive: { color: '#fff', fontWeight: '600' },
-  catChipCount: { fontSize: 10, color: '#fff', fontWeight: '600', opacity: 0.8 },
-
-  // Results
-  listContent: { paddingHorizontal: 16, paddingTop: 8 },
-  resultCount: { marginBottom: 12 },
-  resultCountText: { fontSize: 12, color: Colors.gray400, letterSpacing: 1 },
-  cardList: { gap: 12, paddingBottom: 20 },
-
-  // Loading / Empty
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 80 },
-  loadingText: { fontSize: 14, color: Colors.gray400, letterSpacing: 4, marginTop: 16 },
-  empty: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 60 },
-  emptyIcon: { fontSize: 40, color: Colors.gray300, marginBottom: 12 },
-  emptyTitle: { fontSize: 15, fontWeight: '600', color: Colors.gray500, marginBottom: 6 },
-  emptySub: { fontSize: 13, color: Colors.gray400, marginBottom: 16 },
-  emptyBtn: {
-    paddingHorizontal: 20, paddingVertical: 10,
-    borderRadius: Radius.pill,
-    backgroundColor: Colors.primaryBg,
-  },
-  emptyBtnText: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
-
-  // Routes section
-  routesSection: {
-    marginTop: 24,
-    marginBottom: 20,
-  },
-  routesHeader: {
-    marginBottom: 14,
-  },
-  routesTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: Colors.ink,
-    letterSpacing: 2,
-    marginBottom: 4,
-  },
-  routesSubtitle: {
-    fontSize: 12,
-    color: Colors.gray400,
-  },
-  routesList: {
-    gap: 12,
-  },
-  routeCard: {
-    backgroundColor: '#fff',
-    borderRadius: Radius.lg,
-    padding: 16,
-    shadowColor: Colors.ink,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#FFFDF8',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(42,37,32,0.08)',
+    shadowColor: ConsoleColors.obsidian,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
     elevation: 3,
   },
-  routeTypeBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    backgroundColor: Colors.primaryBg,
-    borderRadius: 4,
-    marginBottom: 10,
+  searchBarFocused: {
+    borderColor: ConsoleColors.gold,
+    shadowOpacity: 0.12,
   },
-  routeTypeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: Colors.primary,
-    letterSpacing: 1,
-  },
-  routeName: {
-    fontSize: 16,
+  searchGlyph: {
+    fontSize: 19,
+    color: ConsoleColors.cinnabar,
     fontWeight: '700',
+  },
+  searchInput: {
+    flex: 1,
+    padding: 0,
     color: Colors.ink,
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  routeDesc: {
-    fontSize: 13,
-    color: Colors.gray500,
+    fontSize: 14,
     lineHeight: 20,
-    marginBottom: 12,
   },
-  routeFooter: {
+  clearBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.gray100,
+  },
+  clearText: {
+    color: Colors.gray500,
+    fontSize: 18,
+    lineHeight: 20,
+  },
+  filterHeader: {
+    marginTop: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  routeDuration: {
-    flexDirection: 'row',
+  filterTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: ConsoleColors.obsidian,
+  },
+  filterCount: {
+    fontSize: 12,
+    color: Colors.gray500,
+  },
+  categoryRow: {
+    gap: 8,
+    paddingTop: 12,
+    paddingBottom: 6,
+  },
+  catChip: {
+    minHeight: 38,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(42,37,32,0.1)',
+    backgroundColor: '#FFFDF8',
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
   },
-  routeDurationIcon: {
+  catText: {
     fontSize: 12,
+    color: Colors.gray600,
+    fontWeight: '700',
   },
-  routeDurationText: {
+  catTextActive: {
+    color: '#fff',
+  },
+  content: {
+    paddingTop: 8,
+  },
+  featuredSection: {
+    paddingTop: 12,
+  },
+  sectionHead: {
+    paddingHorizontal: 16,
+    marginTop: 18,
+    marginBottom: 12,
+  },
+  sectionKicker: {
+    fontSize: 9,
+    letterSpacing: 2,
+    color: ConsoleColors.cinnabar,
+    fontWeight: '800',
+  },
+  sectionTitle: {
+    marginTop: 4,
+    fontSize: 20,
+    fontWeight: '900',
+    color: ConsoleColors.obsidian,
+  },
+  featuredRow: {
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  featuredCard: {
+    width: 210,
+    backgroundColor: '#FFFDF8',
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(42,37,32,0.08)',
+    shadowColor: ConsoleColors.obsidian,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 4,
+  },
+  featuredImageWrap: {
+    height: 126,
+    backgroundColor: '#E9E2D4',
+    position: 'relative',
+  },
+  featuredImage: {
+    width: '100%',
+    height: '100%',
+  },
+  featuredFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: ConsoleColors.cinnabarSoft,
+  },
+  featuredFallbackText: {
+    fontSize: 44,
+    fontWeight: '900',
+    color: ConsoleColors.cinnabar,
+  },
+  featuredBadge: {
+    position: 'absolute',
+    left: 10,
+    top: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(23,20,17,0.78)',
+  },
+  featuredBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  featuredInfo: {
+    padding: 12,
+  },
+  featuredName: {
+    color: ConsoleColors.obsidian,
+    fontSize: 17,
+    fontWeight: '900',
+    marginBottom: 6,
+  },
+  featuredReason: {
+    color: Colors.gray600,
     fontSize: 12,
-    color: Colors.gray400,
+    lineHeight: 18,
+    minHeight: 36,
   },
-  routeArrow: {
-    fontSize: 16,
-    color: Colors.primary,
-    fontWeight: '600',
+  featuredTime: {
+    marginTop: 8,
+    color: ConsoleColors.pineDeep,
+    fontSize: 12,
+    fontWeight: '800',
   },
-
-  // Pagination
+  cardList: {
+    gap: 12,
+    paddingHorizontal: 16,
+  },
+  empty: {
+    margin: 16,
+    minHeight: 260,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFDF8',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(42,37,32,0.08)',
+    paddingHorizontal: 24,
+  },
+  emptyMark: {
+    fontSize: 46,
+    color: ConsoleColors.cinnabar,
+    marginBottom: 10,
+  },
+  emptyTitle: {
+    color: ConsoleColors.obsidian,
+    fontSize: 17,
+    fontWeight: '900',
+    marginBottom: 6,
+  },
+  emptySub: {
+    color: Colors.gray500,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 18,
+  },
+  emptyBtn: {
+    minHeight: 44,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: ConsoleColors.obsidian,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
   pagination: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 16,
-    marginTop: 16,
-    marginBottom: 8,
+    gap: 14,
+    paddingTop: 18,
+    paddingBottom: 8,
   },
   pageBtn: {
+    minHeight: 42,
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: Colors.primaryBg,
-    borderRadius: Radius.md,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: Colors.primary + '30',
+    borderColor: 'rgba(106,156,137,0.26)',
+    backgroundColor: '#FFFDF8',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pageBtnDisabled: {
     backgroundColor: Colors.gray100,
@@ -647,193 +1153,492 @@ const styles = StyleSheet.create({
   },
   pageBtnText: {
     fontSize: 13,
-    color: Colors.primary,
-    fontWeight: '600',
+    color: ConsoleColors.pineDeep,
+    fontWeight: '800',
   },
   pageBtnTextDisabled: {
     color: Colors.gray400,
   },
   pageDots: {
     flexDirection: 'row',
-    gap: 6,
     alignItems: 'center',
+    gap: 6,
   },
   pageDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
     backgroundColor: Colors.gray200,
   },
   pageDotActive: {
-    width: 20,
-    backgroundColor: Colors.primary,
+    width: 22,
+    backgroundColor: ConsoleColors.cinnabar,
+  },
+  routesSection: {
+    marginTop: 10,
+    paddingBottom: 18,
+  },
+  routesList: {
+    gap: 10,
+    paddingHorizontal: 16,
+  },
+  routeCard: {
+    padding: 14,
+    borderRadius: 8,
+    backgroundColor: ConsoleColors.obsidian,
+    borderWidth: 1,
+    borderColor: ConsoleColors.line,
+  },
+  routeTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 9,
+  },
+  routeBadge: {
+    overflow: 'hidden',
+    borderRadius: 5,
+    backgroundColor: ConsoleColors.cinnabar,
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '900',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  routeDuration: {
+    color: ConsoleColors.gold,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  routeName: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '900',
+    marginBottom: 6,
+  },
+  routeDesc: {
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 12,
+    lineHeight: 19,
   },
 });
 
-// Hero styles
 const heroStyles = StyleSheet.create({
-  wrap: { height: 300, position: 'relative', overflow: 'hidden' },
-  bgWrap: { ...StyleSheet.absoluteFillObject },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(20,30,25,0.35)',
+  wrap: {
+    minHeight: 560,
+    paddingHorizontal: 16,
+    paddingBottom: 18,
+    backgroundColor: ConsoleColors.obsidian,
+    overflow: 'hidden',
   },
-  overlayVignette: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.15)',
+  skylineA: {
+    position: 'absolute',
+    left: -30,
+    right: 80,
+    bottom: 120,
+    height: 160,
+    borderTopWidth: 1,
+    borderRightWidth: 1,
+    borderColor: 'rgba(200,169,81,0.16)',
+    transform: [{ skewY: '-12deg' }],
+  },
+  skylineB: {
+    position: 'absolute',
+    right: -60,
+    top: 96,
+    width: 180,
+    height: 280,
+    borderLeftWidth: 1,
+    borderColor: 'rgba(106,156,137,0.2)',
+    transform: [{ rotate: '18deg' }],
+  },
+  gridLineOne: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 116,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  gridLineTwo: {
+    position: 'absolute',
+    left: 28,
+    right: 28,
+    top: 206,
+    height: 1,
+    backgroundColor: 'rgba(200,169,81,0.12)',
+  },
+  gridLineThree: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 110,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   backBtn: {
-    position: 'absolute', left: 14, zIndex: 10,
-    minWidth: 44, minHeight: 44, justifyContent: 'center',
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    zIndex: 5,
   },
-  backText: { fontSize: 14, color: '#fff', fontWeight: '500' },
+  backGlyph: {
+    fontSize: 28,
+    lineHeight: 30,
+    color: ConsoleColors.gold,
+  },
+  backText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
   content: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center', alignItems: 'center',
-    paddingHorizontal: 28, zIndex: 2,
+    marginTop: 4,
+    minHeight: 270,
+    flexDirection: 'row',
   },
-  sealWrap: { marginBottom: 14 },
-  seal: {
-    width: 44, height: 44,
-    borderWidth: 2, borderColor: 'rgba(200,75,49,0.85)',
-    borderRadius: 6, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: 'rgba(200,75,49,0.08)',
+  copyCol: {
+    flex: 1.05,
+    paddingTop: 24,
+    paddingRight: 8,
   },
-  sealTxt: { fontSize: 20, color: 'rgba(200,75,49,0.95)', fontWeight: '800' },
+  kicker: {
+    color: ConsoleColors.gold,
+    fontSize: 9,
+    letterSpacing: 2,
+    fontWeight: '900',
+  },
   title: {
-    fontSize: 28, fontWeight: '900', color: '#fff',
-    letterSpacing: 10, marginBottom: 6,
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 12,
+    marginTop: 10,
+    color: '#fff',
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
-  subEn: {
-    fontSize: 9, letterSpacing: 5, color: 'rgba(255,255,255,0.55)',
-    textTransform: 'uppercase', marginBottom: 12,
+  subtitle: {
+    marginTop: 10,
+    maxWidth: 190,
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 13,
+    lineHeight: 21,
   },
-  divider: {
-    width: 80, height: 1.5, marginBottom: 12,
-    backgroundColor: 'rgba(200,75,49,0.5)',
+  statRow: {
+    marginTop: 18,
+    flexDirection: 'row',
+    gap: 8,
   },
-  poem: {
-    fontSize: 13, letterSpacing: 4, color: 'rgba(255,255,255,0.9)',
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 8,
+  statBlock: {
+    minWidth: 54,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    alignItems: 'center',
   },
-  statsRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 16,
-    marginTop: 20,
-    paddingHorizontal: 24, paddingVertical: 10,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: Radius.md,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  statNum: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
   },
-  statItem: { alignItems: 'center' },
-  statNum: { fontSize: 18, fontWeight: '800', color: '#fff' },
-  statLabel: { fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  statDivider: { width: 1, height: 24, backgroundColor: 'rgba(255,255,255,0.2)' },
-  curveWrap: {
-    position: 'absolute', bottom: -1, left: 0, right: 0, height: 24, zIndex: 3,
+  statLabel: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.56)',
+    fontSize: 10,
   },
-  curve: {
-    width: '100%', height: 24,
-    backgroundColor: Colors.paper,
-    borderTopLeftRadius: 60,
-    borderTopRightRadius: 60,
+  stageCol: {
+    width: 150,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  avatarStage: {
+    width: 146,
+    height: 250,
+    overflow: 'hidden',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(200,169,81,0.35)',
+    backgroundColor: ConsoleColors.obsidian2,
+  },
+  stageStripeTall: {
+    position: 'absolute',
+    left: 18,
+    top: -20,
+    width: 26,
+    height: 310,
+    backgroundColor: 'rgba(200,169,81,0.08)',
+    transform: [{ rotate: '12deg' }],
+  },
+  stageStripeShort: {
+    position: 'absolute',
+    right: 18,
+    top: 40,
+    width: 18,
+    height: 190,
+    backgroundColor: 'rgba(106,156,137,0.12)',
+    transform: [{ rotate: '12deg' }],
+  },
+  namePlate: {
+    marginTop: -18,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 7,
+    backgroundColor: ConsoleColors.cinnabar,
+  },
+  namePlateText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  speechPanel: {
+    marginTop: 10,
+    padding: 13,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(200,169,81,0.28)',
+    backgroundColor: 'rgba(255,248,234,0.08)',
+  },
+  speechHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  speechLabel: {
+    color: ConsoleColors.gold,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  signalBars: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 3,
+    height: 16,
+  },
+  signalBar: {
+    width: 4,
+    height: 6,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.24)',
+  },
+  signalBarMid: {
+    height: 10,
+  },
+  signalBarTall: {
+    height: 14,
+  },
+  signalBarLive: {
+    backgroundColor: ConsoleColors.cinnabar,
+  },
+  speechText: {
+    color: '#fff',
+    fontSize: 14,
+    lineHeight: 22,
+    fontWeight: '600',
+  },
+  recommendCard: {
+    marginTop: 12,
+    minHeight: 112,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    borderRadius: 8,
+    backgroundColor: ConsoleColors.paperWarm,
+  },
+  recommendRule: {
+    width: 5,
+    backgroundColor: ConsoleColors.gold,
+  },
+  recommendContent: {
+    flex: 1,
+    padding: 13,
+  },
+  recommendKicker: {
+    color: ConsoleColors.cinnabar,
+    fontSize: 10,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  recommendTitle: {
+    color: ConsoleColors.obsidian,
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 6,
+  },
+  recommendBody: {
+    color: Colors.gray600,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  metaRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  metaPill: {
+    overflow: 'hidden',
+    borderRadius: 5,
+    backgroundColor: ConsoleColors.cinnabarSoft,
+    color: ConsoleColors.cinnabar,
+    fontSize: 11,
+    fontWeight: '800',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  actionRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  primaryAction: {
+    flex: 1.16,
+    minHeight: 46,
+    borderRadius: 8,
+    backgroundColor: ConsoleColors.cinnabar,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryActionText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  secondaryAction: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(200,169,81,0.34)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryActionText: {
+    color: ConsoleColors.gold,
+    fontSize: 12,
+    fontWeight: '900',
   },
 });
 
-// Card styles
 const cardStyles = StyleSheet.create({
-  // Image card (for spots with images)
-  imageCard: {
-    width: '100%',
-    borderRadius: Radius.lg,
+  card: {
+    minHeight: 164,
+    flexDirection: 'row',
     overflow: 'hidden',
-    shadowColor: Colors.ink,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(42,37,32,0.08)',
+    backgroundColor: '#FFFDF8',
+    shadowColor: ConsoleColors.obsidian,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.07,
+    shadowRadius: 16,
+    elevation: 3,
   },
-  imageWrap: {
-    width: '100%',
-    height: 200,
+  media: {
+    width: 104,
     position: 'relative',
-    overflow: 'hidden',
-    backgroundColor: '#E8F2EE',
+    backgroundColor: '#E9E2D4',
   },
   image: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
     width: '100%',
     height: '100%',
   },
-  imageOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+  fallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  catBadge: {
-    position: 'absolute', top: 12, left: 12,
-    paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: 4,
+  fallbackText: {
+    fontSize: 42,
+    fontWeight: '900',
   },
-  catBadgeText: { color: '#fff', fontSize: 10, fontWeight: '600', letterSpacing: 1 },
-  imageContent: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
-    padding: 14,
-    backgroundColor: 'rgba(0,0,0,0.15)',
+  catMark: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    maxWidth: 88,
+    borderRadius: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
   },
-  imageName: {
-    fontSize: 18, fontWeight: '800', color: '#fff',
-    letterSpacing: 2, marginBottom: 4,
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+  catMarkText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '900',
   },
-  imageOverview: {
-    fontSize: 12, color: 'rgba(255,255,255,0.85)',
-    lineHeight: 18, marginBottom: 6,
+  body: {
+    flex: 1,
+    padding: 13,
   },
-  imageTags: { flexDirection: 'row', gap: 4 },
-  imageTag: {
-    paddingHorizontal: 6, paddingVertical: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 4,
-  },
-  imageTagText: { fontSize: 10, color: 'rgba(255,255,255,0.9)' },
-
-  // Compact card (for spots without images)
-  compactCard: {
+  titleRow: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: Radius.md,
-    padding: 14,
-    gap: 12,
-    shadowColor: Colors.ink,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    alignItems: 'center',
+    gap: 8,
   },
-  compactLeft: { justifyContent: 'center' },
-  compactIcon: {
-    width: 44, height: 44, borderRadius: Radius.sm,
-    justifyContent: 'center', alignItems: 'center',
+  name: {
+    flex: 1,
+    fontSize: 17,
+    color: ConsoleColors.obsidian,
+    fontWeight: '900',
   },
-  compactIconText: { fontSize: 18, fontWeight: '700' },
-  compactContent: { flex: 1 },
-  compactHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
-  compactName: { fontSize: 15, fontWeight: '600', color: Colors.ink, flex: 1 },
-  compactCatDot: { width: 6, height: 6, borderRadius: 3 },
-  compactOverview: { fontSize: 12, color: Colors.gray500, lineHeight: 18, marginBottom: 6 },
-  compactTags: { flexDirection: 'row', gap: 4 },
-  compactTag: {
-    paddingHorizontal: 6, paddingVertical: 2,
+  arrow: {
+    color: ConsoleColors.cinnabar,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  guideLabel: {
+    marginTop: 7,
+    color: ConsoleColors.gold,
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  reason: {
+    marginTop: 4,
+    color: Colors.gray600,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  metaRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  metaItem: {
+    flex: 1,
+    borderLeftWidth: 2,
+    borderLeftColor: 'rgba(200,169,81,0.45)',
+    paddingLeft: 8,
+  },
+  metaLabel: {
+    color: Colors.gray400,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  metaValue: {
+    marginTop: 2,
+    color: ConsoleColors.obsidian,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  tags: {
+    marginTop: 10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+  tag: {
+    borderRadius: 5,
     backgroundColor: Colors.gray100,
-    borderRadius: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
-  compactTagText: { fontSize: 10, color: Colors.gray500 },
+  tagText: {
+    color: Colors.gray500,
+    fontSize: 10,
+    fontWeight: '700',
+  },
 });

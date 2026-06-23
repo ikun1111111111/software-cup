@@ -80,22 +80,16 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent'): VRMSyncResult {
     setTimeout(() => stopSpeaking(), autoDuration);
   }, [stopSpeaking]);
 
-  // Web 平台：浏览器原生 SpeechSynthesis（即时，零网络延迟）
-  const playWithBrowserTTS = useCallback((text: string, emotion: Emotion) => {
+  // Web 平台：浏览器 TTS（免费）
+  const playWithBrowserTTS = useCallback(async (text: string, emotion: Emotion) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) {
+      console.warn('[useVRMSync] Browser TTS not supported, using fallback');
       triggerSpeakFallback(text, emotion);
       return;
     }
 
+    // 停止之前的语音
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'zh-CN';
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-
-    const voices = window.speechSynthesis.getVoices();
-    const zhVoice = voices.find(v => v.lang.startsWith('zh')) || voices[0];
-    if (zhVoice) utterance.voice = zhVoice;
 
     setState((prev) => ({
       ...prev,
@@ -104,14 +98,27 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent'): VRMSyncResult {
       expression: emotion || prev.expression,
     }));
 
-    if (mouthSimRef.current) clearInterval(mouthSimRef.current);
-    mouthSimRef.current = setInterval(() => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-CN';
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    // 口型模拟：在语音播放期间模拟口型变化
+    const mouthInterval = setInterval(() => {
       const value = Math.random() * 0.6 + 0.2;
       setState((prev) => ({ ...prev, mouthOpen: value }));
     }, 100);
 
-    utterance.onend = () => stopSpeaking();
-    utterance.onerror = () => stopSpeaking();
+    utterance.onend = () => {
+      clearInterval(mouthInterval);
+      stopSpeaking();
+    };
+
+    utterance.onerror = (event) => {
+      console.warn('[useVRMSync] Browser TTS error:', event);
+      clearInterval(mouthInterval);
+      stopSpeaking();
+    };
 
     window.speechSynthesis.speak(utterance);
   }, [stopSpeaking, triggerSpeakFallback]);
@@ -130,10 +137,17 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent'): VRMSyncResult {
 
       const { sound } = await Audio.Sound.createAsync(
         { uri: result.audioUri },
-        { shouldPlay: true },
+        { shouldPlay: false },
       );
       soundRef.current = sound;
 
+      // 等待音频准备就绪
+      const status = await sound.getStatusAsync();
+      if (!status.isLoaded) {
+        throw new Error('Audio not loaded');
+      }
+
+      // 启动音素定时器（与音频播放同步）
       if (result.phonemes.length > 0) {
         const startTime = Date.now();
         phonemeTimerRef.current = setInterval(() => {
@@ -159,6 +173,9 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent'): VRMSyncResult {
           stopSpeaking();
         }
       });
+
+      // 开始播放音频
+      await sound.playAsync();
     } catch (e) {
       console.warn('[useVRMSync] TTS failed, falling back:', e);
       triggerSpeakFallback(text, emotion);

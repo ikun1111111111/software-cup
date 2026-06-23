@@ -1,28 +1,59 @@
-﻿import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, TextInput, Modal, Alert } from 'react-native';
+import React, { useState, useRef, useCallback, useEffect, useMemo, useImperativeHandle, forwardRef } from 'react';
+import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator, TextInput, Alert } from 'react-native';
+import InlineModal from '@/components/ui/InlineModal';
 import { Image } from 'expo-image';
-import Animated, { FadeInUp, useSharedValue, useAnimatedStyle, interpolate, Extrapolation } from 'react-native-reanimated';
+import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { VRMFloating, type VRMFloatingRef } from '@/components/vrm/VRMFloating';
 import { VRMManager } from '@/components/vrm/VRMManager';
-import { SectionHeader } from '@/components/scenic/SectionHeader';
-import AmapView from '@/components/map/AmapView';
+import { VRMView } from '@/components/vrm/VRMView';
+import { useTour } from '@/context/TourContext';
 import { listSpots, type Spot } from '@/api/spots';
 import { listRoutes, type TourRoute } from '@/api/routes';
 import { identifySpot, type VisionResult } from '@/api/vision';
-import { createRoom, joinRoom, getRoomInfo, type Room } from '@/api/room';
+import { createRoom, joinRoom, type Room, type RoomActiveRoute } from '@/api/room';
+import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import { useRoomSync } from '@/hooks/useRoomSync';
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
-import { SPOT_IMAGES, ROUTE_TYPE_META, CAT_COLORS } from '@/constants/scenic';
+import { SPOT_IMAGES } from '@/constants/scenic';
+import { enrichSpotsWithLocations } from '@/constants/spot-locations';
+import { GUIDE_DATA_SOURCE_SUMMARY, getSoloRouteRecommendation } from '@/data/lingshanGuideData';
+import { getMockApiRoutes, getMockApiSpots } from '@/mocks/guide';
+
+/** Ref handle for auto-opening camera/scan from outside */
+export interface ExplorePhotoHandle { openCamera: () => void; }
+export interface ExploreScanHandle { openScanner: () => void; }
 
 const MAP_H = 300;
 const ROUTE_CARD_W = 260;
+const STORY_CARD_W = 252;
+
+const HERO_SPOT_PRIORITY = ['ling-shan-da-fo', 'fan-gong', 'jiu-long-guan-yu'];
+
+const SPOT_STORY_COPY: Record<string, { highlight: string; duration: string; bestTime: string }> = {
+  'ling-shan-da-fo': { highlight: '登高望湖，听一段大佛落成的愿力故事', duration: '45 分钟', bestTime: '夕照前' },
+  'jiu-long-guan-yu': { highlight: '看九龙腾水，等一场音乐喷泉开合', duration: '25 分钟', bestTime: '表演前 10 分钟' },
+  'fan-gong': { highlight: '走进金色穹顶，看佛教艺术与建筑交汇', duration: '50 分钟', bestTime: '上午' },
+  'wu-yin-tan-cheng': { highlight: '从五方佛坛城读懂藏传佛教宇宙观', duration: '35 分钟', bestTime: '午后' },
+  'xiang-fu-chan-si': { highlight: '在古寺钟声里放慢脚步', duration: '30 分钟', bestTime: '清晨' },
+};
+
+function getSpotStory(spot?: Spot | null) {
+  if (!spot) {
+    return { highlight: '从地图挑一处景点，小灵会先讲故事再带路', duration: '自由探索', bestTime: '现在' };
+  }
+  return SPOT_STORY_COPY[spot.id] ?? {
+    highlight: spot.overview || '这一站适合慢慢看，边走边听讲解',
+    duration: spot.category === '文化设施' ? '30 分钟' : '25 分钟',
+    bestTime: spot.category === '核心景点' ? '上午' : '全天',
+  };
+}
 
 // ─── 拍照识景 ───
-function PhotoRecognition({ vrmRef }: { vrmRef: React.RefObject<VRMFloatingRef> }) {
+const PhotoRecognition = forwardRef<ExplorePhotoHandle, { compact?: boolean }>(
+function PhotoRecognition({ compact = false }, ref) {
   const [showCamera, setShowCamera] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
@@ -43,6 +74,8 @@ function PhotoRecognition({ vrmRef }: { vrmRef: React.RefObject<VRMFloatingRef> 
     setShowCamera(true);
   }, [permission, requestPermission]);
 
+  useImperativeHandle(ref, () => ({ openCamera }), [openCamera]);
+
   const takePicture = useCallback(async () => {
     if (!cameraRef.current) return;
     try {
@@ -55,43 +88,23 @@ function PhotoRecognition({ vrmRef }: { vrmRef: React.RefObject<VRMFloatingRef> 
 
       const visionResult = await identifySpot(photo.uri);
       setResult(visionResult);
-      vrmRef.current?.speak(
+      VRMManager.speak(
         `识别为${visionResult.spot_name}，置信度${Math.round(visionResult.confidence * 100)}%。${visionResult.description}`,
         'neutral',
       );
     } catch (err: any) {
       setShowCamera(false);
       Alert.alert('识别失败', err.message || '请重试');
-      vrmRef.current?.speak('抱歉，识别遇到了问题，请再试一次', 'sad');
+      VRMManager.speak('抱歉，识别遇到了问题，请再试一次', 'sad');
     } finally {
       setLoading(false);
     }
-  }, [vrmRef]);
-
-  const pickImage = useCallback(async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsEditing: false });
-    if (res.canceled || !res.assets?.[0]?.uri) return;
-    setImageUri(res.assets[0].uri);
-    setLoading(true);
-    setResult(null);
-    try {
-      const visionResult = await identifySpot(res.assets[0].uri);
-      setResult(visionResult);
-      vrmRef.current?.speak(
-        `识别为${visionResult.spot_name}，置信度${Math.round(visionResult.confidence * 100)}%。${visionResult.description}`,
-        'neutral',
-      );
-    } catch (err: any) {
-      Alert.alert('识别失败', err.message || '请重试');
-    } finally {
-      setLoading(false);
-    }
-  }, [vrmRef]);
+  }, []);
 
   // Camera full-screen
   if (showCamera) {
     return (
-      <Modal visible animationType="slide" transparent={false}>
+      <InlineModal visible animationType="slide" transparent={false}>
         <View style={photoStyles.cameraScreen}>
           <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back">
             {/* Top bar */}
@@ -118,7 +131,40 @@ function PhotoRecognition({ vrmRef }: { vrmRef: React.RefObject<VRMFloatingRef> 
             </View>
           </CameraView>
         </View>
-      </Modal>
+      </InlineModal>
+    );
+  }
+
+  if (compact) {
+    if (!imageUri && !loading && !result) return null;
+    return (
+      <View style={photoStyles.compactResult}>
+        <View style={photoStyles.compactResultHeader}>
+          <Text style={photoStyles.compactResultKicker}>AI 识景结果</Text>
+          {result && (
+            <View style={photoStyles.confBadge}>
+              <Text style={photoStyles.confText}>{Math.round(result.confidence * 100)}%</Text>
+            </View>
+          )}
+        </View>
+        {imageUri && (
+          <View style={photoStyles.compactPreview}>
+            <Image source={{ uri: imageUri }} style={photoStyles.previewImg} contentFit="cover" />
+            {loading && (
+              <View style={photoStyles.loadingOverlay}>
+                <ActivityIndicator size="small" color="#fff" />
+                <Text style={photoStyles.loadingTxt}>识别中...</Text>
+              </View>
+            )}
+          </View>
+        )}
+        {result && (
+          <>
+            <Text style={photoStyles.compactResultName}>{result.spot_name}</Text>
+            <Text style={photoStyles.compactResultDesc} numberOfLines={2}>{result.description}</Text>
+          </>
+        )}
+      </View>
     );
   }
 
@@ -155,10 +201,11 @@ function PhotoRecognition({ vrmRef }: { vrmRef: React.RefObject<VRMFloatingRef> 
       </View>
     </>
   );
-}
+});
 
 // ─── 扫码定位 ───
-function QRScanSection({ spots, vrmRef }: { spots: Spot[]; vrmRef: React.RefObject<VRMFloatingRef> }) {
+const QRScanSection = forwardRef<ExploreScanHandle, { spots: Spot[]; compact?: boolean }>(
+function QRScanSection({ spots, compact = false }, ref) {
   const [permission, requestPermission] = useCameraPermissions();
   const [showScanner, setShowScanner] = useState(false);
   const [scannedData, setScannedData] = useState<string | null>(null);
@@ -179,6 +226,8 @@ function QRScanSection({ spots, vrmRef }: { spots: Spot[]; vrmRef: React.RefObje
     setShowScanner(true);
   }, [permission, requestPermission]);
 
+  useImperativeHandle(ref, () => ({ openScanner }), [openScanner]);
+
   const handleScan = useCallback(({ data }: { data: string }) => {
     if (scanLock.current) return;
     scanLock.current = true;
@@ -186,12 +235,12 @@ function QRScanSection({ spots, vrmRef }: { spots: Spot[]; vrmRef: React.RefObje
     const spot = spots.find((s) => data.includes(s.id) || data.includes(s.name));
     setMatchedSpot(spot || null);
     if (spot) {
-      vrmRef.current?.speak(`打卡成功: ${spot.name}`, 'happy');
+      VRMManager.speak(`打卡成功: ${spot.name}`, 'happy');
     } else {
-      vrmRef.current?.speak('扫描成功，但未匹配到景点', 'neutral');
+      VRMManager.speak('扫描成功，但未匹配到景点', 'neutral');
     }
     setTimeout(() => setShowScanner(false), 2000);
-  }, [spots, vrmRef]);
+  }, [spots]);
 
   // Checked-in spots
   const checkedSpots = useMemo(() => {
@@ -201,7 +250,7 @@ function QRScanSection({ spots, vrmRef }: { spots: Spot[]; vrmRef: React.RefObje
   // Full-screen scanner
   if (showScanner) {
     return (
-      <Modal visible animationType="slide" transparent={false}>
+      <InlineModal visible animationType="slide" transparent={false}>
         <View style={scanStyles.scannerScreen}>
           <CameraView
             style={StyleSheet.absoluteFill}
@@ -240,7 +289,20 @@ function QRScanSection({ spots, vrmRef }: { spots: Spot[]; vrmRef: React.RefObje
             )}
           </CameraView>
         </View>
-      </Modal>
+      </InlineModal>
+    );
+  }
+
+  if (compact) {
+    if (!scannedData) return null;
+    return (
+      <View style={scanStyles.compactResult}>
+        <Text style={scanStyles.compactResultKicker}>扫码打卡</Text>
+        <Text style={scanStyles.compactResultTitle}>
+          {matchedSpot ? `${matchedSpot.name} 打卡成功` : '二维码已识别'}
+        </Text>
+        <Text style={scanStyles.compactResultData} numberOfLines={2}>{scannedData}</Text>
+      </View>
     );
   }
 
@@ -269,16 +331,33 @@ function QRScanSection({ spots, vrmRef }: { spots: Spot[]; vrmRef: React.RefObje
       </View>
     </>
   );
-}
+});
 
 // ─── 协同导览 ───
-function CollabTourSection({ vrmRef }: { vrmRef: React.RefObject<VRMFloatingRef> }) {
+function activeRouteToTourRoute(activeRoute: RoomActiveRoute) {
+  return {
+    id: activeRoute.route_id,
+    name: activeRoute.name,
+    description: '协同导览共享路线',
+    spots: enrichSpotsWithLocations(activeRoute.spot_names.map((spot) => ({ id: spot.id, name: spot.name }))),
+    duration: activeRoute.duration || undefined,
+    route_type: activeRoute.route_type || undefined,
+  };
+}
+
+function CollabTourSection({ routes }: { routes: TourRoute[] }) {
+  const [, tourActions] = useTour();
   const [room, setRoom] = useState<Room | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [mode, setMode] = useState<'create' | 'join'>('create');
   const [name, setName] = useState('');
+  const [memberName, setMemberName] = useState('');
   const [roomIdInput, setRoomIdInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [syncingRouteId, setSyncingRouteId] = useState<string | null>(null);
+  const roomSync = useRoomSync(room?.room_id ?? null, memberName || null);
+  const activeRoute = roomSync.activeRoute || room?.active_route || null;
+  const members = roomSync.members.length > 0 ? roomSync.members : room?.members || [];
 
   const handleCreate = useCallback(async () => {
     if (!name.trim()) { Alert.alert('请输入昵称'); return; }
@@ -286,15 +365,17 @@ function CollabTourSection({ vrmRef }: { vrmRef: React.RefObject<VRMFloatingRef>
     try {
       const r = await createRoom(name.trim());
       setRoom(r);
+      roomSync.setRoom(r);
+      setMemberName(name.trim());
       setShowModal(false);
       setName('');
-      vrmRef.current?.speak(`创建房间成功，房间号 ${r.room_id}，分享给朋友一起游览吧！`, 'happy');
+      VRMManager.speak(`创建房间成功，房间号 ${r.room_id}，分享给朋友一起游览吧！`, 'happy');
     } catch (err: any) {
       Alert.alert('创建失败', err.message);
     } finally {
       setLoading(false);
     }
-  }, [name, vrmRef]);
+  }, [name]);
 
   const handleJoin = useCallback(async () => {
     if (!name.trim() || !roomIdInput.trim()) { Alert.alert('请填写完整信息'); return; }
@@ -302,21 +383,49 @@ function CollabTourSection({ vrmRef }: { vrmRef: React.RefObject<VRMFloatingRef>
     try {
       const r = await joinRoom(roomIdInput.trim(), name.trim());
       setRoom(r);
+      roomSync.setRoom(r);
+      setMemberName(name.trim());
       setShowModal(false);
       setName('');
       setRoomIdInput('');
-      vrmRef.current?.speak('成功加入房间，开始协同游览！', 'neutral');
+      VRMManager.speak('成功加入房间，开始协同游览！', 'neutral');
     } catch (err: any) {
       Alert.alert('加入失败', err.message);
     } finally {
       setLoading(false);
     }
-  }, [name, roomIdInput, vrmRef]);
+  }, [name, roomIdInput]);
 
   const handleLeave = useCallback(() => {
     setRoom(null);
-    vrmRef.current?.speak('已退出协同导览', 'neutral');
-  }, [vrmRef]);
+    roomSync.setRoom(null);
+    setMemberName('');
+    VRMManager.speak('已退出协同导览', 'neutral');
+  }, [roomSync]);
+
+  const handleShareRoute = useCallback(async (route: TourRoute) => {
+    if (!room) return;
+    setSyncingRouteId(route.id);
+    try {
+      const updated = await roomSync.syncRoute(route.id);
+      setRoom(updated);
+      const sharedRoute = updated.active_route;
+      if (sharedRoute) {
+        tourActions.startTour(activeRouteToTourRoute(sharedRoute));
+        VRMManager.speak(`已同步${sharedRoute.name}，所有成员会看到同一条路线`, 'happy');
+      }
+    } catch (err: any) {
+      Alert.alert('路线同步失败', err?.message || '请稍后重试');
+    } finally {
+      setSyncingRouteId(null);
+    }
+  }, [room, roomSync, tourActions]);
+
+  const handleFollowSharedRoute = useCallback(() => {
+    if (!activeRoute) return;
+    tourActions.startTour(activeRouteToTourRoute(activeRoute));
+    VRMManager.speak(`开始跟随${activeRoute.name}`, 'neutral');
+  }, [activeRoute, tourActions]);
 
   return (
     <View style={collabStyles.card}>
@@ -330,8 +439,49 @@ function CollabTourSection({ vrmRef }: { vrmRef: React.RefObject<VRMFloatingRef>
             </View>
           </View>
           <Text style={collabStyles.memberCount}>
-            {room.members?.length || 1} 人在线
+            {members.length || 1} 人在线 · {roomSync.connected ? '实时同步中' : '同步待连接'}
           </Text>
+          {activeRoute ? (
+            <View style={collabStyles.activeRouteBox}>
+              <Text style={collabStyles.activeRouteLabel}>共享路线</Text>
+              <Text style={collabStyles.activeRouteName}>{activeRoute.name}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={collabStyles.sharedStops}>
+                {activeRoute.spot_names.map((spot, index) => (
+                  <View key={spot.id} style={collabStyles.sharedStop}>
+                    <Text style={collabStyles.sharedStopIndex}>{index + 1}</Text>
+                    <Text style={collabStyles.sharedStopName}>{spot.name}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+              <Pressable style={collabStyles.followBtn} onPress={handleFollowSharedRoute}>
+                <Text style={collabStyles.followBtnTxt}>跟随此路线导览</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={collabStyles.routePicker}>
+              <Text style={collabStyles.routePickerTitle}>选择一条共享游览路线</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={collabStyles.routePickerRow}>
+                {routes.map((route) => (
+                  <Pressable
+                    key={route.id}
+                    style={collabStyles.routeMiniCard}
+                    onPress={() => handleShareRoute(route)}
+                    disabled={!!syncingRouteId}
+                  >
+                    {syncingRouteId === route.id ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <>
+                        <Text style={collabStyles.routeMiniName} numberOfLines={1}>{route.name}</Text>
+                        <Text style={collabStyles.routeMiniMeta}>{route.duration}</Text>
+                      </>
+                    )}
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+          {!!roomSync.error && <Text style={collabStyles.syncError}>{roomSync.error}</Text>}
           <Pressable style={collabStyles.leaveBtn} onPress={handleLeave}>
             <Text style={collabStyles.leaveBtnTxt}>退出房间</Text>
           </Pressable>
@@ -347,7 +497,7 @@ function CollabTourSection({ vrmRef }: { vrmRef: React.RefObject<VRMFloatingRef>
         </Pressable>
       )}
 
-      <Modal visible={showModal} animationType="slide" transparent>
+      <InlineModal visible={showModal} animationType="slide" transparent onClose={() => setShowModal(false)}>
         <View style={collabStyles.sheetOverlay}>
           <Pressable style={collabStyles.sheetBackdrop} onPress={() => setShowModal(false)} />
           <View style={collabStyles.sheet}>
@@ -433,90 +583,264 @@ function CollabTourSection({ vrmRef }: { vrmRef: React.RefObject<VRMFloatingRef>
             </Pressable>
           </View>
         </View>
-      </Modal>
+      </InlineModal>
     </View>
   );
 }
 
-// ─── Route Card ───
-function RouteCard({ route, onPress }: { route: TourRoute; onPress: () => void }) {
-  const meta = ROUTE_TYPE_META[route.route_type] || ROUTE_TYPE_META.nature;
+function ExploreHero({
+  spots,
+  routes,
+  insets,
+  onPhoto,
+  onScan,
+  onStartGuide,
+  onFreeExplore,
+  onAskGuide,
+  activeRouteName,
+  progressLabel,
+  nextSpotName,
+}: {
+  spots: Spot[];
+  routes: TourRoute[];
+  insets: { top: number };
+  onPhoto: () => void;
+  onScan: () => void;
+  onStartGuide: () => void;
+  onFreeExplore: () => void;
+  onAskGuide: () => void;
+  activeRouteName?: string;
+  progressLabel?: string;
+  nextSpotName?: string;
+}) {
+  const guide = useDigitalHumanDriver('tts');
+  const heroSpot = HERO_SPOT_PRIORITY
+    .map((id) => spots.find((spot) => spot.id === id))
+    .find(Boolean) ?? spots.find((spot) => SPOT_IMAGES[spot.id]) ?? spots[0];
+  const heroStory = getSpotStory(heroSpot);
+  const heroImage = heroSpot && SPOT_IMAGES[heroSpot.id]
+    ? SPOT_IMAGES[heroSpot.id]
+    : require('../../assets/images/hero-bg.png');
+  const guideLine = activeRouteName
+    ? `${activeRouteName}进行中，我会继续带你去${nextSpotName || '下一站'}`
+    : heroSpot
+      ? `我建议先从${heroSpot.name}开始，${heroStory.highlight}`
+      : '我会根据时间、位置和兴趣，为你安排一段灵山巡礼';
+
   return (
-    <Pressable
-      style={({ pressed }) => [
-        routeStyles.card,
-        pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
-      ]}
-      onPress={onPress}
-    >
-      <View style={routeStyles.cardTop}>
-        <View style={[routeStyles.typeBadge, { backgroundColor: meta.bg }]}>
-          <Text style={[routeStyles.typeIcon, { color: meta.color }]}>{meta.icon}</Text>
+    <View style={[styles.heroStage, { paddingTop: insets.top + 18 }]}>
+      <Image source={heroImage} style={StyleSheet.absoluteFill} contentFit="cover" />
+      <View style={styles.heroScrim} />
+      <View style={styles.heroWarmth} />
+
+      <View style={styles.heroTopBar}>
+        <View style={styles.heroSeal}>
+          <Text style={styles.heroSealText}>灵</Text>
         </View>
-        <View style={routeStyles.cardInfo}>
-          <Text style={routeStyles.cardName} numberOfLines={1}>{route.name}</Text>
-          <Text style={routeStyles.cardMeta}>{meta.label} · {route.duration}</Text>
+        <View style={styles.heroCounter}>
+          <Text style={styles.heroCounterNum}>{spots.length}</Text>
+          <Text style={styles.heroCounterLabel}>处景点</Text>
         </View>
       </View>
-      <Text style={routeStyles.cardDesc} numberOfLines={2}>{route.description}</Text>
-      <View style={routeStyles.cardFooter}>
-        <Text style={routeStyles.cardCta}>查看路线 →</Text>
+
+      <View style={styles.guideStageBody}>
+        <View style={styles.guideVrmCard}>
+          <View style={styles.guideAura} />
+          <View style={styles.guideVrmViewport}>
+            <VRMView
+              mode="full"
+              expression={guide.expression}
+              mouthOpen={guide.mouthOpen}
+              speaking={guide.isSpeaking}
+              action={guide.action}
+              actionDuration={guide.actionDurationMs}
+              headRotation={guide.headRotation}
+              costumeId="festival-spring"
+            />
+          </View>
+          <View style={styles.guideNamePlate}>
+            <Text style={styles.guideNameText}>小灵 · 数字导览员</Text>
+          </View>
+        </View>
+
+        <View style={styles.heroCopy}>
+          <Text style={styles.heroKicker}>AI DIGITAL GUIDE</Text>
+          <Text style={styles.heroTitle}>小灵带你游灵山</Text>
+          <View style={styles.guideSpeechBubble}>
+            <Text style={styles.guideSpeechLabel}>
+              {guide.isSpeaking ? '正在讲解' : '今日建议'}
+            </Text>
+            <Text style={styles.guideSpeechText} numberOfLines={3}>
+              {guide.isSpeaking && guide.subtitle ? guide.subtitle : guideLine}
+            </Text>
+          </View>
+        </View>
       </View>
-    </Pressable>
+
+      <View style={styles.heroMetaRail}>
+        <View style={styles.heroMetaItem}>
+          <Text style={styles.heroMetaValue}>{routes.length}</Text>
+          <Text style={styles.heroMetaLabel}>可选路线</Text>
+        </View>
+        <View style={styles.heroMetaDivider} />
+        <View style={styles.heroMetaItem}>
+          <Text style={styles.heroMetaValue}>{progressLabel || heroStory.duration}</Text>
+          <Text style={styles.heroMetaLabel}>{activeRouteName ? '导览进度' : '推荐停留'}</Text>
+        </View>
+        <View style={styles.heroMetaDivider} />
+        <View style={styles.heroMetaItem}>
+          <Text style={styles.heroMetaValue}>{nextSpotName || heroStory.bestTime}</Text>
+          <Text style={styles.heroMetaLabel}>{activeRouteName ? '下一站' : '最佳时段'}</Text>
+        </View>
+      </View>
+
+      <View style={styles.heroActions}>
+        <Pressable
+          style={({ pressed }) => [styles.heroPrimaryAction, pressed && styles.pressedSoft]}
+          onPress={onStartGuide}
+        >
+          <Text style={styles.heroPrimaryActionText}>
+            {activeRouteName ? '继续小灵导览' : '开始独自游览'}
+          </Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.heroGhostAction, pressed && styles.pressedSoft]}
+          onPress={onFreeExplore}
+        >
+          <Text style={styles.heroGhostActionText}>自由看看</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.heroGhostAction, pressed && styles.pressedSoft]}
+          onPress={onAskGuide}
+        >
+          <Text style={styles.heroGhostActionText}>问小灵</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.heroMiniActions}>
+        <Pressable style={({ pressed }) => [styles.heroMiniButton, pressed && styles.pressedSoft]} onPress={onPhoto}>
+          <Text style={styles.heroMiniMark}>相</Text>
+          <Text style={styles.heroMiniText}>识别眼前景点</Text>
+        </Pressable>
+        <Pressable style={({ pressed }) => [styles.heroMiniButton, pressed && styles.pressedSoft]} onPress={onScan}>
+          <Text style={styles.heroMiniMark}>签</Text>
+          <Text style={styles.heroMiniText}>扫码到点打卡</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
-// ─── Quick Nav Grid ───
-function QuickNavSection({ spots, router }: { spots: Spot[]; router: any }) {
-  const categories = [...new Set(spots.map((s) => s.category))];
-  const catIcon: Record<string, string> = {
-    '核心景点': '佛',
-    '特色景点': '境',
-    '文化设施': '文',
-  };
+function DiscoveryCommandDock({
+  onPhoto,
+  onScan,
+  onRoutes,
+  onAsk,
+}: {
+  onPhoto: () => void;
+  onScan: () => void;
+  onRoutes: () => void;
+  onAsk: () => void;
+}) {
+  const commands = [
+    { key: 'photo', title: '小灵识景', desc: '对准眼前景点', mark: '相', tone: Colors.accent, onPress: onPhoto },
+    { key: 'scan', title: '小灵打卡', desc: '确认已经到达', mark: '签', tone: Colors.gold, onPress: onScan },
+    { key: 'route', title: '路线安排', desc: '让小灵排路线', mark: '路', tone: Colors.primary, onPress: onRoutes },
+    { key: 'ask', title: '随时问询', desc: '和小灵聊一聊', mark: '问', tone: Colors.auxiliary, onPress: onAsk },
+  ];
 
   return (
-    <View style={styles.quickSection}>
-      <SectionHeader title="景点分类" subtitle="CATEGORIES" />
-      <View style={styles.quickGrid}>
-        {categories.map((cat) => {
-          const count = spots.filter((s) => s.category === cat).length;
-          const color = CAT_COLORS[cat] || Colors.gray500;
-          return (
-            <Pressable
-              key={cat}
-              style={({ pressed }) => [
-                styles.quickCard,
-                pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] },
-              ]}
-              onPress={() => router.push('/attractions')}
-            >
-              <View style={[styles.quickIcon, { backgroundColor: color + '12', borderColor: color + '25' }]}>
-                <Text style={[styles.quickChar, { color }]}>{catIcon[cat] || '景'}</Text>
-              </View>
-              <View style={styles.quickInfo}>
-                <Text style={styles.quickName}>{cat}</Text>
-                <Text style={styles.quickCount}>{count} 个景点</Text>
-              </View>
-            </Pressable>
-          );
-        })}
-        <Pressable
-          style={({ pressed }) => [
-            styles.quickCard,
-            styles.quickCardAll,
-            pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] },
-          ]}
-          onPress={() => router.push('/attractions')}
-        >
-          <View style={[styles.quickIcon, { backgroundColor: Colors.ink + '08', borderColor: Colors.ink + '15' }]}>
-            <Text style={[styles.quickChar, { color: Colors.ink }]}>全</Text>
-          </View>
-          <View style={styles.quickInfo}>
-            <Text style={styles.quickName}>全部景点</Text>
-            <Text style={styles.quickCount}>{spots.length} 个景点</Text>
-          </View>
-        </Pressable>
+    <View style={styles.commandDock}>
+      <View style={styles.commandDockHeader}>
+        <Text style={styles.commandDockTitle}>小灵能做什么</Text>
+        <Text style={styles.commandDockSub}>GUIDE ABILITIES</Text>
+      </View>
+      <View style={styles.commandGrid}>
+        {commands.map((command) => (
+          <Pressable
+            key={command.key}
+            style={({ pressed }) => [
+              styles.commandButton,
+              { borderColor: command.tone + '33' },
+              pressed && styles.pressedSoft,
+            ]}
+            onPress={command.onPress}
+          >
+            <View style={[styles.commandMark, { backgroundColor: command.tone + '18' }]}>
+              <Text style={[styles.commandMarkText, { color: command.tone }]}>{command.mark}</Text>
+            </View>
+            <View style={styles.commandTextWrap}>
+              <Text style={styles.commandTitle}>{command.title}</Text>
+              <Text style={styles.commandDesc} numberOfLines={1}>{command.desc}</Text>
+            </View>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function GuideSupportPanel({
+  routeCount,
+  spotCount,
+  onRoutes,
+  onLibrary,
+  onMemory,
+}: {
+  routeCount: number;
+  spotCount: number;
+  onRoutes: () => void;
+  onLibrary: () => void;
+  onMemory: () => void;
+}) {
+  const supports = [
+    { key: 'routes', mark: '路', title: '调整路线', desc: `${routeCount} 条小灵路线脚本`, tone: Colors.primary, onPress: onRoutes },
+    { key: 'library', mark: '景', title: '查景点资料', desc: `${spotCount} 处核心导览点`, tone: Colors.auxiliary, onPress: onLibrary },
+    { key: 'memory', mark: '忆', title: '生成旅程记忆', desc: '把打卡和问答沉淀下来', tone: Colors.accent, onPress: onMemory },
+  ];
+
+  return (
+    <View style={styles.guideSupportPanel}>
+      <View style={styles.guideSupportHead}>
+        <View>
+          <Text style={[styles.sectionKicker, styles.guideSupportKicker]}>SUPPORTING WORKFLOWS</Text>
+          <Text style={[styles.sectionTitleLarge, styles.guideSupportTitleLarge]}>小灵的后台工具</Text>
+        </View>
+        <View style={styles.guideDataBadge}>
+          <Text style={styles.guideDataBadgeNum}>
+            {Math.round(GUIDE_DATA_SOURCE_SUMMARY.behaviorRows / 10000)}万+
+          </Text>
+          <Text style={styles.guideDataBadgeText}>行为样本</Text>
+        </View>
+      </View>
+
+      <Text style={styles.guideSupportLead}>
+        探索页只负责导览主控，路线、资料库和记忆生成作为小灵调用的支撑流程。
+      </Text>
+
+      <View style={styles.guideSupportList}>
+        {supports.map((item) => (
+          <Pressable
+            key={item.key}
+            style={({ pressed }) => [
+              styles.guideSupportItem,
+              { borderColor: item.tone + '24' },
+              pressed && styles.pressedSoft,
+            ]}
+            onPress={item.onPress}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.title}，${item.desc}`}
+          >
+            <View style={[styles.guideSupportMark, { backgroundColor: item.tone + '16' }]}>
+              <Text style={[styles.guideSupportMarkText, { color: item.tone }]}>{item.mark}</Text>
+            </View>
+            <View style={styles.guideSupportCopy}>
+              <Text style={styles.guideSupportTitle}>{item.title}</Text>
+              <Text style={styles.guideSupportDesc}>{item.desc}</Text>
+            </View>
+            <Text style={styles.guideSupportArrow}>→</Text>
+          </Pressable>
+        ))}
       </View>
     </View>
   );
@@ -528,20 +852,19 @@ function QuickNavSection({ spots, router }: { spots: Spot[]; router: any }) {
 export default function ExplorePage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const vrmRef = useRef<VRMFloatingRef>(null);
-  const scrollY = useSharedValue(0);
+  const [tourState, tourActions] = useTour();
+  const photoRef = useRef<ExplorePhotoHandle>(null);
+  const scanRef = useRef<ExploreScanHandle>(null);
+  const checkinConsumedRef = useRef(false);
 
   const [spots, setSpots] = useState<Spot[]>([]);
   const [routes, setRoutes] = useState<TourRoute[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedSpot, setSelectedSpot] = useState<string | null>(null);
-  const carouselRef = useRef<ScrollView>(null);
-  const [carouselIdx, setCarouselIdx] = useState(0);
-  const carouselTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const carouselSpots = useMemo(() => spots.slice(0, 8), [spots]);
-  const CARD_W = 260;
-  const CARD_GAP = 12;
+  const soloRecommendation = useMemo(
+    () => getSoloRouteRecommendation(tourState.guideProfile),
+    [tourState.guideProfile],
+  );
+  const recommendedGuideRoute = soloRecommendation.route;
 
   // Load data
   useEffect(() => {
@@ -552,62 +875,117 @@ export default function ExplorePage() {
         const withCoords = (Array.isArray(sData) ? sData : []).filter(
           (s: Spot) => s.latitude != null && s.longitude != null,
         );
-        setSpots(withCoords);
-        setRoutes(Array.isArray(rData) ? rData : []);
+        const fallbackSpots = getMockApiSpots().filter(
+          (s: Spot) => s.latitude != null && s.longitude != null,
+        );
+        const routeData = Array.isArray(rData) ? rData : [];
+        setSpots(withCoords.length > 0 ? withCoords : fallbackSpots);
+        setRoutes(routeData.length > 0 ? routeData : getMockApiRoutes());
       })
-      .catch(() => {})
+      .catch(() => {
+        setSpots(getMockApiSpots().filter((s: Spot) => s.latitude != null && s.longitude != null));
+        setRoutes(getMockApiRoutes());
+      })
       .finally(() => setLoading(false));
-  }, []);
-
-  const vrmSpeak = useCallback((text: string, emotion?: string) => {
-    vrmRef.current?.speak(text, emotion);
   }, []);
 
   useEffect(() => {
     VRMManager.setPageContext('explore');
     const t = setTimeout(() => {
-      vrmSpeak('让我带您游览灵山胜境吧', 'neutral');
+      if (tourState.currentRoute) {
+        VRMManager.speak(`${tourState.currentRoute.name}，导览进行中。让我为您导航到下一个景点`, 'happy');
+      } else {
+        VRMManager.speak('让我带您游览灵山胜境吧', 'neutral');
+      }
     }, 1200);
     return () => clearTimeout(t);
-  }, []);
+  }, [tourState.currentRoute]);
 
-  const handleMapSpotTap = useCallback((spot: Spot) => {
-    setSelectedSpot(spot.id);
-    vrmSpeak(`这是${spot.name}，${spot.overview}`, 'neutral');
-    setTimeout(() => router.push(`/attractions/${spot.id}`), 1800);
-  }, [vrmSpeak, router]);
-
-  // Auto-scroll carousel
-  const startCarouselTimer = useCallback(() => {
-    if (carouselTimer.current) clearInterval(carouselTimer.current);
-    carouselTimer.current = setInterval(() => {
-      setCarouselIdx((prev) => {
-        const next = (prev + 1) % carouselSpots.length;
-        const offset = 16 + next * (CARD_W + CARD_GAP);
-        carouselRef.current?.scrollTo({ x: offset, animated: true });
-        return next;
-      });
-    }, 3000);
-  }, [carouselSpots.length]);
-
+  // ─── 自动打开相机/扫码（打卡意图） ───
   useEffect(() => {
-    if (carouselSpots.length > 1) startCarouselTimer();
-    return () => { if (carouselTimer.current) clearInterval(carouselTimer.current); };
-  }, [carouselSpots.length, startCarouselTimer]);
+    if (checkinConsumedRef.current) return;
+    if (!tourState.checkinIntent || loading) return;
+    checkinConsumedRef.current = true;
+    const intent = tourState.checkinIntent;
+    // Delay to ensure refs are ready
+    const t = setTimeout(() => {
+      if (intent === 'photo') {
+        photoRef.current?.openCamera();
+        VRMManager.speak('请拍摄景点照片进行打卡', 'neutral');
+      } else if (intent === 'scan') {
+        scanRef.current?.openScanner();
+        VRMManager.speak('请扫描景点二维码进行打卡', 'neutral');
+      }
+      tourActions.clearCheckinIntent();
+    }, 800);
+    return () => clearTimeout(t);
+  }, [tourState.checkinIntent, loading, tourActions.clearCheckinIntent]);
 
-  const pauseCarousel = useCallback(() => {
-    if (carouselTimer.current) clearInterval(carouselTimer.current);
+  // ─── 返回导览 ───
+  const handleReturnToTour = useCallback(() => {
+    tourActions.clearCheckinIntent();
+    router.back();
+  }, [tourActions.clearCheckinIntent, router]);
+
+  const handleOpenPhoto = useCallback(() => {
+    photoRef.current?.openCamera();
   }, []);
 
-  const resumeCarousel = useCallback(() => {
-    if (carouselSpots.length > 1) startCarouselTimer();
-  }, [carouselSpots.length, startCarouselTimer]);
+  const handleOpenScan = useCallback(() => {
+    scanRef.current?.openScanner();
+  }, []);
 
-  // Header parallax
-  const headerAnim = useAnimatedStyle(() => ({
-    transform: [{ translateY: interpolate(scrollY.value, [0, 200], [0, -30], { extrapolateRight: Extrapolation.CLAMP }) }],
-    opacity: interpolate(scrollY.value, [0, 150], [1, 0.6], { extrapolateRight: Extrapolation.CLAMP }),
-  }));
+  const handleAskGuide = useCallback(() => {
+    VRMManager.speak('我在，想问景点故事、路线安排还是打卡方式？', 'happy');
+    setTimeout(() => router.push('/chat'), 650);
+  }, [router]);
+
+  const handleStartGuide = useCallback(() => {
+    if (tourState.currentRoute) {
+      const target = tourState.currentSpot;
+      VRMManager.speak(
+        target ? `我们继续前往${target.name}，我会一路提醒您` : '导览继续，我先带您回到地图',
+        'happy',
+      );
+      setTimeout(() => {
+        if (target) {
+          router.push(`/attractions/${target.id}`);
+        } else {
+          router.push('/map');
+        }
+      }, 600);
+      return;
+    }
+    tourActions.startGuideRoute(
+      recommendedGuideRoute,
+      recommendedGuideRoute.theme === 'free' ? 'free_walk' : recommendedGuideRoute.theme,
+    );
+    const firstStopName = recommendedGuideRoute.stops[0]?.name || '第一站';
+    VRMManager.speak(
+      `${soloRecommendation.companionLine}${soloRecommendation.reason} 我们先从${firstStopName}开始。`,
+      'happy',
+    );
+    setTimeout(() => router.push('/map'), 650);
+  }, [
+    recommendedGuideRoute,
+    soloRecommendation.companionLine,
+    soloRecommendation.reason,
+    tourActions.startGuideRoute,
+    tourState.currentRoute,
+    tourState.currentSpot,
+    router,
+  ]);
+
+  const handleFreeExplore = useCallback(() => {
+    VRMManager.speak('好的，你可以先自由看看。地图上点一下景点，我来讲给你听。', 'neutral');
+    setTimeout(() => router.push('/map'), 520);
+  }, [router]);
+
+  const handleEndTour = useCallback(() => {
+    VRMManager.speak('本次导览我先帮你收束成旅程记忆，稍后可以继续补充照片和问答。', 'happy');
+    tourActions.endTour();
+    setTimeout(() => router.push('/memory'), 520);
+  }, [router, tourActions.endTour]);
 
   return (
     <View style={styles.root}>
@@ -615,16 +993,7 @@ export default function ExplorePage() {
         style={styles.scroll}
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
-        onScroll={(e) => { scrollY.value = e.nativeEvent.contentOffset.y; }}
-        scrollEventThrottle={16}
       >
-        {/* ─── Header ─── */}
-        <Animated.View style={[styles.header, { paddingTop: insets.top + 16 }, headerAnim]}>
-          <Text style={styles.headerTitle}>云游胜境</Text>
-          <View style={styles.headerLine} />
-          <Text style={styles.headerSub}>景区导览 · 智能识别 · 协同游览</Text>
-        </Animated.View>
-
         {loading ? (
           <View style={styles.loading}>
             <ActivityIndicator size="large" color={Colors.primary} />
@@ -632,136 +1001,118 @@ export default function ExplorePage() {
           </View>
         ) : (
           <>
-            {/* ─── Scenic Map ─── */}
-            <Animated.View entering={FadeInUp.delay(100).duration(500)} style={styles.section}>
-              <SectionHeader title="胜境全图" subtitle="SCENIC MAP" />
-              <View style={styles.mapCard}>
-                <AmapView
-                  spots={spots}
-                  onSpotTap={handleMapSpotTap}
-                  height={280}
-                />
-                <View style={styles.mapHint}>
-                  <Text style={styles.mapHintText}>点击景点标记查看详情</Text>
-                </View>
-              </View>
+            <Animated.View entering={FadeInUp.duration(520)}>
+              <ExploreHero
+                spots={spots}
+                routes={routes}
+                insets={insets}
+                onPhoto={handleOpenPhoto}
+                onScan={handleOpenScan}
+                onStartGuide={handleStartGuide}
+                onFreeExplore={handleFreeExplore}
+                onAskGuide={handleAskGuide}
+                activeRouteName={tourState.currentRoute?.name}
+                progressLabel={
+                  tourState.progress.total > 0
+                    ? `${tourState.progress.completed}/${tourState.progress.total}`
+                    : undefined
+                }
+                nextSpotName={tourState.currentSpot?.name || tourState.nextSpot?.name}
+              />
             </Animated.View>
 
-            {/* ─── 拍照识景 + 扫码定位 ─── */}
+            {/* ─── 导览状态提示 ─── */}
+            {tourState.currentRoute && (
+              <Animated.View entering={FadeInUp.duration(400)} style={styles.section}>
+                <View style={exploreTourStyles.tourCard}>
+                  <View style={exploreTourStyles.tourHeader}>
+                    <View style={exploreTourStyles.tourIconBadge}>
+                      <Text style={exploreTourStyles.tourIconText}>
+                        {tourState.status === 'completed' ? '✓' : tourState.status === 'narrating' ? '🎤' : tourState.status === 'navigate' ? '🧭' : '⏸'}
+                      </Text>
+                    </View>
+                    <View style={exploreTourStyles.tourInfo}>
+                      <Text style={exploreTourStyles.tourRouteName}>{tourState.currentRoute.name}</Text>
+                      <Text style={exploreTourStyles.tourProgressText}>
+                        {tourState.status === 'completed' ? '已完成' : tourState.status === 'narrating' ? '讲解中' : tourState.status === 'navigate' ? '导航中' : tourState.status === 'free' ? '自由探索' : '已暂停'}
+                        {' · '}{tourState.progress.completed}/{tourState.progress.total} 景点
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={exploreTourStyles.tourProgressBar}>
+                    <View style={[exploreTourStyles.tourProgressFill, { width: `${(tourState.progress.completed / Math.max(tourState.progress.total, 1)) * 100}%` }]} />
+                  </View>
+                  {tourState.nextSpot && (
+                    <View style={exploreTourStyles.tourNextSpot}>
+                      <Text style={exploreTourStyles.tourNextLabel}>下一站：</Text>
+                      <Text style={exploreTourStyles.tourNextName}>{tourState.nextSpot.name}</Text>
+                    </View>
+                  )}
+                  <View style={exploreTourStyles.tourActions}>
+                    {tourState.status === 'completed' ? (
+                      <Pressable style={exploreTourStyles.tourResumeBtn} onPress={() => router.push('/memory')}>
+                        <Text style={exploreTourStyles.tourResumeBtnText}>查看手帐</Text>
+                      </Pressable>
+                    ) : (tourState.status === 'narrating' || tourState.status === 'navigate') ? (
+                      <Pressable style={exploreTourStyles.tourPauseBtn} onPress={tourActions.pauseTour}>
+                        <Text style={exploreTourStyles.tourPauseBtnText}>⏸ 暂停</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable style={exploreTourStyles.tourResumeBtn} onPress={tourActions.resumeTour}>
+                        <Text style={exploreTourStyles.tourResumeBtnText}>▶ 继续</Text>
+                      </Pressable>
+                    )}
+                    <Pressable style={exploreTourStyles.tourMapBtn} onPress={() => router.push('/map')}>
+                      <Text style={exploreTourStyles.tourMapBtnText}>🗺️ 地图</Text>
+                    </Pressable>
+                    <Pressable style={exploreTourStyles.tourEndBtn} onPress={handleEndTour}>
+                      <Text style={exploreTourStyles.tourEndBtnText}>结束</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              </Animated.View>
+            )}
+
+            {/* ─── 识景工具条 ─── */}
             <Animated.View entering={FadeInUp.delay(150).duration(500)} style={styles.section}>
-              <View style={styles.dualRow}>
-                <View style={styles.dualCol}>
-                  <PhotoRecognition vrmRef={vrmRef} />
-                </View>
-                <View style={styles.dualCol}>
-                  <QRScanSection spots={spots} vrmRef={vrmRef} />
-                </View>
-              </View>
+              <DiscoveryCommandDock
+                onPhoto={handleOpenPhoto}
+                onScan={handleOpenScan}
+                onRoutes={() => router.push('/routes')}
+                onAsk={handleAskGuide}
+              />
+              <PhotoRecognition ref={photoRef} compact />
+              <QRScanSection ref={scanRef} spots={spots} compact />
             </Animated.View>
 
             {/* ─── 协同导览 ─── */}
             <Animated.View entering={FadeInUp.delay(200).duration(500)} style={styles.section}>
-              <CollabTourSection vrmRef={vrmRef} />
+            <CollabTourSection routes={routes} />
             </Animated.View>
 
-            {/* ─── Tour Routes ─── */}
-            {routes.length > 0 && (
-              <Animated.View entering={FadeInUp.delay(200).duration(500)} style={styles.section}>
-                <SectionHeader title="游览路线" subtitle="TOUR ROUTES" />
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.routesScroll}
-                  snapToInterval={ROUTE_CARD_W + 12}
-                  decelerationRate="fast"
-                >
-                  {routes.map((route) => (
-                    <RouteCard
-                      key={route.id}
-                      route={route}
-                      onPress={() => router.push(`/routes/${route.id}`)}
-                    />
-                  ))}
-                </ScrollView>
-              </Animated.View>
-            )}
-
-            {/* ─── Category Navigation ─── */}
-            <Animated.View entering={FadeInUp.delay(300).duration(500)}>
-              <QuickNavSection spots={spots} router={router} />
+            {/* ─── Supporting Workflows ─── */}
+            <Animated.View entering={FadeInUp.delay(260).duration(500)} style={styles.section}>
+              <GuideSupportPanel
+                routeCount={routes.length}
+                spotCount={spots.length}
+                onRoutes={() => router.push('/routes')}
+                onLibrary={() => router.push('/attractions')}
+                onMemory={() => router.push('/memory')}
+              />
             </Animated.View>
-
-            {/* ─── Featured Spots Auto-Carousel ─── */}
-            {carouselSpots.length > 0 && (
-              <Animated.View entering={FadeInUp.delay(400).duration(500)}>
-                <View style={styles.featHead}>
-                  <SectionHeader title="精选景点" subtitle="FEATURED" />
-                  <Pressable
-                    style={styles.seeAllBtn}
-                    onPress={() => router.push('/attractions')}
-                  >
-                    <Text style={styles.seeAllText}>全部 →</Text>
-                  </Pressable>
-                </View>
-                <ScrollView
-                  ref={carouselRef}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.featScroll}
-                  snapToInterval={CARD_W + CARD_GAP}
-                  decelerationRate="fast"
-                  disableIntervalMomentum
-                  onScrollBeginDrag={pauseCarousel}
-                  onMomentumScrollEnd={(e) => {
-                    const idx = Math.round(e.nativeEvent.contentOffset.x / (CARD_W + CARD_GAP));
-                    setCarouselIdx(Math.max(0, Math.min(idx, carouselSpots.length - 1)));
-                    resumeCarousel();
-                  }}
-                >
-                  {carouselSpots.map((spot, idx) => (
-                    <Pressable
-                      key={spot.id}
-                      style={({ pressed }) => [
-                        styles.featSpotCard,
-                        idx === 0 && { marginLeft: 16 },
-                        idx === carouselSpots.length - 1 && { marginRight: 16 },
-                        pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
-                      ]}
-                      onPress={() => router.push(`/attractions/${spot.id}`)}
-                    >
-                      <View style={styles.featSpotImg}>
-                        {SPOT_IMAGES[spot.id] ? (
-                          <Image source={SPOT_IMAGES[spot.id]} style={StyleSheet.absoluteFill} contentFit="cover" />
-                        ) : (
-                          <View style={[StyleSheet.absoluteFill, { backgroundColor: Colors.primaryBg }]} />
-                        )}
-                        <View style={styles.featSpotOverlay} />
-                        <View style={styles.featSpotInfo}>
-                          <Text style={styles.featSpotNameTxt} numberOfLines={1}>{spot.name}</Text>
-                          {spot.category && (
-                            <Text style={styles.featSpotCat}>{spot.category}</Text>
-                          )}
-                        </View>
-                      </View>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-                {/* Pagination dots */}
-                <View style={styles.dotsRow}>
-                  {carouselSpots.map((_, i) => (
-                    <View
-                      key={i}
-                      style={[styles.dot, i === carouselIdx && styles.dotActive]}
-                    />
-                  ))}
-                </View>
-              </Animated.View>
-            )}
           </>
         )}
       </ScrollView>
 
-      <VRMFloating ref={vrmRef} position="bottom-right" />
+      {/* 返回导览浮动按钮 */}
+      {tourState.currentRoute && (
+        <Pressable
+          style={[styles.returnTourBtn, { top: insets.top + 12 }]}
+          onPress={handleReturnToTour}
+        >
+          <Text style={styles.returnTourTxt}>← 返回导览</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -772,6 +1123,639 @@ export default function ExplorePage() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.paper },
   scroll: { flex: 1 },
+  pressedSoft: {
+    opacity: 0.86,
+    transform: [{ scale: 0.98 }],
+  },
+
+  // Immersive hero
+  heroStage: {
+    minHeight: 600,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+    backgroundColor: Colors.ink,
+  },
+  heroScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(12,10,8,0.64)',
+  },
+  heroWarmth: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(200,75,49,0.12)',
+  },
+  heroTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 2,
+  },
+  heroSeal: {
+    width: 52,
+    height: 52,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: 'rgba(255,228,203,0.68)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(200,75,49,0.22)',
+    transform: [{ rotate: '-7deg' }],
+  },
+  heroSealText: {
+    fontSize: 27,
+    color: '#FFE4CB',
+    fontFamily: 'MaShanZheng',
+  },
+  heroCounter: {
+    minWidth: 86,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+  },
+  heroCounterNum: {
+    fontSize: 18,
+    color: '#fff',
+    fontWeight: '800',
+  },
+  heroCounterLabel: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.72)',
+  },
+  guideStageBody: {
+    zIndex: 2,
+    minHeight: 330,
+    justifyContent: 'flex-end',
+  },
+  guideVrmCard: {
+    height: 252,
+    position: 'relative',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  guideAura: {
+    position: 'absolute',
+    bottom: 18,
+    width: 204,
+    height: 204,
+    borderRadius: 102,
+    backgroundColor: 'rgba(106,156,137,0.24)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  guideVrmViewport: {
+    width: 194,
+    height: 252,
+    position: 'relative',
+  },
+  guideNamePlate: {
+    position: 'absolute',
+    bottom: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(247,245,240,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.42)',
+  },
+  guideNameText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primaryDark,
+    letterSpacing: 1,
+  },
+  heroCopy: {
+    zIndex: 2,
+    paddingTop: 4,
+  },
+  heroKicker: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.68)',
+    marginBottom: 8,
+    fontWeight: '700',
+  },
+  heroTitle: {
+    fontSize: 30,
+    lineHeight: 36,
+    color: '#fff',
+    fontFamily: 'MaShanZheng',
+    textShadowColor: 'rgba(0,0,0,0.32)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 12,
+  },
+  heroSub: {
+    marginTop: 12,
+    fontSize: 14,
+    lineHeight: 22,
+    color: 'rgba(255,255,255,0.86)',
+    maxWidth: 286,
+  },
+  guideSpeechBubble: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(247,245,240,0.13)',
+  },
+  guideSpeechLabel: {
+    fontSize: 10,
+    color: Colors.gold,
+    fontWeight: '800',
+    letterSpacing: 2,
+    marginBottom: 6,
+  },
+  guideSpeechText: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: 'rgba(255,255,255,0.92)',
+    fontWeight: '500',
+  },
+  heroMetaRail: {
+    zIndex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.13)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  heroMetaItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  heroMetaValue: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  heroMetaLabel: {
+    marginTop: 3,
+    color: 'rgba(255,255,255,0.62)',
+    fontSize: 10,
+  },
+  heroMetaDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  heroActions: {
+    zIndex: 2,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  heroPrimaryAction: {
+    flex: 1.2,
+    minHeight: 44,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFE4CB',
+  },
+  heroPrimaryActionText: {
+    fontSize: 14,
+    color: Colors.ink,
+    fontWeight: '800',
+  },
+  heroGhostAction: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  heroGhostActionText: {
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '700',
+  },
+  heroMiniActions: {
+    zIndex: 2,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  heroMiniButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: Radius.md,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  heroMiniMark: {
+    width: 26,
+    height: 26,
+    lineHeight: 26,
+    borderRadius: Radius.sm,
+    textAlign: 'center',
+    color: Colors.gold,
+    fontWeight: '900',
+    backgroundColor: 'rgba(200,169,81,0.16)',
+  },
+  heroMiniText: {
+    flex: 1,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.76)',
+    fontWeight: '700',
+  },
+
+  // Shared section language
+  sectionIntroRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  sectionKicker: {
+    fontSize: 10,
+    color: Colors.gray400,
+    fontWeight: '800',
+  },
+  sectionTitleLarge: {
+    marginTop: 3,
+    fontSize: 24,
+    color: Colors.ink,
+    fontFamily: 'MaShanZheng',
+  },
+  sectionHint: {
+    fontSize: 11,
+    color: Colors.gray400,
+    paddingBottom: 4,
+  },
+
+  // Map as the exploration center
+  mapPanel: {
+    paddingTop: 2,
+  },
+  mapStage: {
+    height: MAP_H,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: Colors.primaryBg,
+    borderWidth: 1,
+    borderColor: 'rgba(42,37,32,0.08)',
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 4,
+  },
+  mapStoryCard: {
+    marginTop: -42,
+    marginHorizontal: 12,
+    minHeight: 96,
+    borderRadius: 18,
+    backgroundColor: 'rgba(253,251,247,0.97)',
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 5,
+  },
+  mapStoryImageWrap: {
+    width: 70,
+    height: 70,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: Colors.primaryBg,
+  },
+  mapStoryImageFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapStoryFallbackText: {
+    fontSize: 28,
+    fontFamily: 'MaShanZheng',
+    color: Colors.primary,
+  },
+  mapStoryCopy: {
+    flex: 1,
+  },
+  mapStoryEyebrow: {
+    fontSize: 10,
+    color: Colors.accent,
+    fontWeight: '800',
+  },
+  mapStoryTitle: {
+    marginTop: 3,
+    fontSize: 16,
+    color: Colors.ink,
+    fontWeight: '800',
+  },
+  mapStoryText: {
+    marginTop: 4,
+    fontSize: 12,
+    color: Colors.gray500,
+    lineHeight: 18,
+  },
+  mapStoryArrow: {
+    fontSize: 28,
+    color: Colors.gray300,
+    paddingHorizontal: 2,
+  },
+
+  // Toolkit
+  commandDock: {
+    borderRadius: 22,
+    padding: 14,
+    backgroundColor: Colors.paperWarm,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 3,
+  },
+  commandDockHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  commandDockTitle: {
+    fontSize: 22,
+    color: Colors.ink,
+    fontFamily: 'MaShanZheng',
+  },
+  commandDockSub: {
+    fontSize: 10,
+    color: Colors.gray400,
+    fontWeight: '800',
+  },
+  commandGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  commandButton: {
+    width: '48%',
+    minHeight: 72,
+    borderRadius: 16,
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+  },
+  commandMark: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commandMarkText: {
+    fontSize: 18,
+    fontFamily: 'MaShanZheng',
+  },
+  commandTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  commandTitle: {
+    fontSize: 14,
+    color: Colors.ink,
+    fontWeight: '800',
+  },
+  commandDesc: {
+    marginTop: 3,
+    fontSize: 10,
+    color: Colors.gray400,
+  },
+
+  // Supporting workflows
+  guideSupportPanel: {
+    borderRadius: 22,
+    padding: 16,
+    backgroundColor: Colors.ink,
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    elevation: 5,
+  },
+  guideSupportHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 14,
+    alignItems: 'flex-start',
+  },
+  guideSupportKicker: {
+    color: '#FFE4CB',
+  },
+  guideSupportTitleLarge: {
+    color: '#fff',
+  },
+  guideDataBadge: {
+    minWidth: 72,
+    borderRadius: 14,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    alignItems: 'center',
+  },
+  guideDataBadgeNum: {
+    fontSize: 15,
+    color: '#FFE4CB',
+    fontWeight: '900',
+  },
+  guideDataBadgeText: {
+    marginTop: 2,
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.58)',
+  },
+  guideSupportLead: {
+    marginTop: 10,
+    fontSize: 12,
+    lineHeight: 19,
+    color: 'rgba(255,255,255,0.66)',
+  },
+  guideSupportList: {
+    marginTop: 14,
+    gap: 10,
+  },
+  guideSupportItem: {
+    minHeight: 66,
+    borderRadius: 16,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+  },
+  guideSupportMark: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guideSupportMarkText: {
+    fontSize: 18,
+    fontFamily: 'MaShanZheng',
+  },
+  guideSupportCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  guideSupportTitle: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '900',
+  },
+  guideSupportDesc: {
+    marginTop: 3,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.58)',
+  },
+  guideSupportArrow: {
+    fontSize: 18,
+    color: 'rgba(255,255,255,0.42)',
+  },
+
+  // Story carousel
+  storySection: {
+    marginTop: 4,
+  },
+  storyAllBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: Colors.ink,
+  },
+  storyAllBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  storyScroll: {
+    gap: 12,
+  },
+  storyCard: {
+    width: STORY_CARD_W,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  storyImageWrap: {
+    height: 148,
+    position: 'relative',
+    backgroundColor: Colors.primaryBg,
+  },
+  storyImageShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+  storyBadge: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  storyBadgeText: {
+    fontSize: 10,
+    color: '#fff',
+    fontWeight: '800',
+  },
+  storyIndex: {
+    position: 'absolute',
+    right: 12,
+    bottom: 8,
+    fontSize: 34,
+    color: 'rgba(255,255,255,0.82)',
+    fontWeight: '900',
+  },
+  storyContent: {
+    padding: 14,
+  },
+  storyTitle: {
+    fontSize: 17,
+    color: Colors.ink,
+    fontWeight: '900',
+  },
+  storyDesc: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 18,
+    color: Colors.gray500,
+  },
+  storyMetaRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  storyMeta: {
+    fontSize: 11,
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  storyMetaDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.gray300,
+  },
+
+  // 返回导览按钮
+  returnTourBtn: {
+    position: 'absolute',
+    left: 12,
+    zIndex: 100,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  returnTourTxt: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.primary,
+    letterSpacing: 1,
+  },
 
   // Header
   header: { alignItems: 'center', paddingVertical: 12, marginBottom: 4, paddingHorizontal: 16 },
@@ -896,31 +1880,33 @@ const styles = StyleSheet.create({
 const routeStyles = StyleSheet.create({
   card: {
     width: ROUTE_CARD_W,
-    backgroundColor: '#fff',
-    borderRadius: Radius.lg,
-    padding: 16,
+    minHeight: 164,
+    backgroundColor: Colors.ink,
+    borderRadius: 20,
+    padding: 18,
     shadowColor: Colors.ink,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 5,
+    overflow: 'hidden',
   },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 10 },
   typeBadge: {
-    width: 40, height: 40, borderRadius: Radius.sm,
+    width: 42, height: 42, borderRadius: 14,
     justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(0,0,0,0.04)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
   },
   typeIcon: { fontSize: 18, fontWeight: '700' },
   cardInfo: { flex: 1 },
-  cardName: { fontSize: 14, fontWeight: '600', color: Colors.ink, letterSpacing: 1 },
-  cardMeta: { fontSize: 11, color: Colors.gray400, marginTop: 3 },
-  cardDesc: { fontSize: 12, color: Colors.gray500, lineHeight: 18, marginBottom: 10 },
+  cardName: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  cardMeta: { fontSize: 11, color: 'rgba(255,255,255,0.58)', marginTop: 4 },
+  cardDesc: { fontSize: 12, color: 'rgba(255,255,255,0.72)', lineHeight: 19, marginBottom: 12 },
   cardFooter: {
-    borderTopWidth: 1, borderTopColor: Colors.borderLight,
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.12)',
     paddingTop: 8, alignItems: 'flex-end',
   },
-  cardCta: { fontSize: 12, color: Colors.primary, fontWeight: '500' },
+  cardCta: { fontSize: 12, color: '#FFE4CB', fontWeight: '800' },
 });
 
 // Photo Recognition styles
@@ -954,6 +1940,44 @@ const photoStyles = StyleSheet.create({
   confText: { fontSize: 11, color: Colors.primary, fontWeight: '600' },
   resultDesc: { fontSize: 12, color: Colors.gray500, lineHeight: 18 },
   resultExplain: { fontSize: 11, color: Colors.gray400, marginTop: 4, fontStyle: 'italic' },
+  compactResult: {
+    marginTop: 12,
+    borderRadius: 18,
+    padding: 12,
+    backgroundColor: Colors.ink,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+  },
+  compactResultHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  compactResultKicker: {
+    fontSize: 11,
+    color: '#FFE4CB',
+    fontWeight: '800',
+  },
+  compactPreview: {
+    height: 130,
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 10,
+    backgroundColor: Colors.gray700,
+  },
+  compactResultName: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '800',
+  },
+  compactResultDesc: {
+    marginTop: 4,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.72)',
+    lineHeight: 18,
+  },
 
   // Full-screen camera
   cameraScreen: { flex: 1, backgroundColor: '#000' },
@@ -1024,7 +2048,31 @@ const scanStyles = StyleSheet.create({
   checkedDot: { fontSize: 11, color: Colors.primary, fontWeight: '700' },
   checkedName: { fontSize: 12, color: Colors.ink },
   checkedMore: { fontSize: 11, color: Colors.gray400, marginTop: 2 },
-
+  compactResult: {
+    marginTop: 12,
+    borderRadius: 18,
+    padding: 14,
+    backgroundColor: Colors.warningBg,
+    borderWidth: 1,
+    borderColor: 'rgba(200,169,81,0.24)',
+  },
+  compactResultKicker: {
+    fontSize: 11,
+    color: Colors.gold,
+    fontWeight: '800',
+  },
+  compactResultTitle: {
+    marginTop: 4,
+    fontSize: 15,
+    color: Colors.ink,
+    fontWeight: '800',
+  },
+  compactResultData: {
+    marginTop: 4,
+    fontSize: 11,
+    color: Colors.gray500,
+    lineHeight: 16,
+  },
   // Full-screen scanner
   scannerScreen: { flex: 1, backgroundColor: '#000' },
   scannerTopBar: {
@@ -1092,6 +2140,51 @@ const collabStyles = StyleSheet.create({
   roomTitle: { fontSize: 15, fontWeight: '600', color: Colors.ink },
   roomId: { fontSize: 11, color: Colors.gray400, marginTop: 2 },
   memberCount: { fontSize: 12, color: Colors.primary, fontWeight: '500', marginBottom: 10 },
+  activeRouteBox: {
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primaryBg,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.primary + '22',
+  },
+  activeRouteLabel: { fontSize: 10, color: Colors.gray500, fontWeight: '700', letterSpacing: 1 },
+  activeRouteName: { fontSize: 15, color: Colors.ink, fontWeight: '700', marginTop: 3, marginBottom: 8 },
+  sharedStops: { gap: 8, paddingRight: 4 },
+  sharedStop: {
+    minWidth: 72,
+    borderRadius: Radius.sm,
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+  },
+  sharedStopIndex: { fontSize: 10, color: Colors.primary, fontWeight: '800' },
+  sharedStopName: { fontSize: 11, color: Colors.ink, marginTop: 2 },
+  followBtn: {
+    marginTop: 10,
+    paddingVertical: 10,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+  },
+  followBtnTxt: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  routePicker: { marginBottom: 12 },
+  routePickerTitle: { fontSize: 12, color: Colors.gray500, marginBottom: 8, fontWeight: '600' },
+  routePickerRow: { gap: 10, paddingRight: 4 },
+  routeMiniCard: {
+    width: 128,
+    minHeight: 62,
+    justifyContent: 'center',
+    borderRadius: Radius.md,
+    backgroundColor: Colors.paper,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  routeMiniName: { fontSize: 12, color: Colors.ink, fontWeight: '700' },
+  routeMiniMeta: { fontSize: 10, color: Colors.gray400, marginTop: 4 },
+  syncError: { fontSize: 11, color: Colors.error, marginBottom: 10 },
   leaveBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.accent, alignSelf: 'flex-start' },
   leaveBtnTxt: { fontSize: 12, color: Colors.accent, fontWeight: '500' },
   sheetOverlay: { flex: 1, justifyContent: 'flex-end' },
@@ -1113,4 +2206,91 @@ const collabStyles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: Colors.borderLight, borderRadius: Radius.md, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: Colors.ink, marginBottom: 12 },
   submitBtn: { backgroundColor: Colors.primary, borderRadius: Radius.md, paddingVertical: 13, alignItems: 'center' },
   submitTxt: { fontSize: 14, fontWeight: '600', color: '#fff', letterSpacing: 1 },
+});
+
+// 探索页导览卡片样式
+const exploreTourStyles = StyleSheet.create({
+  tourCard: {
+    backgroundColor: '#fff',
+    borderRadius: Radius.lg,
+    padding: 16,
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 1.5,
+    borderColor: Colors.accent + '30',
+  },
+  tourHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  tourIconBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.accentBg,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tourIconText: { fontSize: 18 },
+  tourInfo: { flex: 1 },
+  tourRouteName: { fontSize: 14, fontWeight: '700', color: Colors.ink },
+  tourProgressText: { fontSize: 11, color: Colors.gray500, marginTop: 2 },
+  tourProgressBar: {
+    height: 6,
+    backgroundColor: Colors.gray200,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  tourProgressFill: {
+    height: 6,
+    backgroundColor: Colors.accent,
+    borderRadius: 3,
+  },
+  tourNextSpot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: Colors.primaryBg,
+    borderRadius: Radius.sm,
+  },
+  tourNextLabel: { fontSize: 12, color: Colors.gray500 },
+  tourNextName: { fontSize: 12, color: Colors.primary, fontWeight: '600' },
+  tourActions: { flexDirection: 'row', gap: 8 },
+  tourPauseBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    alignItems: 'center',
+    backgroundColor: Colors.accent + '15',
+    borderRadius: Radius.md,
+  },
+  tourPauseBtnText: { fontSize: 12, fontWeight: '600', color: Colors.accent },
+  tourResumeBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    alignItems: 'center',
+    backgroundColor: Colors.primary + '15',
+    borderRadius: Radius.md,
+  },
+  tourResumeBtnText: { fontSize: 12, fontWeight: '600', color: Colors.primary },
+  tourMapBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    backgroundColor: Colors.gray100,
+    borderRadius: Radius.md,
+  },
+  tourMapBtnText: { fontSize: 12, fontWeight: '500', color: Colors.ink },
+  tourEndBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: Radius.md,
+  },
+  tourEndBtnText: { fontSize: 12, fontWeight: '500', color: '#FF4D4F' },
 });

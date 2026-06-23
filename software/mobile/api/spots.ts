@@ -1,4 +1,6 @@
 import { get, post } from './request';
+import { DEMO_MODE } from './config';
+import { getDemoSpotById, getDemoSpots } from '@/utils/localDemoData';
 
 export interface Spot {
   id: string;
@@ -17,13 +19,33 @@ export interface SpotDetail extends Spot {
 }
 
 export const listSpots = async (category?: string): Promise<Spot[]> => {
-  const resp = await get<Spot[]>('/spots', category ? { category } : undefined);
-  return resp.data;
+  if (DEMO_MODE) {
+    return getDemoSpots(category) as unknown as Spot[];
+  }
+
+  try {
+    const resp = await get<Spot[]>('/spots', category ? { category } : undefined);
+    return Array.isArray(resp.data) && resp.data.length > 0
+      ? resp.data
+      : getDemoSpots(category) as unknown as Spot[];
+  } catch {
+    return getDemoSpots(category) as unknown as Spot[];
+  }
 };
 
 export const getSpotById = async (id: string): Promise<SpotDetail> => {
-  const resp = await get<SpotDetail>(`/spots/${id}`);
-  return resp.data;
+  const fallback = getDemoSpotById(id);
+  if (DEMO_MODE && fallback) {
+    return fallback as unknown as SpotDetail;
+  }
+
+  try {
+    const resp = await get<SpotDetail>(`/spots/${id}`);
+    return resp.data;
+  } catch (error) {
+    if (fallback) return fallback as unknown as SpotDetail;
+    throw error;
+  }
 };
 
 export interface VisitResult {

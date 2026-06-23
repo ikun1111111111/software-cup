@@ -28,7 +28,7 @@ export default function PhoneFrame({ children }: Props) {
 
       <View style={styles.phoneOuter}>
         <View style={[styles.phoneNotch, { left: (PHONE_W - NOTCH_W) / 2 }]} />
-        <View style={styles.phoneScreen}>
+        <View style={styles.phoneScreen} nativeID="phone-screen-root">
           <View style={styles.phoneContent}>
             <View style={{ flex: 1, width: PHONE_W - 24, maxWidth: PHONE_W - 24 }}>
               {children}

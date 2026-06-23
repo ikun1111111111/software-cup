@@ -1,5 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [1000, 2000, 4000]; // 指数退避
+
 export interface SSEMessage {
   event: string;
   data: any;
@@ -17,8 +20,18 @@ export const useSSE = (options: SSEOptions = {}) => {
   const [isConnected, setIsConnected] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const doneRef = useRef(false);
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 保存上次连接参数用于重连
+  const lastUrlRef = useRef<string>('');
+  const lastBodyRef = useRef<any>(undefined);
 
   const disconnect = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    retryCountRef.current = 0;
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
@@ -27,10 +40,7 @@ export const useSSE = (options: SSEOptions = {}) => {
     onClose?.();
   }, [onClose]);
 
-  const connect = useCallback(async (url: string, body?: any) => {
-    disconnect();
-    doneRef.current = false;
-
+  const _doConnect = useCallback(async (url: string, body?: any) => {
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -49,6 +59,9 @@ export const useSSE = (options: SSEOptions = {}) => {
       });
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      // 连接成功，重置重试计数
+      retryCountRef.current = 0;
 
       const reader = response.body?.getReader();
       if (!reader) throw new Error('ReadableStream not supported');
@@ -91,12 +104,33 @@ export const useSSE = (options: SSEOptions = {}) => {
       }
       disconnect();
     } catch (err: any) {
-      if (err.name !== 'AbortError') {
+      if (err.name === 'AbortError') {
+        // 主动取消，不重连
+        return;
+      }
+
+      // 尝试重连
+      if (retryCountRef.current < MAX_RETRIES) {
+        const delay = RETRY_DELAYS[retryCountRef.current] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+        retryCountRef.current++;
+        console.log(`[SSE] Retry ${retryCountRef.current}/${MAX_RETRIES} after ${delay}ms`);
+        retryTimerRef.current = setTimeout(() => {
+          _doConnect(url, body);
+        }, delay);
+      } else {
         onError?.(err);
         setIsConnected(false);
       }
     }
   }, [onMessage, onError, onOpen, disconnect]);
+
+  const connect = useCallback(async (url: string, body?: any) => {
+    disconnect();
+    doneRef.current = false;
+    lastUrlRef.current = url;
+    lastBodyRef.current = body;
+    await _doConnect(url, body);
+  }, [disconnect, _doConnect]);
 
   return { connect, disconnect, isConnected };
 };

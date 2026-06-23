@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, ScrollView, Modal,
+  View, Text, Pressable, StyleSheet, ScrollView,
 } from 'react-native';
+import InlineModal from '@/components/ui/InlineModal';
 import { Colors } from '@/constants/colors';
 import { COSTUMES, ALL_COSTUME_IDS } from '@/constants/costumeMap';
 
@@ -38,7 +39,7 @@ export default function VRMSettings({
   onVoiceModeChange,
 }: VRMSettingsProps) {
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <InlineModal visible={visible} animationType="slide" transparent onClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.sheet}>
           <View style={styles.handle} />
@@ -103,7 +104,7 @@ export default function VRMSettings({
           </Pressable>
         </View>
       </View>
-    </Modal>
+    </InlineModal>
   );
 }
 

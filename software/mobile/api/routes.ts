@@ -1,4 +1,6 @@
 import { get, post } from './request';
+import { DEMO_MODE } from './config';
+import { getDemoRouteById, getDemoRoutes } from '@/utils/localDemoData';
 
 export interface TourRoute {
   id: string;
@@ -9,19 +11,45 @@ export interface TourRoute {
   gradient: string | null;
 }
 
+export interface SpotBrief {
+  id: string;
+  name: string;
+}
+
 export interface TourRouteDetail extends TourRoute {
   spot_order: string[];
+  spot_names: SpotBrief[];
   spot_details: Record<string, { 讲解重点: string[]; 特色体验: string[] }> | null;
 }
 
 export const listRoutes = async (routeType?: string): Promise<TourRoute[]> => {
-  const resp = await get<TourRoute[]>('/routes', routeType ? { route_type: routeType } : undefined);
-  return resp.data;
+  if (DEMO_MODE) {
+    return getDemoRoutes(routeType) as unknown as TourRoute[];
+  }
+
+  try {
+    const resp = await get<TourRoute[]>('/routes', routeType ? { route_type: routeType } : undefined);
+    return Array.isArray(resp.data) && resp.data.length > 0
+      ? resp.data
+      : getDemoRoutes(routeType) as unknown as TourRoute[];
+  } catch {
+    return getDemoRoutes(routeType) as unknown as TourRoute[];
+  }
 };
 
 export const getRouteById = async (id: string): Promise<TourRouteDetail> => {
-  const resp = await get<TourRouteDetail>(`/routes/${id}`);
-  return resp.data;
+  const fallback = getDemoRouteById(id);
+  if (DEMO_MODE && fallback) {
+    return fallback as unknown as TourRouteDetail;
+  }
+
+  try {
+    const resp = await get<TourRouteDetail>(`/routes/${id}`);
+    return resp.data;
+  } catch (error) {
+    if (fallback) return fallback as unknown as TourRouteDetail;
+    throw error;
+  }
 };
 
 export interface RecommendationResult {

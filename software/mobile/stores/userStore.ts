@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 
 export interface UserInfo {
-  id: string;
+  id: number | string;
   username: string;
+  nickname?: string;
   avatar?: string;
   role: 'tourist' | 'admin';
 }

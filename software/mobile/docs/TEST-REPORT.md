@@ -4,7 +4,23 @@
 **测试版本**: v1.0.0  
 **测试人员**: AI Assistant  
 
+> 2026-06-20 回归补充：`npm test -- --runInBand` 已通过，2 个测试套件、31 个用例全部通过。重点验证 `textTimeline` 自然拒绝短语、`thinking + lookUp` 思考场景，以及 `ExpressionPlayer` 三参数回调契约。
+
 ---
+
+## 2026-06-21 回归补充
+
+本轮新增 `useDigitalHumanDriver` 统一驱动层，并将 `VRMFloating`、`VRMGuide`、`guide-demo`、聊天页接入同一套语音/字幕/口型/表情/动作控制链路。
+
+验证命令：
+
+```bash
+cd software/mobile
+npx tsc --noEmit
+npm test -- --runInBand
+```
+
+结果：TypeScript 检查通过；Jest 3 个测试套件、35 个用例全部通过。
 
 ## 一、测试概述
 
@@ -258,7 +274,7 @@
 ```bash
 # 启动移动端开发服务器
 cd software/mobile
-npm run dev
+npm run start
 
 # 访问测试页面
 http://localhost:8081/guide-demo

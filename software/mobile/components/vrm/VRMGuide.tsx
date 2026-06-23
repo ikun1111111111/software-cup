@@ -7,13 +7,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePathname } from 'expo-router';
 import { Colors } from '@/constants/colors';
 import { VRMView } from './VRMView';
-import { VRMManager, type Emotion } from './VRMManager';
-import { useVRMSync } from '@/hooks/useVRMSync';
+import type { Emotion } from './VRMTypes';
 import { useSSE } from '@/hooks/useSSE';
 import { useChatStore } from '@/stores/chatStore';
-import { matchPageGuide, type PageGuideConfig } from '@/config/pageGuide';
+import { matchPageGuide } from '@/config/pageGuide';
 import { API_BASE_URL } from '@/api/config';
-import { textToTimeline, ExpressionPlayer, type Action } from '@/utils/textTimeline';
+import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import { estimateSpeechDuration } from '@/utils/digitalHumanDriver';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -27,46 +27,19 @@ export const VRMGuide: React.FC = () => {
   const [questionsAsked, setQuestionsAsked] = useState(0);
   const inputRef = useRef<TextInput>(null);
 
-  // VRM 鍚屾 鈥?鍚敤 TTS 璇煶鎾斁
   const {
-    mouthOpen, isSpeaking, subtitle,
-    triggerSpeak, stopSpeaking,
-  } = useVRMSync('tts');
-
-  // 本地表情控制（覆盖 useVRMSync 的 expression）
-  const [displayExpression, setDisplayExpression] = useState<Emotion>('neutral');
-  const [currentAction, setCurrentAction] = useState<Action>('none');
-  const [currentActionDuration, setCurrentActionDuration] = useState(800);
-  const [headRotation, setHeadRotation] = useState({ x: 0, y: 0 });
-  const playerRef = useRef<ExpressionPlayer | null>(null);
-
-  // headRotation 计算 — 当 action 变化时启动定时器
-  useEffect(() => {
-    if (currentAction !== 'lookUp') {
-      setHeadRotation({ x: 0, y: 0 });
-      return;
-    }
-    const DURATION = 800;
-    const start = Date.now();
-    const timer = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const progress = Math.min(elapsed / DURATION, 1);
-      const curve = progress < 0.2
-        ? Math.pow(progress / 0.2, 2)
-        : progress > 0.8
-          ? Math.pow((1 - progress) / 0.2, 2)
-          : 1;
-      setHeadRotation({ x: -0.8 * curve, y: 0.6 * curve });
-      if (progress >= 1) clearInterval(timer);
-    }, 16);
-    return () => clearInterval(timer);
-  }, [currentAction]);
-
-  // 鍒濆鍖栨挱鏀惧櫒
-  useEffect(() => {
-    playerRef.current = new ExpressionPlayer();
-    return () => playerRef.current?.stop();
-  }, []);
+    expression,
+    mouthOpen,
+    isSpeaking,
+    subtitle,
+    action: currentAction,
+    actionDurationMs: currentActionDuration,
+    headRotation,
+    speak: speakText,
+    setExpression,
+    playAction,
+  } = useDigitalHumanDriver('tts');
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const routeName = usePathname();
   const config = matchPageGuide(routeName);
@@ -107,43 +80,34 @@ export const VRMGuide: React.FC = () => {
     onClose: () => setStreaming(false),
   });
 
+  const playGuideText = useCallback((text: string, emotion?: Emotion) => {
+    const durationMs = estimateSpeechDuration(text);
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+    }
+    speakText(text, { emotion, durationMs });
+    setGuideState('speaking');
+    idleTimerRef.current = setTimeout(() => {
+      setGuideState('idle');
+      idleTimerRef.current = null;
+    }, durationMs);
+  }, [speakText]);
+
+  useEffect(() => {
+    return () => {
+      if (idleTimerRef.current) {
+        clearTimeout(idleTimerRef.current);
+      }
+    };
+  }, []);
+
   // 鐩戝惉鍥炵瓟瀹屾垚 鈫?鍚姩琛ㄦ儏鏃堕棿杞?
   useEffect(() => {
     const last = messages[messages.length - 1];
     if (last?.role === 'assistant' && last.status === 'sent' && last.content) {
-      const text = last.content;
-      const durationMs = Math.max(3000, text.length * 150);
-      const timeline = textToTimeline(text, durationMs);
-
-      // 璁剧疆鍒濆琛ㄦ儏鍜屽姩浣?
-      const first = timeline[0];
-      if (first) {
-        setDisplayExpression(first.expression);
-        setCurrentAction(first.action || 'none');
-        setCurrentActionDuration(first.durationMs ?? 800);
-      }
-
-      // 鍚姩鎾斁鍣?
-      playerRef.current?.play(timeline, (expr, action, dur) => {
-        setDisplayExpression(expr);
-        setCurrentAction(action || 'none');
-        setCurrentActionDuration(dur);
-      });
-
-      triggerSpeak(text, first?.expression || 'neutral');
-      setGuideState('speaking');
-
-      // 璇磋瘽缁撴潫鍚庡仠姝㈡挱鏀惧櫒
-      const stopTimer = setTimeout(() => {
-        playerRef.current?.stop();
-        setDisplayExpression('neutral');
-        setCurrentAction('none');
-        setGuideState('idle');
-      }, durationMs);
-
-      return () => clearTimeout(stopTimer);
+      playGuideText(last.content);
     }
-  }, [messages, triggerSpeak]);
+  }, [messages, playGuideText]);
 
   // 妫€鏌ユ槸鍚﹀凡鍏抽棴
   useEffect(() => {
@@ -156,33 +120,8 @@ export const VRMGuide: React.FC = () => {
 
   const handleSpeak = useCallback(() => {
     if (!config) return;
-    const text = config.welcomeText;
-    const durationMs = Math.max(3000, text.length * 150);
-    const timeline = textToTimeline(text, durationMs);
-
-    const first = timeline[0];
-    if (first) {
-      setDisplayExpression(first.expression);
-      setCurrentAction(first.action);
-      setCurrentActionDuration(first.durationMs ?? 800);
-    }
-
-    playerRef.current?.play(timeline, (expr, action, dur) => {
-      setDisplayExpression(expr);
-      setCurrentAction(action);
-      setCurrentActionDuration(dur);
-    });
-
-    triggerSpeak(text, first?.expression || 'neutral');
-    setGuideState('speaking');
-
-    setTimeout(() => {
-      playerRef.current?.stop();
-      setDisplayExpression('neutral');
-      setCurrentAction('none');
-      setGuideState('idle');
-    }, durationMs);
-  }, [config, triggerSpeak]);
+    playGuideText(config.welcomeText);
+  }, [config, playGuideText]);
 
   const handleDismiss = useCallback(() => {
     setGuideState('dismissed');
@@ -253,7 +192,7 @@ export const VRMGuide: React.FC = () => {
       <View style={styles.vrmArea} pointerEvents="none">
         <VRMView
           mode="float"
-          expression={displayExpression}
+          expression={expression}
           mouthOpen={mouthOpen}
           speaking={isSpeaking}
           action={currentAction}
@@ -434,25 +373,25 @@ export const VRMGuide: React.FC = () => {
           <View style={styles.testSection}>
             <Text style={styles.testLabel}>琛ㄦ儏</Text>
             <View style={styles.testRow}>
-              <Pressable style={styles.testBtn} onPress={() => { setDisplayExpression('neutral'); setCurrentAction('none'); }}>
+              <Pressable style={styles.testBtn} onPress={() => { setExpression('neutral'); playAction('none'); }}>
                 <Text style={styles.testBtnText}>馃槓 涓珛</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setDisplayExpression('happy'); setCurrentAction('none'); }}>
+              <Pressable style={styles.testBtn} onPress={() => { setExpression('happy'); playAction('none'); }}>
                 <Text style={styles.testBtnText}>馃槉 寮€蹇</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setDisplayExpression('sad'); setCurrentAction('none'); }}>
+              <Pressable style={styles.testBtn} onPress={() => { setExpression('sad'); playAction('none'); }}>
                 <Text style={styles.testBtnText}>馃様 鎮蹭激</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setDisplayExpression('angry'); setCurrentAction('none'); }}>
+              <Pressable style={styles.testBtn} onPress={() => { setExpression('angry'); playAction('none'); }}>
                 <Text style={styles.testBtnText}>馃槧 鐢熸皵</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setDisplayExpression('relaxed'); setCurrentAction('none'); }}>
+              <Pressable style={styles.testBtn} onPress={() => { setExpression('relaxed'); playAction('none'); }}>
                 <Text style={styles.testBtnText}>馃槍 鏀炬澗</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setDisplayExpression('surprised'); setCurrentAction('none'); }}>
+              <Pressable style={styles.testBtn} onPress={() => { setExpression('surprised'); playAction('none'); }}>
                 <Text style={styles.testBtnText}>馃槻 鎯婅</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setDisplayExpression('thinking'); setCurrentAction('none'); }}>
+              <Pressable style={styles.testBtn} onPress={() => { setExpression('thinking'); playAction('none'); }}>
                 <Text style={styles.testBtnText}>馃 鎬濊€</Text>
               </Pressable>
             </View>
@@ -462,31 +401,31 @@ export const VRMGuide: React.FC = () => {
           <View style={styles.testSection}>
             <Text style={styles.testLabel}>鍔ㄤ綔</Text>
             <View style={styles.testRow}>
-              <Pressable style={styles.testBtn} onPress={() => { setCurrentAction('nod'); setCurrentActionDuration(1500); }}>
+              <Pressable style={styles.testBtn} onPress={() => { playAction('nod', 1500); }}>
                 <Text style={styles.testBtnText}>鐐瑰ご</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setCurrentAction('shakeHead'); setCurrentActionDuration(1500); }}>
+              <Pressable style={styles.testBtn} onPress={() => { playAction('shakeHead', 1500); }}>
                 <Text style={styles.testBtnText}>鎽囧ご</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setCurrentAction('tiltHead'); setCurrentActionDuration(1500); }}>
+              <Pressable style={styles.testBtn} onPress={() => { playAction('tiltHead', 1500); }}>
                 <Text style={styles.testBtnText}>姝ご</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setCurrentAction('lookUp'); setCurrentActionDuration(2000); }}>
+              <Pressable style={styles.testBtn} onPress={() => { playAction('lookUp', 2000); }}>
                 <Text style={styles.testBtnText}>鎶ご</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setCurrentAction('lookDown'); setCurrentActionDuration(1500); }}>
+              <Pressable style={styles.testBtn} onPress={() => { playAction('lookDown', 1500); }}>
                 <Text style={styles.testBtnText}>浣庡ご</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setCurrentAction('wave'); setCurrentActionDuration(1500); }}>
+              <Pressable style={styles.testBtn} onPress={() => { playAction('wave', 1500); }}>
                 <Text style={styles.testBtnText}>鎸ユ墜</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setCurrentAction('point'); setCurrentActionDuration(1500); }}>
+              <Pressable style={styles.testBtn} onPress={() => { playAction('point', 1500); }}>
                 <Text style={styles.testBtnText}>鎸囧悜</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setCurrentAction('clap'); setCurrentActionDuration(1500); }}>
+              <Pressable style={styles.testBtn} onPress={() => { playAction('clap', 1500); }}>
                 <Text style={styles.testBtnText}>榧撴帉</Text>
               </Pressable>
-              <Pressable style={styles.testBtn} onPress={() => { setCurrentAction('bow'); setCurrentActionDuration(1500); }}>
+              <Pressable style={styles.testBtn} onPress={() => { playAction('bow', 1500); }}>
                 <Text style={styles.testBtnText}>闉犺含</Text>
               </Pressable>
             </View>
@@ -498,46 +437,31 @@ export const VRMGuide: React.FC = () => {
             <View style={styles.testRow}>
               <Pressable style={styles.testBtn} onPress={() => {
               const text = '欢迎来到灵山胜境，非常漂亮';
-                const durationMs = Math.max(3000, text.length * 150);
-                const tl = textToTimeline(text, durationMs);
-                playerRef.current?.play(tl, (e, a, d) => { setDisplayExpression(e); setCurrentAction(a); setCurrentActionDuration(d); });
-                triggerSpeak(text, 'neutral');
+                playGuideText(text, 'neutral');
               }}>
                 <Text style={styles.testBtnText}>馃槉 娆㈣繋</Text>
               </Pressable>
               <Pressable style={styles.testBtn} onPress={() => {
               const text = '欢迎来到灵山胜境，非常漂亮';
-                const durationMs = Math.max(3000, text.length * 150);
-                const tl = textToTimeline(text, durationMs);
-                playerRef.current?.play(tl, (e, a, d) => { setDisplayExpression(e); setCurrentAction(a); setCurrentActionDuration(d); });
-                triggerSpeak(text, 'thinking');
+                playGuideText(text, 'thinking');
               }}>
                 <Text style={styles.testBtnText}>馃 鎬濊€</Text>
               </Pressable>
               <Pressable style={styles.testBtn} onPress={() => {
                 const text = '鍝囷紝鐏靛北澶т經楂樿揪88绫筹紝澶．瑙備簡';
-                const durationMs = Math.max(3000, text.length * 150);
-                const tl = textToTimeline(text, durationMs);
-                playerRef.current?.play(tl, (e, a, d) => { setDisplayExpression(e); setCurrentAction(a); setCurrentActionDuration(d); });
-                triggerSpeak(text, 'surprised');
+                playGuideText(text, 'surprised');
               }}>
                 <Text style={styles.testBtnText}>馃槻 鎯婂徆</Text>
               </Pressable>
               <Pressable style={styles.testBtn} onPress={() => {
               const text = '欢迎来到灵山胜境，非常漂亮';
-                const durationMs = Math.max(3000, text.length * 150);
-                const tl = textToTimeline(text, durationMs);
-                playerRef.current?.play(tl, (e, a, d) => { setDisplayExpression(e); setCurrentAction(a); setCurrentActionDuration(d); });
-                triggerSpeak(text, 'sad');
+                playGuideText(text, 'sad');
               }}>
                 <Text style={styles.testBtnText}>馃様 鎶辨瓑</Text>
               </Pressable>
               <Pressable style={styles.testBtn} onPress={() => {
                 const text = '鍡紝鎴戠煡閬撲簡';
-                const durationMs = Math.max(3000, text.length * 150);
-                const tl = textToTimeline(text, durationMs);
-                playerRef.current?.play(tl, (e, a, d) => { setDisplayExpression(e); setCurrentAction(a); setCurrentActionDuration(d); });
-                triggerSpeak(text, 'neutral');
+                playGuideText(text, 'neutral');
               }}>
                 <Text style={styles.testBtnText}>馃槓 鏄庣櫧</Text>
               </Pressable>

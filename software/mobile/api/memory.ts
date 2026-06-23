@@ -11,6 +11,9 @@ export interface TravelMemory {
   source_type: string;
   mood_tag: string | null;
   metadata_json: Record<string, any> | null;
+  photo_url: string | null;
+  voice_url: string | null;
+  voice_duration: number | null;
   is_capsule: boolean;
   capsule_unlock_at: string | null;
   capsule_content: string | null;
@@ -65,7 +68,13 @@ export async function createMemory(params: {
   session_id: string;
   user_input: string;
   spot_name?: string;
+  spot_id?: string;
+  source_type?: string;
   mood_tag?: string;
+  metadata_json?: Record<string, any>;
+  photo_url?: string;
+  voice_url?: string;
+  voice_duration?: number;
 }): Promise<TravelMemory> {
   const resp = await request.post<TravelMemory>('/memory/create', params);
   return resp.data;

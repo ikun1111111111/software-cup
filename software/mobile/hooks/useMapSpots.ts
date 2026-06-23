@@ -2,7 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { listSpots, type Spot } from '@/api/spots';
 
-const LINGSHAN_CENTER = { latitude: 31.424, longitude: 120.355 };
+const LINGSHAN_CENTER = { latitude: 31.4268, longitude: 120.0962 };
+
+// In-memory cache for spots list
+let spotsCache: Spot[] | null = null;
+let spotsCacheTime = 0;
+const SPOTS_CACHE_TTL = 5 * 60 * 1000;
 
 interface RouteStep {
   distance: number;
@@ -10,8 +15,8 @@ interface RouteStep {
 }
 
 export function useMapSpots() {
-  const [spots, setSpots] = useState<Spot[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [spots, setSpots] = useState<Spot[]>(() => spotsCache ?? []);
+  const [loading, setLoading] = useState(() => !spotsCache);
   const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
   const [navigating, setNavigating] = useState(false);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -19,15 +24,24 @@ export function useMapSpots() {
   const [routeInfo, setRouteInfo] = useState<RouteStep | null>(null);
 
   useEffect(() => {
+    if (spotsCache && Date.now() - spotsCacheTime < SPOTS_CACHE_TTL) {
+      setSpots(spotsCache);
+      setLoading(false);
+      return;
+    }
     listSpots()
       .then((res) => {
         const data = (res as any).data ?? res;
         const withCoords = (Array.isArray(data) ? data : []).filter(
           (s: Spot) => s.latitude != null && s.longitude != null,
         );
+        spotsCache = withCoords;
+        spotsCacheTime = Date.now();
         setSpots(withCoords);
       })
-      .catch(() => setSpots([]))
+      .catch(() => {
+        if (!spotsCache) setSpots([]);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -64,7 +78,7 @@ export function useMapSpots() {
   return {
     spots, loading, selectedSpot, navigating, userLocation,
     locationError, routeInfo, spotDistance,
-    setSelectedSpot, setLocationError, setUserLocation,
+    setSelectedSpot, setNavigating, setLocationError, setUserLocation,
     handleSpotTap, handleNavigate, handleCloseRoute,
   };
 }

@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL } from './config';
 
@@ -8,15 +8,75 @@ export interface ApiResponse<T = any> {
   message: string;
 }
 
+interface RetryConfig {
+  retries?: number;
+  retryDelay?: number;
+  retryCondition?: (error: AxiosError) => boolean;
+}
+
+// Simple event system for 401 handling (avoids Node.js 'events' module)
+type AuthListener = () => void;
+const authListeners: AuthListener[] = [];
+export const authEvents = {
+  onUnauthorized: (listener: AuthListener) => {
+    authListeners.push(listener);
+  },
+  offUnauthorized: (listener: AuthListener) => {
+    const idx = authListeners.indexOf(listener);
+    if (idx >= 0) authListeners.splice(idx, 1);
+  },
+  emit: () => {
+    authListeners.forEach((l) => l());
+  },
+};
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRetryableError = (error: AxiosError): boolean => {
+  // 无响应（网络错误、DNS、CORS 等）一律重试
+  if (!error.response) return true;
+
+  const status = error.response.status;
+  // 408 Request Timeout / 429 Too Many Requests / 5xx 服务端错误
+  if (status === 408 || status === 429 || (status >= 500 && status < 600)) {
+    return true;
+  }
+  return false;
+};
+
+const shouldRetry = (error: AxiosError, config: AxiosRequestConfig & RetryConfig): boolean => {
+  // 显式禁用重试
+  if (config.retries === 0) return false;
+  // SSE/流式请求不重试，避免重复消费
+  if (config.responseType === 'stream' || config.adapter === 'http') return false;
+  // 自定义条件优先
+  if (config.retryCondition) return config.retryCondition(error);
+  return isRetryableError(error);
+};
+
+// Cache token in memory to avoid AsyncStorage reads on every request
+let cachedToken: string | null | undefined = undefined;
+
+async function getToken(): Promise<string | null> {
+  if (cachedToken !== undefined) return cachedToken;
+  cachedToken = await AsyncStorage.getItem('token');
+  return cachedToken;
+}
+
+// Called on login/logout to invalidate the cache
+export function invalidateTokenCache() {
+  cachedToken = undefined;
+}
+
 const createAxiosInstance = (): AxiosInstance => {
   const instance = axios.create({
     baseURL: API_BASE_URL,
-    timeout: 30000,
+    timeout: 10000,
     headers: { 'Content-Type': 'application/json' },
   });
 
   instance.interceptors.request.use(async (config) => {
-    const token = await AsyncStorage.getItem('token');
+    const token = await getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -31,7 +91,35 @@ const createAxiosInstance = (): AxiosInstance => {
       }
       return response;
     },
-    (error) => Promise.reject(error),
+    async (error: AxiosError<ApiResponse>) => {
+      const config = error.config as (AxiosRequestConfig & RetryConfig) | undefined;
+      if (!config) {
+        return Promise.reject(error);
+      }
+
+      // 401 统一登出
+      if (error.response?.status === 401) {
+        await AsyncStorage.removeItem('token');
+        authEvents.emit();
+        return Promise.reject(error);
+      }
+
+      const retryCount = (config as any).__retryCount || 0;
+      const maxRetries = config.retries ?? 2;
+
+      if (retryCount < maxRetries && shouldRetry(error, config)) {
+        (config as any).__retryCount = retryCount + 1;
+
+        // 指数退避 + 抖动
+        const baseDelay = config.retryDelay ?? 300;
+        const delay = baseDelay * 2 ** retryCount + Math.random() * 200;
+        console.warn(`[request] retry ${retryCount + 1}/${maxRetries} after ${Math.round(delay)}ms: ${config.method?.toUpperCase()} ${config.url}`);
+        await sleep(delay);
+        return instance(config);
+      }
+
+      return Promise.reject(error);
+    },
   );
 
   return instance;
@@ -39,16 +127,16 @@ const createAxiosInstance = (): AxiosInstance => {
 
 const request = createAxiosInstance();
 
-export const get = <T = any>(url: string, params?: any, config?: AxiosRequestConfig) =>
+export const get = <T = any>(url: string, params?: any, config?: AxiosRequestConfig & RetryConfig) =>
   request.get<T>(url, { params, ...config });
 
-export const post = <T = any>(url: string, data?: any, config?: AxiosRequestConfig) =>
+export const post = <T = any>(url: string, data?: any, config?: AxiosRequestConfig & RetryConfig) =>
   request.post<T>(url, data, config);
 
-export const put = <T = any>(url: string, data?: any, config?: AxiosRequestConfig) =>
+export const put = <T = any>(url: string, data?: any, config?: AxiosRequestConfig & RetryConfig) =>
   request.put<T>(url, data, config);
 
-export const del = <T = any>(url: string, config?: AxiosRequestConfig) =>
+export const del = <T = any>(url: string, config?: AxiosRequestConfig & RetryConfig) =>
   request.delete<T>(url, config);
 
 export default request;

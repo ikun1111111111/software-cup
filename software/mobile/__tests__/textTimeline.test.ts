@@ -82,9 +82,9 @@ describe('analyzeSentence', () => {
     expect(expression).toBe('angry');
   });
 
-  test('思考词汇 → relaxed + lookUp', () => {
+  test('思考词汇 → thinking + lookUp', () => {
     const { expression, action } = analyzeSentence('让我想想');
-    expect(expression).toBe('relaxed');
+    expect(expression).toBe('thinking');
     expect(action).toBe('lookUp');
   });
 
@@ -159,7 +159,7 @@ describe('ExpressionPlayer', () => {
     player.play(timeline, onUpdate);
     // 第一个 tick 在 100ms 后
     jest.advanceTimersByTime(100);
-    expect(onUpdate).toHaveBeenCalledWith('happy', 'nod');
+    expect(onUpdate).toHaveBeenCalledWith('happy', 'nod', 800);
 
     player.stop();
   });
@@ -175,7 +175,7 @@ describe('ExpressionPlayer', () => {
     player.play(timeline, onUpdate);
     jest.advanceTimersByTime(100);
     player.stop();
-    expect(onUpdate).toHaveBeenLastCalledWith('neutral', 'none');
+    expect(onUpdate).toHaveBeenLastCalledWith('neutral', 'none', 800);
   });
 
   test('时间推进后切换表情', () => {
@@ -191,11 +191,11 @@ describe('ExpressionPlayer', () => {
 
     // 初始 tick
     jest.advanceTimersByTime(100);
-    expect(onUpdate).toHaveBeenCalledWith('happy', 'nod');
+    expect(onUpdate).toHaveBeenCalledWith('happy', 'nod', 800);
 
     // 超过 500ms 应该切换到 sad
     jest.advanceTimersByTime(500);
-    expect(onUpdate).toHaveBeenCalledWith('sad', 'shakeHead');
+    expect(onUpdate).toHaveBeenCalledWith('sad', 'shakeHead', 800);
 
     player.stop();
   });

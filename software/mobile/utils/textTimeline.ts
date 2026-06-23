@@ -1,4 +1,4 @@
-export type Emotion = 'neutral' | 'happy' | 'sad' | 'angry' | 'relaxed' | 'surprised' | 'thinking';
+export type Emotion = 'neutral' | 'happy' | 'sad' | 'angry' | 'relaxed' | 'surprised' | 'thinking' | 'grateful';
 export type Action = 'nod' | 'shakeHead' | 'tiltHead' | 'lookUp' | 'lookDown' | 'wave' | 'point' | 'clap' | 'bow' | 'none';
 
 export interface TimelineEvent {
@@ -30,7 +30,11 @@ export function analyzeSentence(sentence: string): { expression: Emotion; action
   }
   // happy: 开心、欢迎、赞美
   else if (/(开心|高兴|喜欢|欢迎|美好|精彩|壮观|美丽|漂亮|棒|好|赞|优秀|出色|完美|太好了|真好|真好|真棒|好极了|棒极了|太棒了|太开心|太高兴|太喜欢|太美好|太精彩|太壮观|太美丽|太漂亮)/.test(s)) {
-    expression = 'neutral';
+    expression = 'happy';
+  }
+  // grateful: 感谢、感恩
+  else if (/(谢谢|感谢|感恩|多谢|谢了|谢意|谢谢您|感谢你|感谢您|谢谢大家|感谢大家|感激|辛苦了|感恩)/.test(s)) {
+    expression = 'grateful';
   }
   // thinking: 思考、犹豫
   else if (/(想想|思考|考虑|让我想想|想一想|想想看|思考一下|考虑一下|琢磨|琢磨一下|想想办法|思考思考|考虑考虑)/.test(s)) {
@@ -81,7 +85,7 @@ export function analyzeSentence(sentence: string): { expression: Emotion; action
     action = 'tiltHead';
   }
   // shakeHead: 否定、拒绝
-  else if (/(不太|不是|不行|不要|不对|没有|无法|否定|不清楚|不知道|不明白|不可以|不能|不会|抱歉|遗憾|可惜|对不起|不好意思)/.test(s)) {
+  else if (/(不太|不是|不行|不要|不对|不去|不想|不用|不必|不需要|没有|无法|否定|拒绝|别|不清楚|不知道|不明白|不可以|不能|不会|抱歉|遗憾|可惜|对不起|不好意思)/.test(s)) {
     action = 'shakeHead';
   }
   // nod: 肯定、同意、明白

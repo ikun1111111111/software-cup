@@ -15,8 +15,7 @@ export const InkTransition = {
   /** 在导航前调用，墨滴扩散后回调 */
   trigger(onMid?: () => void) {
     if (_listener) _listener();
-    // 300ms 后（墨滴覆盖屏幕时）执行导航
-    if (onMid) setTimeout(onMid, 280);
+    if (onMid) setTimeout(onMid, 120);
   },
 };
 
@@ -26,14 +25,12 @@ export function InkOverlay() {
 
   useEffect(() => {
     _listener = () => {
-      // 展开
       scale.value = 0;
       opacity.value = 1;
-      scale.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.ease) }, (finished) => {
+      scale.value = withTiming(1, { duration: 120, easing: Easing.out(Easing.ease) }, (finished) => {
         if (finished) {
-          // 收缩
-          scale.value = withTiming(0, { duration: 300, easing: Easing.in(Easing.ease) });
-          opacity.value = withTiming(0, { duration: 300 });
+          scale.value = withTiming(0, { duration: 180, easing: Easing.in(Easing.ease) });
+          opacity.value = withTiming(0, { duration: 180 });
         }
       });
     };

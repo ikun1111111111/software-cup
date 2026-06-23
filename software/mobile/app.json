@@ -29,6 +29,19 @@
       "expo-font",
       "expo-asset",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to use the camera for photo and QR code check-ins."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to use the camera for memory photos.",
+          "photosPermission": "Allow $(PRODUCT_NAME) to access photos for memory moments."
+        }
+      ],
+      [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to show your position on the scenic area map.",

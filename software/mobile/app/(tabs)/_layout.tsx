@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { Text, View, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import React from 'react';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withTiming,
   withRepeat, withSequence, withDelay, Easing,
@@ -9,17 +10,17 @@ import Animated, {
 import { Colors } from '@/constants/colors';
 
 const TAB_EMOJIS: Record<string, string> = {
-  '启扉': '🏯', '问讯': '💬', '云游': '🗺️', '记忆': '📝',
+  '启扉': '🏯', '问讯': '💬', '云游': '🗺️', '记忆': '📝', '我的': '🧘',
 };
 
-function TabIcon({ label, focused }: { label: string; focused: boolean }) {
+const TabIcon = React.memo(function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   const prevFocused = useSharedValue(focused);
   const bounce = useSharedValue(focused ? 1.15 : 1);
   const breath = useSharedValue(1);
   const dotScale = useSharedValue(focused ? 1 : 0);
 
-  // Trigger bounce + haptic on focus change
-  if (prevFocused.value !== focused) {
+  React.useEffect(() => {
+    if (prevFocused.value === focused) return;
     prevFocused.value = focused;
     if (focused) {
       bounce.value = withSequence(
@@ -32,20 +33,21 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
       bounce.value = withTiming(1, { duration: 200 });
       dotScale.value = withTiming(0, { duration: 200 });
     }
-  }
+  }, [focused, bounce, dotScale, prevFocused]);
 
-  // Breathing animation for unfocused tabs
-  if (!focused) {
-    breath.value = withRepeat(
-      withSequence(
-        withTiming(0.92, { duration: 1800, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.ease) }),
-      ),
-      -1,
-    );
-  } else {
-    breath.value = withTiming(1, { duration: 200 });
-  }
+  React.useEffect(() => {
+    if (!focused) {
+      breath.value = withRepeat(
+        withSequence(
+          withTiming(0.92, { duration: 1800, easing: Easing.inOut(Easing.ease) }),
+          withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.ease) }),
+        ),
+        -1,
+      );
+    } else {
+      breath.value = withTiming(1, { duration: 200 });
+    }
+  }, [focused, breath]);
 
   const emojiStyle = useAnimatedStyle(() => ({
     transform: [
@@ -67,10 +69,16 @@ function TabIcon({ label, focused }: { label: string; focused: boolean }) {
       <Animated.View style={[styles.inkDot, dotStyle]} />
     </View>
   );
-}
+});
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+
+  const renderIndexIcon = React.useCallback(({ focused }: { focused: boolean }) => <TabIcon label="启扉" focused={focused} />, []);
+  const renderChatIcon = React.useCallback(({ focused }: { focused: boolean }) => <TabIcon label="问讯" focused={focused} />, []);
+  const renderExploreIcon = React.useCallback(({ focused }: { focused: boolean }) => <TabIcon label="云游" focused={focused} />, []);
+  const renderMemoryIcon = React.useCallback(({ focused }: { focused: boolean }) => <TabIcon label="记忆" focused={focused} />, []);
+  const renderProfileIcon = React.useCallback(({ focused }: { focused: boolean }) => <TabIcon label="我的" focused={focused} />, []);
 
   return (
     <Tabs
@@ -87,28 +95,35 @@ export default function TabLayout() {
         name="index"
         options={{
           title: '启扉',
-          tabBarIcon: ({ focused }) => <TabIcon label="启扉" focused={focused} />,
+          tabBarIcon: renderIndexIcon,
         }}
       />
       <Tabs.Screen
         name="chat"
         options={{
           title: '问讯',
-          tabBarIcon: ({ focused }) => <TabIcon label="问讯" focused={focused} />,
+          tabBarIcon: renderChatIcon,
         }}
       />
       <Tabs.Screen
         name="explore"
         options={{
           title: '云游',
-          tabBarIcon: ({ focused }) => <TabIcon label="云游" focused={focused} />,
+          tabBarIcon: renderExploreIcon,
         }}
       />
       <Tabs.Screen
         name="memory"
         options={{
           title: '记忆',
-          tabBarIcon: ({ focused }) => <TabIcon label="记忆" focused={focused} />,
+          tabBarIcon: renderMemoryIcon,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: '我的',
+          tabBarIcon: renderProfileIcon,
         }}
       />
     </Tabs>
