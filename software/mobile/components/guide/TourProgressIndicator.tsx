@@ -52,6 +52,7 @@ export const TourProgressIndicator: React.FC<Props> = ({
 
   const percentage = (progress.completed / progress.total) * 100;
   const currentSpotName = currentRoute.spots[progress.current - 1]?.name;
+  const nextSpotName = currentRoute.spots[progress.current]?.name;
 
   // 自动滚动到当前景点（居中显示）
   useEffect(() => {
@@ -76,6 +77,17 @@ export const TourProgressIndicator: React.FC<Props> = ({
               : status === 'paused'
                 ? '⏸ 已暂停'
                 : '待导览';
+
+  const guideLine =
+    status === 'completed'
+      ? '这条路线已经走完了，我可以帮你整理成一段旅行记忆。'
+      : status === 'narrating'
+        ? `我正在讲 ${currentSpotName || currentRoute.name}，你可以边看边听。`
+        : status === 'paused'
+          ? '我先安静等你，想继续时点一下就能接上路线。'
+          : nextSpotName
+            ? `我在前面领路，下一站去 ${nextSpotName}。`
+            : `我陪你看 ${currentSpotName || currentRoute.name}，需要讲解就叫我。`;
 
   const toggleCollapse = () => {
     if (onToggleCollapse) {
@@ -114,6 +126,34 @@ export const TourProgressIndicator: React.FC<Props> = ({
               <View style={[styles.progressFill, { width: `${percentage}%` }]} />
             </View>
           </View>
+
+          {!simplified && (
+            <View style={styles.guidePanel}>
+              <View style={styles.guideAvatarWrap}>
+                <View style={styles.guideAvatarGlow} />
+                <View style={styles.guideAvatar}>
+                  <View style={styles.guideHair} />
+                  <View style={styles.guideFace}>
+                    <View style={styles.guideEyeRow}>
+                      <View style={styles.guideEye} />
+                      <View style={styles.guideEye} />
+                    </View>
+                    <View style={styles.guideMouth} />
+                  </View>
+                </View>
+                <Text style={styles.guideName}>小灵</Text>
+              </View>
+              <View style={styles.guideBubble}>
+                <View style={styles.guideBubbleHeader}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.guideBadge}>数字人导览在线</Text>
+                </View>
+                <Text style={styles.guideLine} numberOfLines={2}>
+                  {guideLine}
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* 当前位置 */}
           {currentSpotName && (
@@ -288,6 +328,113 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: Colors.primary,
     borderRadius: 3,
+  },
+
+  guidePanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+    padding: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(42, 37, 32, 0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(106, 156, 137, 0.16)',
+  },
+  guideAvatarWrap: {
+    width: 62,
+    alignItems: 'center',
+  },
+  guideAvatarGlow: {
+    position: 'absolute',
+    top: 3,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(106, 156, 137, 0.18)',
+  },
+  guideAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: Colors.primaryBg,
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  guideHair: {
+    height: 16,
+    backgroundColor: Colors.ink,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+  },
+  guideFace: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F7D8C5',
+  },
+  guideEyeRow: {
+    flexDirection: 'row',
+    gap: 9,
+    marginBottom: 6,
+  },
+  guideEye: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.ink,
+  },
+  guideMouth: {
+    width: 14,
+    height: 5,
+    borderBottomWidth: 2,
+    borderBottomColor: Colors.accent,
+    borderRadius: 8,
+  },
+  guideName: {
+    marginTop: 4,
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  guideBubble: {
+    flex: 1,
+    minHeight: 54,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.82)',
+  },
+  guideBubbleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: Colors.success,
+  },
+  guideBadge: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.primaryDark,
+    letterSpacing: 1,
+  },
+  guideLine: {
+    fontSize: 12,
+    color: Colors.gray700,
+    lineHeight: 17,
+    fontWeight: '600',
   },
 
   currentSpot: {
