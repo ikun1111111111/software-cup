@@ -7,7 +7,9 @@ export interface MemoryGraphCandidate {
   title: string;
   content: string;
   spotId?: string;
+  spotName?: string;
   routeId?: string;
+  routeName?: string;
   sourceType: string;
   sourcePage: string;
   createdAt: string;
@@ -40,7 +42,9 @@ function toCandidate(event: GuideMemoryEvent): MemoryGraphCandidate | null {
     title: event.title,
     content,
     spotId: event.stopId,
+    spotName: typeof event.metadata?.spot_name === 'string' ? event.metadata.spot_name : undefined,
     routeId: event.routeId,
+    routeName: typeof event.metadata?.route_name === 'string' ? event.metadata.route_name : undefined,
     sourceType,
     sourcePage: typeof event.metadata?.source_page === 'string'
       ? event.metadata.source_page
