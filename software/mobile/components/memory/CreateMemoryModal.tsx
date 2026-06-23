@@ -9,23 +9,25 @@ import { type Spot } from '@/api/spots';
 import InlineModal from '@/components/ui/InlineModal';
 import { MOOD_META, MOOD_OPTIONS } from './constants';
 
-export default function CreateMemoryModal({ visible, onClose, onSubmit, spots, loading, initialSpotName }: {
+export default function CreateMemoryModal({ visible, onClose, onSubmit, spots, loading, initialSpotName, initialInput }: {
   visible: boolean;
   onClose: () => void;
   onSubmit: (data: { user_input: string; spot_name?: string; mood_tag?: string }) => void;
   spots: Spot[];
   loading: boolean;
   initialSpotName?: string;
+  initialInput?: string;
 }) {
   const [input, setInput] = useState('');
   const [selectedSpot, setSelectedSpot] = useState<string | undefined>();
   const [selectedMood, setSelectedMood] = useState<string | undefined>();
 
   useEffect(() => {
-    if (visible && initialSpotName) {
+    if (visible) {
       setSelectedSpot(initialSpotName);
+      setInput(initialInput || '');
     }
-  }, [visible, initialSpotName]);
+  }, [visible, initialSpotName, initialInput]);
 
   const handleSubmit = () => {
     if (!input.trim()) return;

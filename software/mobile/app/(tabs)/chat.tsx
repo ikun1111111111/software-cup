@@ -169,6 +169,32 @@ export default function ChatPage() {
     speakWithDriver(replyText, emotion);
   }, [speakWithDriver]);
 
+  const recordQuestionMemory = useCallback((
+    question: string,
+    answer: string,
+    answerSource: string,
+    extraMetadata: Record<string, any> = {},
+  ) => {
+    const q = question.trim();
+    const a = answer.trim();
+    if (!q || !a) return;
+
+    tourActions.createMemoryEvent({
+      type: 'ask',
+      routeId: tourState.currentRoute?.id,
+      stopId: tourState.currentSpot?.id,
+      title: `问小灵：${q.slice(0, 18)}`,
+      content: `问：${q}\n答：${a}`,
+      metadata: {
+        source_page: 'chat',
+        route_name: tourState.currentRoute?.name,
+        spot_name: tourState.currentSpot?.name,
+        answer_source: answerSource,
+        ...extraMetadata,
+      },
+    });
+  }, [tourActions, tourState.currentRoute, tourState.currentSpot]);
+
   const applyOfflineAnswer = useCallback((assistantId: string, question: string) => {
     const fallback = getOfflineFallbackAnswer(question);
     updateMessage(assistantId, fallback.displayAnswer);
@@ -185,8 +211,11 @@ export default function ChatPage() {
       latency_ms: latencyMs,
       source_label: fallback.sourceLabel,
     });
+    recordQuestionMemory(question, fallback.answer, 'offline_fallback', {
+      source_label: fallback.sourceLabel,
+    });
     playReply(fallback.answer, fallback.emotion);
-  }, [playReply, setStreaming, updateMessage, updateMessageStatus]);
+  }, [playReply, recordQuestionMemory, setStreaming, updateMessage, updateMessageStatus]);
 
   const { connect } = useSSE({
     onMessage: useCallback((msg: any) => {
@@ -208,6 +237,9 @@ export default function ChatPage() {
           latency_ms: currentQuestionStartedAtRef.current ? Date.now() - currentQuestionStartedAtRef.current : undefined,
           emotion: msg.data?.emotion,
         });
+        recordQuestionMemory(currentQuestionRef.current, answer, msg.event, {
+          emotion: msg.data?.emotion,
+        });
         currentMsgIdRef.current = '';
         currentQuestionRef.current = '';
         currentQuestionStartedAtRef.current = 0;
@@ -225,6 +257,9 @@ export default function ChatPage() {
           latency_ms: currentQuestionStartedAtRef.current ? Date.now() - currentQuestionStartedAtRef.current : undefined,
           emotion: msg.data?.emotion,
         });
+        recordQuestionMemory(currentQuestionRef.current, answer, 'backend_done', {
+          emotion: msg.data?.emotion,
+        });
         currentMsgIdRef.current = '';
         currentQuestionRef.current = '';
         currentQuestionStartedAtRef.current = 0;
@@ -232,7 +267,7 @@ export default function ChatPage() {
       } else if (msg.event === 'error') {
         applyOfflineAnswer(id, currentQuestionRef.current);
       }
-    }, [applyOfflineAnswer, setStreaming, updateMessage, updateMessageStatus, playReply]),
+    }, [applyOfflineAnswer, setStreaming, updateMessage, updateMessageStatus, playReply, recordQuestionMemory]),
     onError: useCallback(() => {
       const id = currentMsgIdRef.current;
       if (id) {
@@ -288,6 +323,10 @@ export default function ChatPage() {
         status: 'sent',
         source: 'offline',
       });
+      recordQuestionMemory(trimmed, localAnswer.answer, 'local_demo', {
+        source_label: localAnswer.sourceLabel,
+        category: localAnswer.category,
+      });
       playReply(localAnswer.answer, localAnswer.emotion);
       return;
     }
@@ -318,6 +357,7 @@ export default function ChatPage() {
     getHistory,
     isStreaming,
     playReply,
+    recordQuestionMemory,
     setCurrentSession,
     setStreaming,
   ]);

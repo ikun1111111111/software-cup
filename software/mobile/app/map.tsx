@@ -32,7 +32,7 @@ import type { Spot } from '@/api/spots';
 const IS_WEB = Platform.OS === 'web';
 const CLASSIC_ROUTE = LINGSHAN_ROUTES[0];
 const WALK_METERS_PER_MINUTE = 80;
-const COORDINATE_STATUS = '演示点位';
+const COORDINATE_STATUS = '地图校准';
 
 type MapStatus = 'loading' | 'ready' | 'error';
 

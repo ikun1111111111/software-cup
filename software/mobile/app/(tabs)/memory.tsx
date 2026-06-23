@@ -46,7 +46,9 @@ import { MemoryCard } from '@/components/memory/MemoryCard';
 import { InkTimelineNode } from '@/components/memory/InkTimelineNode';
 import { EmptyState } from '@/components/memory/EmptyState';
 import { TodayReviewCard } from '@/components/memory/TodayReviewCard';
+import { MemoryGraphPanel } from '@/components/memory/MemoryGraphPanel';
 import { MemoryPageSkeleton } from '@/components/ui/SkeletonLoader';
+import { buildMemoryGraphCandidates, type MemoryGraphCandidate } from '@/utils/memoryGraph';
 
 const MemoryMapView = lazy(() =>
   import('@/components/memory/MemoryMapView').then((module) => ({
@@ -93,6 +95,7 @@ export default function MemoryPage() {
   const [todayDismissed, setTodayDismissed] = useState(false);
   const [showCapsuleModal, setShowCapsuleModal] = useState(false);
   const [capsuleLoading, setCapsuleLoading] = useState(false);
+  const [selectedCandidate, setSelectedCandidate] = useState<MemoryGraphCandidate | null>(null);
 
   const loadData = useCallback(async (forceRefresh = false) => {
     try {
@@ -261,6 +264,18 @@ export default function MemoryPage() {
       await createMemory({
         session_id: SESSION_ID,
         ...data,
+        spot_name: data.spot_name ?? selectedCandidate?.spotName,
+        spot_id: selectedCandidate?.spotId,
+        source_type: selectedCandidate?.sourceType,
+        metadata_json: selectedCandidate ? {
+          source_event_id: selectedCandidate.eventId,
+          event_type: selectedCandidate.eventType,
+          source_page: selectedCandidate.sourcePage,
+          route_id: selectedCandidate.routeId,
+          route_name: selectedCandidate.routeName,
+          spot_id: selectedCandidate.spotId,
+          spot_name: selectedCandidate.spotName,
+        } : undefined,
       });
       void trackMobileEvent('memory_created', {
         spot_name: data.spot_name,
@@ -269,8 +284,9 @@ export default function MemoryPage() {
         source_page: 'memory',
       }, SESSION_ID);
       void flushMobileEvents();
-      recordMemoryCreated(data.spot_name);
+      recordMemoryCreated(data.spot_name ?? selectedCandidate?.spotName);
       setShowCreateModal(false);
+      setSelectedCandidate(null);
       if (tourState.pendingCheckin) {
         tourActions.clearPendingCheckin();
       }
@@ -281,7 +297,7 @@ export default function MemoryPage() {
     } finally {
       setCreateLoading(false);
     }
-  }, [loadData, recordMemoryCreated, tourState.pendingCheckin, tourActions.clearPendingCheckin]);
+  }, [loadData, recordMemoryCreated, selectedCandidate, tourState.pendingCheckin, tourActions.clearPendingCheckin]);
 
   const handleCreateCapsule = useCallback(async (data: {
     title: string;
@@ -343,6 +359,14 @@ export default function MemoryPage() {
     () => profile?.visited_count ?? new Set(memories.filter((m) => m.spot_name).map((m) => m.spot_name)).size,
     [memories, profile],
   );
+  const memoryGraphCandidates = useMemo(
+    () => buildMemoryGraphCandidates(tourState.memoryEvents, memories),
+    [memories, tourState.memoryEvents],
+  );
+  const handleEnrollCandidate = useCallback((candidate: MemoryGraphCandidate) => {
+    setSelectedCandidate(candidate);
+    setShowCreateModal(true);
+  }, []);
   const listMemories = viewMode === 'timeline' && !loading && memories.length > 0 ? memories : [];
 
   return (
@@ -533,6 +557,11 @@ export default function MemoryPage() {
               />
             )}
 
+            <MemoryGraphPanel
+              candidates={memoryGraphCandidates}
+              onEnroll={handleEnrollCandidate}
+            />
+
             {memories.length === 0 ? (
               <EmptyState
                 onGenerate={handleGenerate}
@@ -660,6 +689,7 @@ export default function MemoryPage() {
             visible={showCreateModal}
             onClose={() => {
               setShowCreateModal(false);
+              setSelectedCandidate(null);
               if (tourState.pendingCheckin) {
                 tourActions.clearPendingCheckin();
               }
@@ -667,7 +697,8 @@ export default function MemoryPage() {
             onSubmit={handleCreateMemory}
             spots={spots}
             loading={createLoading}
-            initialSpotName={tourState.pendingCheckin?.spotName}
+            initialSpotName={selectedCandidate?.spotName ?? tourState.pendingCheckin?.spotName}
+            initialInput={selectedCandidate?.content}
           />
         </Suspense>
       )}
