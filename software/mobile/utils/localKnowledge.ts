@@ -1,4 +1,5 @@
 import type { Emotion } from '@/components/vrm/VRMTypes';
+import { TRAVEL_TIPS } from '@/data/travelTips';
 
 export interface LocalKnowledgeEntry {
   id: string;
@@ -24,6 +25,11 @@ export interface LocalDemoAnswer {
   emotion: Emotion;
   category: LocalKnowledgeEntry['category'];
   score: number;
+}
+
+export interface LocalDemoAnswerContext {
+  spotId?: string;
+  spotName?: string;
 }
 
 const DEFAULT_SOURCE_LABEL = '灵山胜境资料包';
@@ -275,13 +281,64 @@ const LOCAL_KNOWLEDGE: LocalKnowledgeEntry[] = [
 ];
 
 const PUNCTUATION = /[\s,，.。?？!！:：;；"'“”‘’()（）[\]【】《》、-]/g;
+const BEST_TIME_INTENT = /(最佳|最好|适合|推荐|建议).*(游览|参观|去|时间|时段|时候)|(游览|参观).*(时间|时段|时候)/;
+const DURATION_INTENT = /(游览|参观|停留|逛).*(多久|多长|时长)|(多久|多长时间|几小时)/;
+const TIPS_INTENT = /(注意|提醒|攻略|建议|小贴士|要点)/;
 
 function normalizeText(text: string): string {
   return text.toLowerCase().replace(PUNCTUATION, '');
 }
 
-function formatDisplayAnswer(answer: string, sourceLabel: string): string {
-  return `${answer}\n\n来源：${sourceLabel}`;
+function formatDisplayAnswer(answer: string): string {
+  return answer;
+}
+
+function getSpotContextAnswer(question: string, context?: LocalDemoAnswerContext): LocalDemoAnswer | null {
+  if (!context?.spotId) return null;
+  const tips = TRAVEL_TIPS[context.spotId];
+  if (!tips) return null;
+
+  const spotName = context.spotName || '这一站';
+  if (DURATION_INTENT.test(question) && tips.duration) {
+    const answer = `${spotName}建议游览${tips.duration}。${tips.bestTime ? `如果安排行程，${tips.bestTime}更合适。` : ''}`;
+    return {
+      answer,
+      displayAnswer: formatDisplayAnswer(answer),
+      source: 'local-demo',
+      sourceLabel: '景点详情游览提示',
+      emotion: 'neutral',
+      category: 'route',
+      score: 12,
+    };
+  }
+
+  if (BEST_TIME_INTENT.test(question) && tips.bestTime) {
+    const answer = `${spotName}的最佳游览时间是${tips.bestTime}。${tips.duration ? `建议停留${tips.duration}。` : ''}`;
+    return {
+      answer,
+      displayAnswer: formatDisplayAnswer(answer),
+      source: 'local-demo',
+      sourceLabel: '景点详情游览提示',
+      emotion: 'happy',
+      category: 'service',
+      score: 12,
+    };
+  }
+
+  if (TIPS_INTENT.test(question) && tips.tips?.length) {
+    const answer = `${spotName}游览建议：${tips.tips.join('；')}。`;
+    return {
+      answer,
+      displayAnswer: formatDisplayAnswer(answer),
+      source: 'local-demo',
+      sourceLabel: '景点详情游览提示',
+      emotion: 'thinking',
+      category: 'service',
+      score: 12,
+    };
+  }
+
+  return null;
 }
 
 function scoreEntry(normalizedQuestion: string, entry: LocalKnowledgeEntry): number {
@@ -318,7 +375,10 @@ export function findLocalKnowledgeAnswer(question: string): LocalKnowledgeMatch 
   return best && best.score >= 3 ? best : null;
 }
 
-export function getLocalDemoAnswer(question: string): LocalDemoAnswer | null {
+export function getLocalDemoAnswer(question: string, context?: LocalDemoAnswerContext): LocalDemoAnswer | null {
+  const contextAnswer = getSpotContextAnswer(question, context);
+  if (contextAnswer) return contextAnswer;
+
   const match = findLocalKnowledgeAnswer(question);
   if (!match) return null;
 
@@ -326,7 +386,7 @@ export function getLocalDemoAnswer(question: string): LocalDemoAnswer | null {
 
   return {
     answer: match.entry.answer,
-    displayAnswer: formatDisplayAnswer(match.entry.answer, sourceLabel),
+    displayAnswer: formatDisplayAnswer(match.entry.answer),
     source: 'local-demo' as const,
     sourceLabel,
     emotion: match.entry.emotion ?? 'neutral',
@@ -335,8 +395,8 @@ export function getLocalDemoAnswer(question: string): LocalDemoAnswer | null {
   };
 }
 
-export function getOfflineFallbackAnswer(question: string): LocalDemoAnswer {
-  const localAnswer = getLocalDemoAnswer(question);
+export function getOfflineFallbackAnswer(question: string, context?: LocalDemoAnswerContext): LocalDemoAnswer {
+  const localAnswer = getLocalDemoAnswer(question, context);
   if (localAnswer) return localAnswer;
 
   const sourceLabel = '移动端本地演示知识库';
@@ -344,7 +404,7 @@ export function getOfflineFallbackAnswer(question: string): LocalDemoAnswer {
 
   return {
     answer,
-    displayAnswer: formatDisplayAnswer(answer, sourceLabel),
+    displayAnswer: formatDisplayAnswer(answer),
     source: 'local-demo' as const,
     sourceLabel,
     emotion: 'thinking' as Emotion,

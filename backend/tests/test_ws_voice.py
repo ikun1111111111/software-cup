@@ -10,6 +10,26 @@ from app.main import app
 client = TestClient(app)
 
 
+def _mock_session_ctx():
+    mock_db = MagicMock()
+    mock_db.commit = AsyncMock()
+    mock_db.rollback = AsyncMock()
+    mock_session_ctx = MagicMock()
+    mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+    return mock_session_ctx
+
+
+def _chat_result(answer: str, source: str = "faq") -> dict:
+    return {
+        "answer": answer,
+        "source": source,
+        "chunks": [{"text": answer, "score": 1.0}],
+        "sentiment_score": 0.8,
+        "sentiment_label": "positive",
+    }
+
+
 class TestWebSocketVoice:
     """Test WebSocket voice message flow via TestClient."""
 
@@ -20,16 +40,15 @@ class TestWebSocketVoice:
 
         with patch("app.api.ws.transcribe", new_callable=AsyncMock, return_value="灵山大佛多高？"), \
              patch("app.api.ws.synthesize_cached", new_callable=AsyncMock) as mock_tts, \
-             patch("app.api.ws.search_faq", new_callable=AsyncMock) as mock_faq:
+             patch("app.api.ws.process_chat", new_callable=AsyncMock) as mock_chat, \
+             patch("app.api.ws.finalize_chat", new_callable=AsyncMock), \
+             patch("app.api.ws.async_session", return_value=_mock_session_ctx()):
 
             mock_tts.return_value = MagicMock(
                 audio_bytes=b"fake_audio_out",
                 phoneme_timestamps=[{"phoneme": "灵", "start": 0.0, "end": 0.1}],
             )
-            mock_faq.return_value = {
-                "answer": "灵山大佛高88米",
-                "faq_id": 3,
-            }
+            mock_chat.return_value = _chat_result("灵山大佛高88米")
 
             with client.websocket_connect("/ws/chat") as ws:
                 ws.send_json({
@@ -101,9 +120,11 @@ class TestWebSocketVoice:
         fake_b64 = base64.b64encode(b"\x00").decode("utf-8")
         with patch("app.api.ws.transcribe", new_callable=AsyncMock, return_value="多高？"), \
              patch("app.api.ws.synthesize_cached", side_effect=Exception("TTS down")) as _, \
-             patch("app.api.ws.search_faq", new_callable=AsyncMock) as mock_faq:
+             patch("app.api.ws.process_chat", new_callable=AsyncMock) as mock_chat, \
+             patch("app.api.ws.finalize_chat", new_callable=AsyncMock), \
+             patch("app.api.ws.async_session", return_value=_mock_session_ctx()):
 
-            mock_faq.return_value = {"answer": "88米", "faq_id": 1}
+            mock_chat.return_value = _chat_result("88米")
 
             with client.websocket_connect("/ws/chat") as ws:
                 ws.send_json({
@@ -119,9 +140,11 @@ class TestWebSocketVoice:
 
     def test_text_message_via_ws(self):
         """Text message via WebSocket should work."""
-        with patch("app.api.ws.search_faq", new_callable=AsyncMock) as mock_faq:
+        with patch("app.api.ws.process_chat", new_callable=AsyncMock) as mock_chat, \
+             patch("app.api.ws.finalize_chat", new_callable=AsyncMock), \
+             patch("app.api.ws.async_session", return_value=_mock_session_ctx()):
 
-            mock_faq.return_value = {"answer": "无锡", "faq_id": 2}
+            mock_chat.return_value = _chat_result("无锡")
 
             with client.websocket_connect("/ws/chat") as ws:
                 ws.send_json({

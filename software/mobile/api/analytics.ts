@@ -12,7 +12,8 @@ export type MobileTourEventName =
   | 'narration_played'
   | 'question_asked'
   | 'route_completed'
-  | 'memory_created';
+  | 'memory_created'
+  | 'feedback_submitted';
 
 export interface MobileTourEventPayload {
   session_id: string;

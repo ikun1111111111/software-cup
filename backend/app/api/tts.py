@@ -81,6 +81,7 @@ async def tts_cache(request: TTSCacheRequest):
         return {
             "cached": True,
             "audio_base64": base64.b64encode(result.audio_bytes).decode("utf-8"),
+            "audio_format": result.audio_format,
             "duration_ms": result.duration_ms,
             "phonemes": result.phoneme_timestamps,
         }

@@ -15,6 +15,7 @@ from app.services.memory_service import (
     get_latest_summary,
     create_memory_from_input,
 )
+from app.services.session_stats_service import get_session_stats
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/memory", tags=["memory"])
@@ -31,6 +32,9 @@ class MemoryOut(BaseModel):
     source_type: str
     mood_tag: str | None = None
     metadata_json: dict | None = None
+    photo_url: str | None = None
+    voice_url: str | None = None
+    voice_duration: int | None = None
     is_capsule: bool = False
     capsule_unlock_at: str | None = None
     capsule_content: str | None = None
@@ -72,7 +76,13 @@ class CreateMemoryRequest(BaseModel):
     session_id: str
     user_input: str
     spot_name: str | None = None
+    spot_id: str | None = None
+    source_type: str | None = None
     mood_tag: str | None = None
+    metadata_json: dict | None = None
+    photo_url: str | None = None
+    voice_url: str | None = None
+    voice_duration: int | None = None
 
 
 class CreateCapsuleRequest(BaseModel):
@@ -96,6 +106,9 @@ def _serialize_memory(m) -> dict:
         "source_type": m.source_type,
         "mood_tag": m.mood_tag,
         "metadata_json": m.metadata_json,
+        "photo_url": getattr(m, "photo_url", None),
+        "voice_url": getattr(m, "voice_url", None),
+        "voice_duration": getattr(m, "voice_duration", None),
         "is_capsule": getattr(m, "is_capsule", False),
         "capsule_unlock_at": m.capsule_unlock_at.isoformat() if getattr(m, "capsule_unlock_at", None) else None,
         "capsule_content": m.capsule_content if getattr(m, "is_capsule", False) and m.capsule_unlock_at and m.capsule_unlock_at <= datetime.utcnow() else None,
@@ -126,6 +139,27 @@ async def list_memories(
     """获取指定会话的所有旅行记忆。"""
     memories = await get_memories(session_id, db)
     return [_serialize_memory(m) for m in memories]
+
+
+@router.get("/session-stats")
+async def session_stats(
+    session_id: str = Query(..., description="游客会话ID"),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取指定会话的实时统计数据和可入册线索。"""
+    if not session_id or not session_id.strip():
+        raise HTTPException(status_code=400, detail="session_id 不能为空")
+
+    try:
+        stats = await get_session_stats(session_id.strip(), db)
+    except Exception as e:
+        logger.error("Session stats failed: %s", e)
+        raise HTTPException(status_code=500, detail="统计数据暂时不可用")
+
+    # Fill memory_count from actual memory list
+    memories = await get_memories(session_id.strip(), db)
+    stats["memory_count"] = len(memories)
+    return stats
 
 
 @router.post("/generate")
@@ -216,9 +250,19 @@ async def create_memory(
             session_id=request.session_id.strip(),
             user_input=request.user_input.strip(),
             spot_name=request.spot_name,
+            spot_id=request.spot_id,
+            source_type=request.source_type,
             mood_tag=request.mood_tag,
+            metadata_json=request.metadata_json,
             db=db,
         )
+        # 更新照片和语音字段
+        if request.photo_url or request.voice_url:
+            memory.photo_url = request.photo_url
+            memory.voice_url = request.voice_url
+            memory.voice_duration = request.voice_duration
+            await db.commit()
+            await db.refresh(memory)
     except Exception as e:
         logger.error("Memory creation failed: %s", e)
         raise HTTPException(status_code=500, detail="记忆生成服务暂时不可用")

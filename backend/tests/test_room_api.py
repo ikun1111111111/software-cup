@@ -1,5 +1,6 @@
 """Tests for room API — create, join, add-spot, sync endpoints."""
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch, MagicMock
 from httpx import AsyncClient, ASGITransport
 
@@ -106,6 +107,65 @@ class TestAddSpotAPI:
                     json={"spot_name": "灵山大佛"},
                 )
                 assert resp.status_code == 400
+
+
+class TestRoomRouteAPI:
+    """PUT /api/room/{id}/route keeps canonical route order."""
+
+    @pytest.mark.asyncio
+    async def test_set_room_route_uses_route_spot_order(self, mock_room_redis):
+        mock, storage = mock_room_redis
+
+        class RouteResult:
+            def scalar_one_or_none(self):
+                return SimpleNamespace(
+                    id="route-a",
+                    name="经典路线",
+                    spot_order=["spot-a", "spot-b", "spot-c"],
+                    duration="2小时",
+                    route_type="history",
+                )
+
+        class SpotResult:
+            def all(self):
+                return [
+                    SimpleNamespace(id="spot-a", name="第一站"),
+                    SimpleNamespace(id="spot-b", name="第二站"),
+                    SimpleNamespace(id="spot-c", name="第三站"),
+                ]
+
+        class FakeSession:
+            def __init__(self):
+                self.calls = 0
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def execute(self, stmt):
+                self.calls += 1
+                return RouteResult() if self.calls == 1 else SpotResult()
+
+        with (
+            patch("app.services.room_service.get_redis", new=AsyncMock(return_value=mock)),
+            patch("app.api.room.async_session", new=lambda: FakeSession()),
+        ):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                create_resp = await client.post("/api/room/create", json={"creator_name": "队长"})
+                room_id = create_resp.json()["room_id"]
+
+                route_resp = await client.put(
+                    f"/api/room/{room_id}/route",
+                    json={"route_id": "route-a"},
+                )
+
+                assert route_resp.status_code == 200
+                active_route = route_resp.json()["active_route"]
+                assert active_route["route_id"] == "route-a"
+                assert active_route["spot_order"] == ["spot-a", "spot-b", "spot-c"]
 
 
 class TestVisionSyncAPI:

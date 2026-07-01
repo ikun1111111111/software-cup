@@ -21,6 +21,7 @@ import RouteCard from './RouteCard';
 import NarrationSheet, { NarrationContent } from './NarrationSheet';
 import GuideSettings, { GuidePreferences } from './GuideSettings';
 import { recordRejection, isInCooldown } from '@/utils/rejectionCooldown';
+import { estimateSpeechDuration } from '@/utils/digitalHumanDriver';
 
 type GuideState = 'prompt' | 'speaking' | 'question' | 'idle' | 'dismissed' | 'route' | 'route-pending';
 
@@ -64,9 +65,9 @@ export const SmartGuide: React.FC = () => {
   // 后端推送讲解文本时，驱动 VRM 说话
   useEffect(() => {
     if (state.status === 'narrating' && narration?.text) {
-      VRMManager.speak(narration.text, detectEmotion(narration.text));
+      const dur = estimateSpeechDuration(narration.text);
+      VRMManager.speak(narration.text, detectEmotion(narration.text), dur);
       setGuideState('speaking');
-      const dur = Math.max(3000, narration.text.length * 150);
       setTimeout(() => {
         VRMManager.stopSpeaking();
         setGuideState('idle');
@@ -99,9 +100,9 @@ export const SmartGuide: React.FC = () => {
 
   const handleSpeak = useCallback(() => {
     if (!config) return;
-    VRMManager.speak(config.welcomeText, 'neutral');
+    const dur = estimateSpeechDuration(config.welcomeText);
+    VRMManager.speak(config.welcomeText, 'neutral', dur);
     setGuideState('speaking');
-    const dur = Math.max(3000, config.welcomeText.length * 150);
     setTimeout(() => {
       VRMManager.stopSpeaking();
       setGuideState('idle');

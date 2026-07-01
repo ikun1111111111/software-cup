@@ -5,10 +5,11 @@ import {
   ActivityIndicator, Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as Audio from 'expo-av';
+import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
+import { MemoryImage, MEMORY_IMAGES } from './MemoryVisual';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -50,12 +51,12 @@ interface Props {
 }
 
 const MOODS = [
-  { key: 'happy', emoji: '😊', label: '开心' },
-  { key: 'calm', emoji: '😌', label: '平静' },
-  { key: 'excited', emoji: '', label: '兴奋' },
-  { key: 'thoughtful', emoji: '🤔', label: '沉思' },
-  { key: 'peaceful', emoji: '🧘', label: '宁静' },
-  { key: 'touched', emoji: '🥹', label: '感动' },
+  { key: 'happy', label: '开心', emoji: '😊' },
+  { key: 'calm', label: '平静', emoji: '😌' },
+  { key: 'excited', label: '兴奋', emoji: '🤩' },
+  { key: 'thoughtful', label: '沉思', emoji: '🤔' },
+  { key: 'peaceful', label: '宁静', emoji: '🧘' },
+  { key: 'touched', label: '感动', emoji: '🥹' },
 ];
 
 const CAPSULE_DAYS = [7, 30, 90, 365];
@@ -79,7 +80,7 @@ export default function MemoryMomentModal({
   const [capsuleTitle, setCapsuleTitle] = useState('给未来的自己');
   const [capsuleDays, setCapsuleDays] = useState(30);
 
-  const recordingRef = useRef<any>(null);
+  const recordingRef = useRef<Audio.Recording | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(300)).current;
@@ -153,16 +154,16 @@ export default function MemoryMomentModal({
   // ─── Voice ───
   const startRecording = useCallback(async () => {
     try {
-      const { status } = await (Audio as any).requestPermissionsAsync();
+      const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') return;
 
-      await (Audio as any).setAudioModeAsync({
+      await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
       });
 
-      const { recording } = await (Audio as any).Recording.createAsync(
-        (Audio as any).RecordingOptionsPresets.HIGH_QUALITY,
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY,
       );
       recordingRef.current = recording;
       setRecording(true);
@@ -243,11 +244,11 @@ export default function MemoryMomentModal({
     }
   })();
 
-  const TABS: { key: MomentMode; icon: string; label: string }[] = [
-    { key: 'photo', icon: '📷', label: '拍照' },
-    { key: 'write', icon: '✍️', label: '感受' },
-    { key: 'voice', icon: '🎤', label: '语音' },
-    { key: 'capsule', icon: '', label: '胶囊' },
+  const TABS = [
+    { key: 'photo' as const, source: MEMORY_IMAGES.photo, fit: 'cover' as const, label: '拍照' },
+    { key: 'write' as const, source: MEMORY_IMAGES.write, fit: 'contain' as const, label: '感受' },
+    { key: 'voice' as const, source: MEMORY_IMAGES.chat, fit: 'cover' as const, label: '语音' },
+    { key: 'capsule' as const, source: MEMORY_IMAGES.capsule, fit: 'contain' as const, label: '胶囊' },
   ];
 
   if (!visible) return null;
@@ -288,7 +289,7 @@ export default function MemoryMomentModal({
                   haptic.impact();
                 }}
               >
-                <Text style={styles.tabIcon}>{tab.icon}</Text>
+                <MemoryImage source={tab.source} size={24} radius={8} fit={tab.fit} />
                 <Text style={[
                   styles.tabLabel,
                   mode === tab.key && styles.tabLabelActive,
@@ -323,7 +324,7 @@ export default function MemoryMomentModal({
                       ]}
                       onPress={handleTakePhoto}
                     >
-                      <Text style={styles.photoActionIcon}></Text>
+                      <MemoryImage source={MEMORY_IMAGES.photo} size={32} radius={10} fit="cover" />
                       <Text style={styles.photoActionText}>拍照</Text>
                     </Pressable>
                     <Pressable
@@ -333,7 +334,7 @@ export default function MemoryMomentModal({
                       ]}
                       onPress={handlePickPhoto}
                     >
-                      <Text style={styles.photoActionIcon}>🖼️</Text>
+                      <MemoryImage source={MEMORY_IMAGES.share} size={32} radius={10} fit="contain" />
                       <Text style={styles.photoActionText}>相册</Text>
                     </Pressable>
                   </View>
@@ -375,7 +376,7 @@ export default function MemoryMomentModal({
               <View style={styles.voiceArea}>
                 {recordedUri ? (
                   <View style={styles.voiceRecorded}>
-                    <Text style={styles.voiceRecordedIcon}></Text>
+                    <MemoryImage source={MEMORY_IMAGES.chat} size={30} radius={10} fit="cover" />
                     <Text style={styles.voiceRecordedText}>
                       录音完成 · {formatDuration(recordDuration)}
                     </Text>
@@ -408,7 +409,7 @@ export default function MemoryMomentModal({
                       onPress={recording ? stopRecording : startRecording}
                     >
                       <Text style={styles.recordBtnText}>
-                        {recording ? '⏹ 停止' : ' 开始录音'}
+                        {recording ? '停止' : '开始录音'}
                       </Text>
                     </Pressable>
                   </View>
@@ -491,7 +492,12 @@ export default function MemoryMomentModal({
                         haptic.impact();
                       }}
                     >
-                      <Text style={styles.moodEmoji}>{mood.emoji}</Text>
+                      <View style={[
+                        styles.moodEmojiBubble,
+                        selectedMood === mood.key && styles.moodEmojiBubbleActive,
+                      ]}>
+                        <Text style={styles.moodEmojiText}>{mood.emoji}</Text>
+                      </View>
                       <Text style={[
                         styles.moodLabel2,
                         selectedMood === mood.key && styles.moodLabel2Active,
@@ -520,7 +526,7 @@ export default function MemoryMomentModal({
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.submitBtnText}>
-                  {mode === 'capsule' ? ' 封存胶囊' : '✨ 记录此刻'}
+                  {mode === 'capsule' ? '封存胶囊' : '记录此刻'}
                 </Text>
               )}
             </Pressable>
@@ -859,7 +865,20 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
     backgroundColor: Colors.primaryBg,
   },
-  moodEmoji: { fontSize: 16 },
+  moodEmojiBubble: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    backgroundColor: 'rgba(255,255,255,0.86)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  moodEmojiBubbleActive: {
+    borderColor: Colors.primary,
+  },
+  moodEmojiText: { fontSize: 13, lineHeight: 16 },
   moodLabel2: {
     fontSize: 12,
     color: Colors.gray500,

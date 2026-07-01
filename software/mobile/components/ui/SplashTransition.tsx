@@ -12,7 +12,8 @@ interface Props {
   onFinish: () => void;
 }
 
-const DISPLAY_MS = 1500;
+const DISPLAY_MS = 260;
+const EXIT_FADE_MS = 220;
 
 /**
  * 简化版开场 — 静态展示品牌图 + 数字人图标 + 标题，2.5 秒后淡出进入主页
@@ -24,7 +25,7 @@ export function SplashTransition({ onFinish }: Props) {
   useEffect(() => {
     const timer = setTimeout(() => {
       setReady(true);
-      exitOpacity.value = withTiming(0, { duration: 400 }, (finished) => {
+      exitOpacity.value = withTiming(0, { duration: EXIT_FADE_MS }, (finished) => {
         if (finished) runOnJS(onFinish)();
       });
     }, DISPLAY_MS);
@@ -39,7 +40,7 @@ export function SplashTransition({ onFinish }: Props) {
     <Animated.View style={[styles.root, containerStyle]} pointerEvents={ready ? 'none' : 'auto'}>
       {/* 背景图 */}
       <Image
-        source={require('@/image/map-bg_20260616200026.png')}
+        source={require('@/image/map-bg-mobile.jpg')}
         style={StyleSheet.absoluteFill}
         contentFit="cover"
       />

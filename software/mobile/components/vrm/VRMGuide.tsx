@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet, ScrollView,
   Animated as RNAnimated, Dimensions,
@@ -14,6 +14,11 @@ import { matchPageGuide } from '@/config/pageGuide';
 import { API_BASE_URL } from '@/api/config';
 import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
 import { estimateSpeechDuration } from '@/utils/digitalHumanDriver';
+import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
+import {
+  buildDigitalHumanChatPayload,
+  buildDigitalHumanChatStreamUrl,
+} from '@/utils/aiChat';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -38,7 +43,7 @@ export const VRMGuide: React.FC = () => {
     speak: speakText,
     setExpression,
     playAction,
-  } = useDigitalHumanDriver('tts');
+  } = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const routeName = usePathname();
@@ -132,6 +137,11 @@ export const VRMGuide: React.FC = () => {
 
   const doSend = useCallback((text: string) => {
     if (!text.trim() || isStreaming) return;
+    const activeSessionId = currentSessionId ?? `demo_${Date.now()}`;
+    if (!currentSessionId) {
+      setCurrentSession(activeSessionId);
+    }
+
     addMessage({
       id: `msg_${Date.now()}`, role: 'user',
       content: text.trim(), timestamp: Date.now(), status: 'sent',
@@ -143,13 +153,13 @@ export const VRMGuide: React.FC = () => {
     setStreaming(true);
     setQuestionsAsked(q => q + 1);
 
-    connect(`${API_BASE_URL}/chat/stream`, {
-      session_id: currentSessionId,
-      question: text.trim(),
-      stream: true,
+    connect(buildDigitalHumanChatStreamUrl(API_BASE_URL), buildDigitalHumanChatPayload({
+      sessionId: activeSessionId,
+      question: text,
       history: getHistory(5),
-    });
-  }, [isStreaming, currentSessionId, addMessage, setStreaming, connect, getHistory]);
+      sourcePage: config?.pageId ?? 'vrm_guide',
+    }));
+  }, [isStreaming, currentSessionId, setCurrentSession, addMessage, setStreaming, connect, getHistory, config?.pageId]);
 
   // 璇磋瘽鍔ㄧ敾鏉?
   const soundAnim = useRef(new RNAnimated.Value(0)).current;

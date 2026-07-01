@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 
-from app.services.chat_service import process_chat, build_prompt
+from app.services.chat_service import process_chat, build_prompt, finalize_chat
 
 
 class TestBuildPrompt:
@@ -23,6 +23,14 @@ class TestBuildPrompt:
         messages = build_prompt("test", [])
         assert len(messages) == 2
         assert "游客问: test" in messages[1]["content"]
+
+    def test_build_prompt_with_spot_context(self):
+        messages = build_prompt(
+            "这里有什么故事？",
+            [{"text": "灵山大佛高88米"}],
+            spot_context={"spot_name": "灵山大佛"},
+        )
+        assert "游客当前在景点「灵山大佛」前提问" in messages[1]["content"]
 
 
 class TestProcessChat:

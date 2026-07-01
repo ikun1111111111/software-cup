@@ -33,6 +33,12 @@ export interface JourneySummary {
   created_at: string;
 }
 
+export interface GenerateMemoriesResult {
+  new_count: number;
+  total_count: number;
+  memories: TravelMemory[];
+}
+
 export async function listMemories(sessionId: string): Promise<TravelMemory[]> {
   const resp = await request.get<TravelMemory[]>('/memory/list', {
     params: { session_id: sessionId },
@@ -40,8 +46,8 @@ export async function listMemories(sessionId: string): Promise<TravelMemory[]> {
   return resp.data;
 }
 
-export async function generateMemories(sessionId: string) {
-  const resp = await request.post('/memory/generate', { session_id: sessionId });
+export async function generateMemories(sessionId: string): Promise<GenerateMemoriesResult> {
+  const resp = await request.post<GenerateMemoriesResult>('/memory/generate', { session_id: sessionId });
   return resp.data;
 }
 
@@ -132,6 +138,31 @@ export interface UserProfile {
   }>;
 }
 
+export interface SessionStatsCandidate {
+  eventId: string;
+  eventType: string;
+  title: string;
+  content: string;
+  spotName?: string | null;
+  spotId?: string | null;
+  createdAt: string;
+  sourceType: string;
+  sourcePage?: string | null;
+  routeId?: string | null;
+  routeName?: string | null;
+  metadata?: Record<string, any> | null;
+}
+
+export interface SessionStats {
+  session_id: string;
+  event_count: number;
+  narration_count: number;
+  question_count: number;
+  checkin_count: number;
+  memory_count: number;
+  candidates: SessionStatsCandidate[];
+}
+
 export async function getAchievements(sessionId: string): Promise<{
   achievements: Achievement[];
   unlocked_count: number;
@@ -145,6 +176,13 @@ export async function getAchievements(sessionId: string): Promise<{
 
 export async function getUserProfile(sessionId: string): Promise<UserProfile> {
   const resp = await request.get<UserProfile>('/puzzle/profile', {
+    params: { session_id: sessionId },
+  });
+  return resp.data;
+}
+
+export async function getSessionStats(sessionId: string): Promise<SessionStats> {
+  const resp = await request.get<SessionStats>('/memory/session-stats', {
     params: { session_id: sessionId },
   });
   return resp.data;

@@ -1,6 +1,5 @@
 """Analytics Dashboard API endpoints."""
 import logging
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -15,7 +14,9 @@ from app.core.analytics import (
     knowledge_stats,
     realtime_logs,
     heatmap_stats,
+    mobile_tour_summary,
 )
+from app.models.mobile_event import MobileTourEvent
 from app.tasks.report_task import generate_report_task, get_report_status
 from app.services.crowd_predict import get_crowd_prediction, get_best_time, get_crowd_alerts
 
@@ -106,6 +107,62 @@ class HeatmapItem(BaseModel):
 
 class HeatmapResponse(BaseModel):
     data: list[HeatmapItem]
+
+
+class MobileTourEventRequest(BaseModel):
+    session_id: str = Field(..., min_length=1, max_length=100)
+    event_name: str = Field(..., min_length=1, max_length=80)
+    route_id: str | None = None
+    route_name: str | None = None
+    spot_id: str | None = None
+    spot_name: str | None = None
+    source_page: str | None = None
+    duration_ms: int | None = Field(None, ge=0)
+    latency_ms: int | None = Field(None, ge=0)
+    completed: bool = False
+    preferences: dict | None = None
+    metadata: dict | None = None
+
+
+class MobileTourEventResponse(BaseModel):
+    id: int
+    status: str
+
+
+class MobileRouteSummaryItem(BaseModel):
+    route_id: str
+    route_name: str
+    starts: int
+    completions: int
+    completion_rate: float
+
+
+class MobileSpotSummaryItem(BaseModel):
+    spot_id: str
+    spot_name: str
+    event_count: int
+
+
+class MobileRecentEventItem(BaseModel):
+    session_id: str
+    event_name: str
+    route_name: str | None = None
+    spot_name: str | None = None
+    source_page: str | None = None
+    created_at: str | None = None
+
+
+class MobileTourSummaryResponse(BaseModel):
+    days: int
+    total_events: int
+    active_sessions: int
+    route_starts: int
+    route_completions: int
+    route_completion_rate: float
+    routes: list[MobileRouteSummaryItem]
+    hot_spots: list[MobileSpotSummaryItem]
+    preference_distribution: dict[str, int]
+    recent_events: list[MobileRecentEventItem]
 
 
 class ReportTriggerResponse(BaseModel):
@@ -322,3 +379,39 @@ async def get_heatmap(
     """Interaction heatmap by day-of-week and hour."""
     result = await heatmap_stats(db)
     return HeatmapResponse(data=result["data"])
+
+
+@router.post("/mobile-events", response_model=MobileTourEventResponse)
+async def create_mobile_tour_event(
+    request: MobileTourEventRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Record mobile guide lifecycle events for operations analytics."""
+    event = MobileTourEvent(
+        session_id=request.session_id,
+        event_name=request.event_name,
+        route_id=request.route_id,
+        route_name=request.route_name,
+        spot_id=request.spot_id,
+        spot_name=request.spot_name,
+        source_page=request.source_page,
+        duration_ms=request.duration_ms,
+        latency_ms=request.latency_ms,
+        completed=request.completed,
+        preferences_json=request.preferences,
+        metadata_json=request.metadata,
+    )
+    db.add(event)
+    await db.commit()
+    await db.refresh(event)
+    return {"id": event.id, "status": "ok"}
+
+
+@router.get("/mobile-tour-summary", response_model=MobileTourSummaryResponse)
+async def get_mobile_tour_summary(
+    days: int = Query(7, ge=1, le=90, description="统计天数"),
+    limit: int = Query(8, ge=1, le=50, description="榜单数量"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mobile guide operation summary: routes, hot spots and preferences."""
+    return await mobile_tour_summary(db, days=days, limit=limit)

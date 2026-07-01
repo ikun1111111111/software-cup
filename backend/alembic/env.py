@@ -11,14 +11,7 @@ from app.core.database import Base
 from app.core.config import get_settings
 
 # Import all models so Base.metadata is populated
-from app.models import (  # noqa: F401
-    KnowledgeDoc,
-    KnowledgeChunk,
-    FaqEntry,
-    InteractionLog,
-    AvatarConfig,
-    TouristProfile,
-)
+import app.models  # noqa: F401
 
 settings = get_settings()
 

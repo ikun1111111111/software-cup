@@ -1,32 +1,55 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated as RNAnimated,
   Image,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
-import Animated, { FadeInUp } from 'react-native-reanimated';
+import Reanimated, { FadeInUp } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
-import { VRMManager } from '@/components/vrm/VRMManager';
+import { VRMManager, type Emotion } from '@/components/vrm/VRMManager';
 import { VRMView } from '@/components/vrm/VRMView';
 // @ts-ignore - AmapView is platform-specific
 import AmapView from '@/components/map/AmapView';
-import type { AmapViewRef } from '@/components/map/AmapView.shared';
+import type { AmapViewRef, MapPoint } from '@/components/map/AmapView.shared';
 import { LINGSHAN_CENTER } from '@/components/map/AmapView.shared';
 import { useMapSpots } from '@/hooks/useMapSpots';
 import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
 import { SPOT_IMAGES, CAT_COLORS } from '@/constants/scenic';
 import { LINGSHAN_ROUTES } from '@/data/lingshanRoutes';
 import { useTour } from '@/context/TourContext';
 import { useTourGeolocation } from '@/hooks/useTourGeolocation';
+import { XIAOLING_MAP_COPY } from '@/utils/digitalHumanProduct';
+import { buildMapNarrationFeedback, buildMapSpotNarration } from '@/utils/mapNarration';
+import {
+  createMapActionState,
+  getRouteActionButton,
+  getRouteBlockedMessage,
+  isActionCoolingDown,
+  type MapActionState,
+  type MapActionStatus,
+  type MapGuideAction,
+} from '@/utils/mapGuideActions';
+import {
+  clampMapDockOffset,
+  getMapDockOffsets,
+  getNearestMapDockLevel,
+  getNextMapDockLevel,
+  type MapDockLevel,
+} from '@/utils/mapDock';
+import { runAfterNextPaint, type CancelScheduledTask } from '@/utils/scheduling';
 import type { Spot } from '@/api/spots';
 
 const IS_WEB = Platform.OS === 'web';
@@ -35,6 +58,12 @@ const WALK_METERS_PER_MINUTE = 80;
 const COORDINATE_STATUS = '地图校准';
 
 type MapStatus = 'loading' | 'ready' | 'error';
+type PendingMapCommand = {
+  type: 'route';
+  origin: MapPoint;
+  destination: MapPoint;
+  spotId: string;
+};
 
 function formatDistance(distance?: number | null) {
   if (distance == null) return '园内';
@@ -66,6 +95,16 @@ function toMapSpot(spot: {
   };
 }
 
+function toTourSpot(spot: Spot) {
+  return {
+    id: spot.id,
+    name: spot.name,
+    description: buildMapSpotNarration(spot),
+    latitude: spot.latitude ?? undefined,
+    longitude: spot.longitude ?? undefined,
+  };
+}
+
 function MapGuideAvatar({
   activeColor,
   fallbackLine,
@@ -73,13 +112,13 @@ function MapGuideAvatar({
   activeColor: string;
   fallbackLine: string;
 }) {
-  const driver = useDigitalHumanDriver('tts');
+  const driver = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE);
   const guideText = driver.subtitle || fallbackLine;
 
   return (
     <View style={styles.avatarModule} pointerEvents="none">
       <View style={styles.avatarSpeech}>
-        <Text style={styles.avatarSpeechLabel}>小灵导览中</Text>
+        <Text style={styles.avatarSpeechLabel}>{XIAOLING_MAP_COPY.avatarLabel}</Text>
         <Text style={styles.avatarSpeechText} numberOfLines={2}>
           {guideText}
         </Text>
@@ -106,10 +145,19 @@ function MapGuideAvatar({
 export default function MapGuidePage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { height: viewportHeight } = useWindowDimensions();
   const mapRef = useRef<AmapViewRef>(null);
   const spokenMapPromptRef = useRef<string | null>(null);
+  const pendingMapCommandRef = useRef<PendingMapCommand | null>(null);
+  const scheduledMapTasksRef = useRef<CancelScheduledTask[]>([]);
+  const dockTranslateY = useRef(new RNAnimated.Value(0)).current;
+  const dockOffsetRef = useRef(0);
+  const didSetInitialDockLevelRef = useRef(false);
   const [mapStatus, setMapStatus] = useState<MapStatus>('loading');
   const [mapError, setMapError] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [mapAction, setMapAction] = useState<MapActionState | null>(null);
+  const [dockLevel, setDockLevel] = useState<MapDockLevel>('collapsed');
 
   const {
     spots, loading, selectedSpot, navigating, userLocation,
@@ -172,31 +220,149 @@ export default function MapGuidePage() {
   );
 
   const displayDistance = activeNavigationDistance ?? tourDistanceInfo?.distance ?? null;
-  const guideLine = selectedSpot
-    ? selectedSpot.overview
-    : activeGuideSpot?.overview || routeCopy;
+  const currentNarrationText = tourState.narration?.spot.id === activeGuideSpot?.id
+    ? tourState.narration.text.trim() || null
+    : null;
+  const guideLine = currentNarrationText
+    ?? (selectedSpot
+      ? buildMapSpotNarration(selectedSpot)
+      : activeGuideSpot
+        ? buildMapSpotNarration(activeGuideSpot, routeCopy)
+        : routeCopy);
   const avatarFallbackLine = activeGuideSpot
     ? navigating
       ? `我正在带你前往${activeGuideSpot.name}，跟着路线走就好。`
       : `下一站看${activeGuideSpot.name}，我先把重点讲给你听。`
-    : '点选地图上的景点，我来讲解并带路。';
+    : XIAOLING_MAP_COPY.beaconFallback;
   const statusLabel = navigating
     ? '导航中'
-    : selectedSpot
-      ? '景点讲解'
-      : tourState.currentRoute
-        ? '路线导览'
-        : '自由探索';
+    : tourState.status === 'narrating'
+      ? '正在讲解'
+      : tourState.status === 'attraction'
+        ? '现场讲解'
+        : selectedSpot
+          ? '景点讲解'
+          : tourState.currentRoute
+            ? '路线导览'
+            : '自由探索';
+  const routeButtonState = useMemo(() => getRouteActionButton({
+    hasActiveSpot: !!activeGuideSpot,
+    hasCoordinates: !!activeGuideSpot && activeGuideSpot.latitude != null && activeGuideSpot.longitude != null,
+    isNavigating: navigating,
+    isMapReady: mapStatus === 'ready',
+  }), [activeGuideSpot, mapStatus, navigating]);
+  const primaryListenLabel = mapAction?.action === 'narrating' && mapAction.status === 'success'
+    ? '重播讲解'
+    : XIAOLING_MAP_COPY.primaryCta;
+  const demoListenLabel = mapAction?.action === 'narrating' && mapAction.status === 'success'
+    ? '重播讲解'
+    : XIAOLING_MAP_COPY.demoNarrationCta;
+  const demoArriveLabel = mapAction?.action === 'arrived' && mapAction.status === 'success'
+    ? '已到达'
+    : XIAOLING_MAP_COPY.demoArriveCta;
+  const demoPanelMessage = mapAction?.message ?? actionFeedback
+    ?? (tourState.error ? '在线导览暂未连接，已使用本地讲解继续。' : XIAOLING_MAP_COPY.demoText);
+  const dockOffsets = useMemo(() => getMapDockOffsets(viewportHeight), [viewportHeight]);
+
+  const snapDockToLevel = useCallback((level: MapDockLevel) => {
+    const nextOffset = dockOffsets[level];
+    dockOffsetRef.current = nextOffset;
+    setDockLevel(level);
+    RNAnimated.spring(dockTranslateY, {
+      toValue: nextOffset,
+      useNativeDriver: true,
+      damping: 18,
+      stiffness: 180,
+      mass: 0.8,
+    }).start();
+  }, [dockOffsets, dockTranslateY]);
+
+  const handleDockHandlePress = useCallback(() => {
+    snapDockToLevel(getNextMapDockLevel(dockLevel));
+  }, [dockLevel, snapDockToLevel]);
+
+  const dockPanResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gestureState) => (
+      Math.abs(gestureState.dy) > 6 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx)
+    ),
+    onPanResponderGrant: () => {
+      dockTranslateY.stopAnimation((value) => {
+        dockOffsetRef.current = clampMapDockOffset(value, dockOffsets);
+      });
+    },
+    onPanResponderMove: (_, gestureState) => {
+      const nextOffset = clampMapDockOffset(dockOffsetRef.current + gestureState.dy, dockOffsets);
+      dockTranslateY.setValue(nextOffset);
+    },
+    onPanResponderRelease: (_, gestureState) => {
+      const releaseOffset = clampMapDockOffset(
+        dockOffsetRef.current + gestureState.dy,
+        dockOffsets,
+      );
+      snapDockToLevel(getNearestMapDockLevel(releaseOffset, gestureState.vy, dockOffsets));
+    },
+    onPanResponderTerminate: (_, gestureState) => {
+      const releaseOffset = clampMapDockOffset(
+        dockOffsetRef.current + gestureState.dy,
+        dockOffsets,
+      );
+      snapDockToLevel(getNearestMapDockLevel(releaseOffset, gestureState.vy, dockOffsets));
+    },
+  }), [dockOffsets, dockTranslateY, snapDockToLevel]);
+
+  const setMapActionResult = useCallback((
+    action: MapGuideAction,
+    status: MapActionStatus,
+    message: string,
+    spotId?: string,
+  ) => {
+    setMapAction(createMapActionState({ action, status, message, spotId }));
+    setActionFeedback(message);
+  }, []);
+
+  const cancelScheduledMapTasks = useCallback(() => {
+    scheduledMapTasksRef.current.forEach((cancel) => cancel());
+    scheduledMapTasksRef.current = [];
+  }, []);
+
+  useEffect(() => cancelScheduledMapTasks, [cancelScheduledMapTasks]);
+
+  const scheduleMapSideEffect = useCallback((task: () => void) => {
+    let cancelTask: CancelScheduledTask = () => {};
+    cancelTask = runAfterNextPaint(() => {
+      scheduledMapTasksRef.current = scheduledMapTasksRef.current.filter((cancel) => cancel !== cancelTask);
+      task();
+    });
+    scheduledMapTasksRef.current.push(cancelTask);
+    return cancelTask;
+  }, []);
+
+  const speakMapFeedback = useCallback((text: string, emotion: Emotion = 'neutral') => {
+    scheduleMapSideEffect(() => {
+      VRMManager.stopSpeaking({ playQueued: false });
+      VRMManager.speak(text, emotion);
+    });
+  }, [scheduleMapSideEffect]);
+
+  const executeMapCommand = useCallback((command: PendingMapCommand) => {
+    mapRef.current?.drawRoute([command.origin, command.destination]);
+    mapRef.current?.setCenter(command.destination.latitude, command.destination.longitude, 16);
+  }, []);
 
   const handleMapReady = useCallback(() => {
     setMapStatus('ready');
     setMapError(null);
-  }, []);
+    if (pendingMapCommandRef.current) {
+      executeMapCommand(pendingMapCommandRef.current);
+      pendingMapCommandRef.current = null;
+    }
+  }, [executeMapCommand]);
 
   const handleMapError = useCallback((message: string) => {
     setMapStatus('error');
     setMapError(message);
-  }, []);
+    setMapActionResult('idle', 'error', '真实地图暂时不可用，讲解和路线提示仍可继续使用。');
+  }, [setMapActionResult]);
 
   useEffect(() => {
     VRMManager.setPageContext('map');
@@ -265,6 +431,22 @@ export default function MapGuidePage() {
     }
   }, [navigating]);
 
+  useEffect(() => {
+    if (!didSetInitialDockLevelRef.current) {
+      const initialOffset = dockOffsets.collapsed;
+      didSetInitialDockLevelRef.current = true;
+      dockOffsetRef.current = initialOffset;
+      dockTranslateY.setValue(initialOffset);
+      setDockLevel('collapsed');
+      return;
+    }
+    const nextLevel = getNearestMapDockLevel(dockOffsetRef.current, 0, dockOffsets);
+    const nextOffset = dockOffsets[nextLevel];
+    dockOffsetRef.current = nextOffset;
+    dockTranslateY.setValue(nextOffset);
+    setDockLevel(nextLevel);
+  }, [dockOffsets, dockTranslateY]);
+
   const centerSpotOnMap = useCallback((spot: Spot, zoom = 16) => {
     if (spot.latitude == null || spot.longitude == null) return;
     mapRef.current?.setCenter(spot.latitude, spot.longitude, zoom);
@@ -273,42 +455,77 @@ export default function MapGuidePage() {
   const handleSpotSelect = useCallback((spot: Spot) => {
     handleSpotTap(spot);
     centerSpotOnMap(spot);
+    setMapActionResult('idle', 'success', `已切到${spot.name}，可以开始讲解或让小灵指路。`, spot.id);
     const deviation = tourState.soloTour.enabled
       ? tourActions.handleSoloDeviation(spot.id, 'explain_current_spot')
       : null;
     if (deviation) {
-      VRMManager.speak(`${deviation.message}${spot.name}我也可以先讲给你听。`, 'neutral');
+      speakMapFeedback(`${deviation.message}${spot.name}我也可以先讲给你听。`, 'neutral');
       return;
     }
-    VRMManager.speak(`这里是${spot.name}。${spot.overview}`, 'thinking');
-  }, [centerSpotOnMap, handleSpotTap, tourActions, tourState.soloTour.enabled]);
+    speakMapFeedback(`这里是${spot.name}。${buildMapSpotNarration(spot)}`, 'thinking');
+  }, [centerSpotOnMap, handleSpotTap, setMapActionResult, speakMapFeedback, tourActions, tourState.soloTour.enabled]);
 
   const handleLocate = useCallback(() => {
     if (userLocation) {
-      mapRef.current?.setCenter(userLocation.latitude, userLocation.longitude, 17);
-      VRMManager.speak('我已经把地图移到你当前位置。', 'neutral');
+      mapRef.current?.setCenter(userLocation.latitude, userLocation.longitude, 17, 'wgs84');
+      setActionFeedback('已校准到你的当前位置。');
+      speakMapFeedback('我已经把地图移到你当前位置。', 'neutral');
       return;
     }
     mapRef.current?.setCenter(LINGSHAN_CENTER.latitude, LINGSHAN_CENTER.longitude, 15);
-    VRMManager.speak('暂时没有拿到定位，我先把地图放回灵山核心区。', 'neutral');
-  }, [userLocation]);
+    setActionFeedback('定位暂不可用，已校准到景区入口作为起点。');
+    speakMapFeedback('暂时没有拿到定位，我先把地图放回灵山核心区。', 'neutral');
+  }, [speakMapFeedback, userLocation]);
 
   const handleNavigateWithMap = useCallback(() => {
-    if (!activeGuideSpot || activeGuideSpot.latitude == null || activeGuideSpot.longitude == null) return;
+    if (isActionCoolingDown(mapAction, 'routing')) return;
+    if (navigating) {
+      pendingMapCommandRef.current = null;
+      handleCloseRoute();
+      setMapActionResult('routing', 'success', '已结束当前指路，可以重新选择景点或路线。', activeGuideSpot?.id);
+      speakMapFeedback('已结束指路，你可以继续自由探索。', 'neutral');
+      return;
+    }
+    if (!activeGuideSpot) {
+      setMapActionResult('routing', 'blocked', getRouteBlockedMessage(null));
+      return;
+    }
+    if (activeGuideSpot.latitude == null || activeGuideSpot.longitude == null) {
+      setMapActionResult('routing', 'blocked', getRouteBlockedMessage(activeGuideSpot.name), activeGuideSpot.id);
+      return;
+    }
 
     setSelectedSpot(activeGuideSpot);
-    const origin = userLocation ?? LINGSHAN_CENTER;
-    if (userLocation && selectedSpot?.id === activeGuideSpot.id) {
-      handleNavigate();
+    const origin = userLocation
+      ? { ...userLocation, source: 'wgs84' as const }
+      : LINGSHAN_CENTER;
+    const destination = {
+      latitude: activeGuideSpot.latitude,
+      longitude: activeGuideSpot.longitude,
+    };
+    const command: PendingMapCommand = {
+      type: 'route',
+      origin,
+      destination,
+      spotId: activeGuideSpot.id,
+    };
+    setNavigating(true);
+    if (mapStatus === 'ready') {
+      pendingMapCommandRef.current = null;
+      executeMapCommand(command);
     } else {
-      setNavigating(true);
+      pendingMapCommandRef.current = command;
     }
-    mapRef.current?.drawRoute([
-      { latitude: origin.latitude, longitude: origin.longitude },
-      { latitude: activeGuideSpot.latitude, longitude: activeGuideSpot.longitude },
-    ]);
-    centerSpotOnMap(activeGuideSpot, 16);
-    VRMManager.speak(
+    setMapActionResult(
+      'routing',
+      mapStatus === 'ready' ? 'success' : 'pending',
+      mapStatus === 'ready'
+        ? `已规划前往${activeGuideSpot.name}，可按路线前进。`
+        : `路线已准备，地图加载后会自动显示前往${activeGuideSpot.name}的路线。`,
+      activeGuideSpot.id,
+    );
+    speakMapFeedback(
       userLocation
         ? `好的，我们前往${activeGuideSpot.name}。`
         : `我先用景区入口作为起点，带你前往${activeGuideSpot.name}。`,
@@ -316,28 +533,105 @@ export default function MapGuidePage() {
     );
   }, [
     activeGuideSpot,
-    centerSpotOnMap,
-    handleNavigate,
-    selectedSpot?.id,
+    executeMapCommand,
+    handleCloseRoute,
+    mapAction,
+    mapStatus,
+    navigating,
+    setMapActionResult,
     setNavigating,
     setSelectedSpot,
+    speakMapFeedback,
     userLocation,
   ]);
 
   const handleStartNarration = useCallback(() => {
-    if (!activeGuideSpot) return;
-    VRMManager.speak(`${activeGuideSpot.name}。${guideLine}`, 'happy');
-  }, [activeGuideSpot, guideLine]);
+    if (isActionCoolingDown(mapAction, 'narrating')) return;
+    if (!activeGuideSpot) {
+      setMapActionResult('narrating', 'blocked', '先点一个景点，小灵再讲给你听。');
+      return;
+    }
+    const narrationText = buildMapSpotNarration(activeGuideSpot, routeCopy);
+    const feedback = buildMapNarrationFeedback(activeGuideSpot.name, narrationText);
+    setSelectedSpot(activeGuideSpot);
+    setMapActionResult('narrating', 'success', feedback, activeGuideSpot.id);
+    tourActions.startNarration(toTourSpot(activeGuideSpot));
+    speakMapFeedback(`${activeGuideSpot.name}。${narrationText}`, 'happy');
+  }, [activeGuideSpot, mapAction, routeCopy, setMapActionResult, setSelectedSpot, speakMapFeedback, tourActions]);
+
+  const handleDemoArrive = useCallback(() => {
+    if (isActionCoolingDown(mapAction, 'arrived')) return;
+    if (!activeGuideSpot) {
+      setMapActionResult('arrived', 'blocked', '先点一个景点，小灵再帮你标记到达。');
+      return;
+    }
+    const arrivedSpot = toTourSpot(activeGuideSpot);
+    pendingMapCommandRef.current = null;
+    setSelectedSpot(activeGuideSpot);
+    setNavigating(false);
+    tourActions.arriveAtStop(arrivedSpot);
+    centerSpotOnMap(activeGuideSpot, 17);
+    setMapActionResult(
+      'arrived',
+      'success',
+      `已到达${activeGuideSpot.name}，可以先听小灵讲解，再继续下一站。`,
+      activeGuideSpot.id,
+    );
+    speakMapFeedback(`已到达${activeGuideSpot.name}。我会从这里开始现场讲解。`, 'happy');
+  }, [activeGuideSpot, centerSpotOnMap, mapAction, setMapActionResult, setNavigating, setSelectedSpot, speakMapFeedback, tourActions]);
 
   const handleArrive = useCallback(() => {
-    if (!activeGuideSpot) return;
-    router.push(`/attractions/${activeGuideSpot.id}`);
-  }, [activeGuideSpot, router]);
+    if (!activeGuideSpot) {
+      setMapActionResult('opening_detail', 'blocked', '先选一个景点，再查看景点详情。');
+      return;
+    }
+    setMapActionResult('opening_detail', 'pending', `正在打开${activeGuideSpot.name}详情...`, activeGuideSpot.id);
+    scheduleMapSideEffect(() => {
+      router.push({
+        pathname: '/attractions/[id]',
+        params: { id: activeGuideSpot.id, returnTo: '/map', returnLabel: '返回地图' },
+      });
+    });
+  }, [activeGuideSpot, router, scheduleMapSideEffect, setMapActionResult]);
 
   const handleCancelNavigation = useCallback(() => {
+    pendingMapCommandRef.current = null;
     handleCloseRoute();
-    VRMManager.speak('已取消导航，你可以继续自由探索。', 'neutral');
-  }, [handleCloseRoute]);
+    setMapActionResult('routing', 'success', '已结束当前路线，可以重新选择景点或路线。', activeGuideSpot?.id);
+    speakMapFeedback('已取消导航，你可以继续自由探索。', 'neutral');
+  }, [activeGuideSpot?.id, handleCloseRoute, setMapActionResult, speakMapFeedback]);
+
+  const handleAskXiaoling = useCallback(() => {
+    setMapActionResult(
+      'asking',
+      'pending',
+      activeGuideSpot
+        ? `正在带着${activeGuideSpot.name}的问题上下文打开小灵。`
+        : '正在打开小灵，你也可以先点一个景点再提问。',
+      activeGuideSpot?.id,
+    );
+    scheduleMapSideEffect(() => {
+      router.push({
+        pathname: '/chat',
+        params: { returnTo: '/map', returnLabel: '返回地图', fresh: '1', spotId: activeGuideSpot?.id },
+      });
+    });
+  }, [activeGuideSpot, router, scheduleMapSideEffect, setMapActionResult]);
+
+  const handleRouteEntry = useCallback(() => {
+    if (tourState.currentRoute) {
+      setMapActionResult('selecting_route', 'success', `继续${routeTitle}，小灵会接着带路。`);
+      tourActions.resumeTour();
+      return;
+    }
+    setMapActionResult('selecting_route', 'pending', '正在打开路线选择，小灵会按时间和兴趣推荐。');
+    scheduleMapSideEffect(() => {
+      router.push({
+        pathname: '/routes',
+        params: { returnTo: '/map', returnLabel: '返回地图' },
+      });
+    });
+  }, [routeTitle, router, scheduleMapSideEffect, setMapActionResult, tourActions, tourState.currentRoute]);
 
   if (loading) {
     return (
@@ -360,6 +654,7 @@ export default function MapGuidePage() {
         activeSpotId={activeSpotId}
         onMapReady={handleMapReady}
         onMapError={handleMapError}
+        showLocationControls={false}
         style={styles.mapFill}
         height={undefined}
       />
@@ -375,15 +670,15 @@ export default function MapGuidePage() {
           <Text style={styles.backTxt}>←</Text>
         </Pressable>
         <View style={styles.headerTitleWrap}>
-          <Text style={styles.headerKicker}>DIGITAL GUIDE</Text>
-          <Text style={styles.headerTitle}>小灵领路</Text>
+          <Text style={styles.headerKicker}>{XIAOLING_MAP_COPY.headerKicker}</Text>
+          <Text style={styles.headerTitle}>{XIAOLING_MAP_COPY.headerTitle}</Text>
         </View>
         <Pressable onPress={handleLocate} style={styles.iconBtn} accessibilityLabel="定位">
           <Text style={styles.locateTxt}>⌖</Text>
         </Pressable>
       </View>
 
-      <Animated.View
+      <Reanimated.View
         entering={FadeInUp.duration(420)}
         style={[styles.guideBeacon, { top: insets.top + 78 }]}
       >
@@ -391,15 +686,20 @@ export default function MapGuidePage() {
         <View style={styles.beaconCopy}>
           <View style={styles.beaconTitleRow}>
             <Text style={styles.beaconTitle} numberOfLines={1}>{statusLabel} · {routeTitle}</Text>
-            <View style={styles.coordinateBadge}>
+            <Pressable
+              style={styles.coordinateBadge}
+              onPress={handleLocate}
+              accessibilityRole="button"
+              accessibilityLabel="地图校准"
+            >
               <Text style={styles.coordinateBadgeText}>{COORDINATE_STATUS}</Text>
-            </View>
+            </Pressable>
           </View>
           <Text style={styles.beaconText} numberOfLines={1}>
-            {activeGuideSpot ? `下一段看 ${activeGuideSpot.name}` : '点选景点开始导览'}
+            {activeGuideSpot ? `下一段看 ${activeGuideSpot.name}` : XIAOLING_MAP_COPY.beaconFallback}
           </Text>
         </View>
-      </Animated.View>
+      </Reanimated.View>
 
       {mapStatus !== 'ready' && (
         <View style={[styles.mapNotice, { top: insets.top + 144 }]}>
@@ -416,128 +716,230 @@ export default function MapGuidePage() {
         </View>
       )}
 
-      <Animated.View
-        entering={FadeInUp.delay(120).duration(420)}
-        style={[styles.guideDock, { paddingBottom: insets.bottom + 14 }]}
+      <RNAnimated.View
+        style={[
+          styles.guideDock,
+          {
+            maxHeight: Math.max(360, viewportHeight - insets.top - 92),
+            paddingBottom: insets.bottom + 10,
+          },
+          { transform: [{ translateY: dockTranslateY }] },
+        ]}
       >
-        <View style={styles.dockHandle} />
-        <View style={styles.dockContent}>
-          <View style={styles.dockHero}>
-            <View style={styles.guideScript}>
-              <View style={styles.guideIdentityRow}>
-                <View style={styles.liveDot} />
-                <Text style={styles.dockEyebrow}>数字人导览 · 小灵</Text>
+        <Pressable
+          {...dockPanResponder.panHandlers}
+          onPress={handleDockHandlePress}
+          style={styles.dockHandleTouch}
+          accessibilityRole="button"
+          accessibilityLabel="展开或收起地图设置面板"
+        >
+          <View style={styles.dockHandle} />
+        </Pressable>
+        <ScrollView
+          style={styles.dockScroll}
+          contentContainerStyle={styles.dockScrollContent}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+        >
+          <View style={styles.dockContent}>
+            <View style={styles.dockHero}>
+              <View style={styles.guideScript}>
+                <View style={styles.guideIdentityRow}>
+                  <View style={styles.liveDot} />
+                  <Text style={styles.dockEyebrow}>{XIAOLING_MAP_COPY.dockEyebrow}</Text>
+                </View>
+                <Text style={styles.dockTitle} numberOfLines={1}>
+                  {activeGuideSpot?.name || '灵山胜境'}
+                </Text>
+                <View style={styles.guideTalkBox}>
+                  {activeImage && (
+                    <Image source={activeImage} style={styles.spotThumb} resizeMode="cover" />
+                  )}
+                  <Text style={styles.dockCopy} numberOfLines={3}>
+                    {guideLine || routeCopy}
+                  </Text>
+                </View>
+                <View style={styles.guideStatusRow}>
+                  <Text style={styles.guideStatusText}>{statusLabel}</Text>
+                  <Pressable
+                    onPress={handleLocate}
+                    accessibilityRole="button"
+                    accessibilityLabel="地图校准"
+                  >
+                    <Text style={styles.guideStatusText}>{COORDINATE_STATUS}</Text>
+                  </Pressable>
+                </View>
               </View>
-              <Text style={styles.dockTitle} numberOfLines={1}>
-                {activeGuideSpot?.name || '灵山胜境'}
-              </Text>
-              <View style={styles.guideTalkBox}>
-                {activeImage && (
-                  <Image source={activeImage} style={styles.spotThumb} resizeMode="cover" />
-                )}
-                <Text style={styles.dockCopy} numberOfLines={3}>
-                  {guideLine || routeCopy}
+
+              <MapGuideAvatar
+                activeColor={activeColor}
+                fallbackLine={avatarFallbackLine}
+              />
+            </View>
+
+            <View style={styles.metricRow}>
+              <Pressable
+                style={styles.metricItem}
+                onPress={handleLocate}
+                accessibilityRole="button"
+                accessibilityLabel="地图校准"
+              >
+                <Text style={styles.metricValue}>{COORDINATE_STATUS}</Text>
+                <Text style={styles.metricLabel}>点位</Text>
+              </Pressable>
+              <View style={styles.metricItem}>
+                <Text style={styles.metricValue}>
+                  {routeInfo ? `约${routeInfo.duration}分钟` : estimateWalk(displayDistance)}
+                </Text>
+                <Text style={styles.metricLabel}>步行</Text>
+              </View>
+              <View style={styles.metricItem}>
+                <Text style={styles.metricValue}>{progressDone}/{progressTotal || routePreviewSpots.length}</Text>
+                <Text style={styles.metricLabel}>路线</Text>
+              </View>
+            </View>
+
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
+            </View>
+
+            <View style={styles.demoPanel}>
+              <View style={styles.demoCopy}>
+                <Text style={styles.demoLabel}>{XIAOLING_MAP_COPY.demoLabel}</Text>
+                <Text
+                  style={[styles.demoText, actionFeedback && styles.demoFeedbackText]}
+                  numberOfLines={2}
+                >
+                  {demoPanelMessage}
                 </Text>
               </View>
-              <View style={styles.guideStatusRow}>
-                <Text style={styles.guideStatusText}>{statusLabel}</Text>
-                <Text style={styles.guideStatusText}>{COORDINATE_STATUS}</Text>
+              <View style={styles.demoActions}>
+                <Pressable
+                  style={[styles.demoBtn, !activeGuideSpot && styles.actionBtnDisabled]}
+                  onPress={handleDemoArrive}
+                  accessibilityRole="button"
+                  accessibilityLabel="标记抵达当前景点"
+                  accessibilityState={{ disabled: !activeGuideSpot }}
+                  disabled={!activeGuideSpot}
+                >
+                  <Text style={styles.demoBtnText}>{demoArriveLabel}</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.demoBtn, styles.demoBtnDark, !activeGuideSpot && styles.actionBtnDisabled]}
+                  onPress={handleStartNarration}
+                  accessibilityRole="button"
+                  accessibilityLabel="开始到点讲解"
+                  accessibilityState={{ disabled: !activeGuideSpot }}
+                  disabled={!activeGuideSpot}
+                >
+                  <Text style={[styles.demoBtnText, styles.demoBtnTextLight]}>
+                    {demoListenLabel}
+                  </Text>
+                </Pressable>
               </View>
             </View>
 
-            <MapGuideAvatar
-              activeColor={activeColor}
-              fallbackLine={avatarFallbackLine}
-            />
-          </View>
-
-          <View style={styles.metricRow}>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricValue}>{COORDINATE_STATUS}</Text>
-              <Text style={styles.metricLabel}>点位</Text>
-            </View>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricValue}>
-                {routeInfo ? `约${routeInfo.duration}分钟` : estimateWalk(displayDistance)}
-              </Text>
-              <Text style={styles.metricLabel}>步行</Text>
-            </View>
-            <View style={styles.metricItem}>
-              <Text style={styles.metricValue}>{progressDone}/{progressTotal || routePreviewSpots.length}</Text>
-              <Text style={styles.metricLabel}>路线</Text>
-            </View>
-          </View>
-
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${progressPct}%` }]} />
-          </View>
-
-          <View style={styles.actionRow}>
-            <Pressable style={styles.primaryBtn} onPress={handleStartNarration}>
-              <Text style={styles.primaryBtnText}>听小灵讲</Text>
-            </Pressable>
-            <Pressable style={styles.secondaryBtn} onPress={handleNavigateWithMap}>
-              <Text style={styles.secondaryBtnText}>{navigating ? '刷新路线' : '路线指引'}</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.miniActionRow}>
-            <Pressable style={styles.textBtn} onPress={() => router.push('/chat')}>
-              <Text style={styles.textBtnText}>问小灵</Text>
-            </Pressable>
-            <Pressable style={styles.textBtn} onPress={handleArrive}>
-              <Text style={styles.textBtnText}>景点详情</Text>
-            </Pressable>
-            {navigating ? (
-              <Pressable style={styles.textBtn} onPress={handleCancelNavigation}>
-                <Text style={styles.textBtnText}>结束导航</Text>
+            <View style={styles.actionRow}>
+              <Pressable
+                style={[styles.primaryBtn, !activeGuideSpot && styles.actionBtnDisabled]}
+                onPress={handleStartNarration}
+                accessibilityRole="button"
+                accessibilityLabel={primaryListenLabel}
+                accessibilityState={{ disabled: !activeGuideSpot }}
+                disabled={!activeGuideSpot}
+              >
+                <Text style={styles.primaryBtnText}>{primaryListenLabel}</Text>
               </Pressable>
-            ) : tourState.currentRoute ? (
-              <Pressable style={styles.textBtn} onPress={tourActions.resumeTour}>
-                <Text style={styles.textBtnText}>继续路线</Text>
+              <Pressable
+                style={[
+                  styles.secondaryBtn,
+                  routeButtonState.pending && styles.secondaryBtnPending,
+                  routeButtonState.disabled && styles.actionBtnDisabled,
+                ]}
+                onPress={handleNavigateWithMap}
+                accessibilityRole="button"
+                accessibilityLabel={routeButtonState.label}
+                accessibilityState={{ disabled: routeButtonState.disabled }}
+                disabled={routeButtonState.disabled}
+              >
+                <Text style={styles.secondaryBtnText}>
+                  {routeButtonState.label}
+                </Text>
               </Pressable>
-            ) : (
-              <Pressable style={styles.textBtn} onPress={() => router.push('/routes')}>
-                <Text style={styles.textBtnText}>选路线</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
+            </View>
 
-        {routePreviewSpots.length > 0 && (
-          <View style={styles.routeRail}>
-            <Text style={styles.routeRailTitle}>小灵推荐顺路看</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.routeRailContent}
-            >
-              {routePreviewSpots.map((spot, index) => {
-                const active = spot.id === activeSpotId;
-                const completed = tourState.currentRoute ? index < progressDone : false;
-                const dotColor = completed ? Colors.primary : active ? Colors.accent : Colors.gray300;
-                return (
-                  <Pressable
-                    key={spot.id}
-                    style={[styles.routeNode, active && styles.routeNodeActive]}
-                    onPress={() => handleSpotSelect(spot)}
-                  >
-                    <View style={[styles.routeNodeDot, { backgroundColor: dotColor }]}>
-                      <Text style={styles.routeNodeIndex}>{completed ? '✓' : index + 1}</Text>
-                    </View>
-                    <Text
-                      style={[styles.routeNodeName, active && styles.routeNodeNameActive]}
-                      numberOfLines={1}
+            <View style={styles.miniActionRow}>
+              <Pressable
+                style={styles.textBtn}
+                onPress={handleAskXiaoling}
+                accessibilityRole="button"
+              >
+                <Text style={styles.textBtnText}>{XIAOLING_MAP_COPY.askCta}</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.textBtn, !activeGuideSpot && styles.actionBtnDisabled]}
+                onPress={handleArrive}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: !activeGuideSpot }}
+                disabled={!activeGuideSpot}
+              >
+                <Text style={styles.textBtnText}>{XIAOLING_MAP_COPY.detailCta}</Text>
+              </Pressable>
+              {navigating ? (
+                <Pressable style={styles.textBtn} onPress={handleCancelNavigation}>
+                  <Text style={styles.textBtnText}>结束导航</Text>
+                </Pressable>
+              ) : tourState.currentRoute ? (
+                <Pressable style={styles.textBtn} onPress={handleRouteEntry}>
+                  <Text style={styles.textBtnText}>{XIAOLING_MAP_COPY.continueRouteCta}</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  style={styles.textBtn}
+                  onPress={handleRouteEntry}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.textBtnText}>{XIAOLING_MAP_COPY.selectRouteCta}</Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+
+          {routePreviewSpots.length > 0 && (
+            <View style={styles.routeRail}>
+              <Text style={styles.routeRailTitle}>{XIAOLING_MAP_COPY.routeRailTitle}</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.routeRailContent}
+              >
+                {routePreviewSpots.map((spot, index) => {
+                  const active = spot.id === activeSpotId;
+                  const completed = tourState.currentRoute ? index < progressDone : false;
+                  const dotColor = completed ? Colors.primary : active ? Colors.accent : Colors.gray300;
+                  return (
+                    <Pressable
+                      key={spot.id}
+                      style={[styles.routeNode, active && styles.routeNodeActive]}
+                      onPress={() => handleSpotSelect(spot)}
                     >
-                      {spot.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
-      </Animated.View>
+                      <View style={[styles.routeNodeDot, { backgroundColor: dotColor }]}>
+                        <Text style={styles.routeNodeIndex}>{completed ? '✓' : index + 1}</Text>
+                      </View>
+                      <Text
+                        style={[styles.routeNodeName, active && styles.routeNodeNameActive]}
+                        numberOfLines={1}
+                      >
+                        {spot.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+        </ScrollView>
+      </RNAnimated.View>
     </View>
   );
 }
@@ -676,6 +1078,8 @@ const styles = StyleSheet.create({
   },
   beaconTitle: {
     flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
     fontSize: 12,
     color: '#fff',
     fontWeight: '800',
@@ -736,11 +1140,11 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 28,
-    paddingTop: 10,
-    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingHorizontal: 12,
     backgroundColor: 'rgba(253,251,247,0.96)',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(106,156,137,0.18)',
     shadowColor: Colors.ink,
@@ -749,20 +1153,32 @@ const styles = StyleSheet.create({
     shadowRadius: 26,
     elevation: 10,
   },
-  dockHandle: {
+  dockHandleTouch: {
     alignSelf: 'center',
+    width: 76,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  dockHandle: {
     width: 42,
     height: 4,
     borderRadius: 2,
     backgroundColor: 'rgba(42,37,32,0.16)',
-    marginBottom: 10,
+  },
+  dockScroll: {
+    flexGrow: 0,
+  },
+  dockScrollContent: {
+    paddingBottom: 4,
   },
   dockContent: {},
   dockHero: {
-    minHeight: 212,
+    minHeight: 176,
     flexDirection: 'row',
     alignItems: 'stretch',
-    gap: 10,
+    gap: 8,
   },
   guideScript: {
     flex: 1,
@@ -786,9 +1202,9 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
   },
   guideTalkBox: {
-    minHeight: 76,
-    marginTop: 10,
-    padding: 9,
+    minHeight: 64,
+    marginTop: 8,
+    padding: 8,
     borderRadius: Radius.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -800,7 +1216,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 7,
-    marginTop: 10,
+    marginTop: 8,
   },
   guideStatusText: {
     paddingHorizontal: 9,
@@ -815,19 +1231,19 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(106,156,137,0.14)',
   },
   avatarModule: {
-    width: 122,
-    height: 212,
+    width: 118,
+    height: 196,
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
   avatarSpeech: {
-    width: 138,
-    minHeight: 54,
-    marginLeft: -16,
-    marginBottom: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 15,
+    width: 136,
+    minHeight: 48,
+    marginLeft: -18,
+    marginBottom: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    borderRadius: 14,
     backgroundColor: 'rgba(42,37,32,0.9)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.16)',
@@ -845,15 +1261,15 @@ const styles = StyleSheet.create({
   },
   avatarSpeechText: {
     marginTop: 3,
-    fontSize: 11,
-    lineHeight: 14,
+    fontSize: 10,
+    lineHeight: 13,
     color: '#fff',
     fontWeight: '700',
   },
   avatarStage: {
-    width: 116,
-    height: 150,
-    borderRadius: 22,
+    width: 112,
+    height: 148,
+    borderRadius: 18,
     overflow: 'hidden',
     backgroundColor: 'rgba(106,156,137,0.1)',
     borderWidth: 1.5,
@@ -866,8 +1282,8 @@ const styles = StyleSheet.create({
   avatarNameTag: {
     position: 'absolute',
     bottom: 0,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
     borderRadius: 999,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.88)',
@@ -883,10 +1299,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   spotThumb: {
-    width: 58,
-    height: 58,
-    borderRadius: 12,
-    marginRight: 10,
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    marginRight: 8,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.72)',
   },
@@ -902,24 +1318,24 @@ const styles = StyleSheet.create({
   },
   dockTitle: {
     marginTop: 2,
-    fontSize: 19,
+    fontSize: 17,
     color: Colors.ink,
     fontWeight: '900',
   },
   dockCopy: {
-    marginTop: 5,
+    marginTop: 4,
     fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 17,
     color: Colors.gray600,
   },
   metricRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
+    gap: 7,
+    marginTop: 9,
   },
   metricItem: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: Radius.md,
     backgroundColor: 'rgba(106,156,137,0.08)',
     borderWidth: 1,
@@ -927,7 +1343,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   metricValue: {
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.ink,
     fontWeight: '900',
   },
@@ -939,7 +1355,7 @@ const styles = StyleSheet.create({
   },
   progressTrack: {
     height: 5,
-    marginTop: 10,
+    marginTop: 8,
     borderRadius: 999,
     overflow: 'hidden',
     backgroundColor: 'rgba(106,156,137,0.16)',
@@ -949,14 +1365,67 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: Colors.accent,
   },
+  demoPanel: {
+    marginTop: 8,
+    padding: 8,
+    borderRadius: 14,
+    backgroundColor: 'rgba(200,75,49,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(200,75,49,0.18)',
+  },
+  demoCopy: {
+    marginBottom: 6,
+  },
+  demoLabel: {
+    fontSize: 11,
+    color: Colors.accent,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  demoText: {
+    marginTop: 2,
+    fontSize: 11,
+    color: Colors.gray600,
+  },
+  demoFeedbackText: {
+    color: Colors.primaryDark,
+    fontWeight: '800',
+    lineHeight: 16,
+  },
+  demoActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  demoBtn: {
+    flex: 1,
+    minHeight: 31,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: 'rgba(200,75,49,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  demoBtnDark: {
+    backgroundColor: Colors.accent,
+    borderColor: Colors.accent,
+  },
+  demoBtnText: {
+    fontSize: 12,
+    color: Colors.accent,
+    fontWeight: '900',
+  },
+  demoBtnTextLight: {
+    color: '#fff',
+  },
   actionRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 12,
+    marginTop: 9,
   },
   primaryBtn: {
     flex: 1,
-    minHeight: 38,
+    minHeight: 36,
     borderRadius: 12,
     backgroundColor: Colors.accent,
     alignItems: 'center',
@@ -975,11 +1444,17 @@ const styles = StyleSheet.create({
   },
   secondaryBtn: {
     flex: 1,
-    minHeight: 38,
+    minHeight: 36,
     borderRadius: 12,
     backgroundColor: Colors.ink,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  secondaryBtnPending: {
+    backgroundColor: Colors.primaryDark,
+  },
+  actionBtnDisabled: {
+    opacity: 0.48,
   },
   secondaryBtnText: {
     color: '#fff',
@@ -990,11 +1465,11 @@ const styles = StyleSheet.create({
   miniActionRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 8,
+    marginTop: 7,
   },
   textBtn: {
     flex: 1,
-    minHeight: 30,
+    minHeight: 28,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1008,7 +1483,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   routeRail: {
-    marginTop: 10,
+    marginTop: 8,
   },
   routeRailTitle: {
     marginBottom: 7,

@@ -27,7 +27,9 @@ flowchart LR
 
 ## 数据约定
 
-前端统一以 `GuideMemoryEvent` 作为素材来源，并转换成 `MemoryGraphCandidate` 展示。正式保存时将 `source_event_id`、`event_type`、`source_page`、`route_id`、`stop_id` 写入 `metadata_json`。
+前端统一以 `GuideMemoryEvent` 作为素材来源，并转换成 `MemoryGraphCandidate` 展示。正式保存时将 `source_event_id`、`event_type`、`source_page`、`route_id`、`route_name`、`spot_id`、`spot_name` 写入 `metadata_json`。
+
+`buildMemorySourceMetadata` 负责统一生成来源元数据。聊天问答、导览到达、景点讲解、打卡、路线结束和景点详情直接入册都应通过这套字段携带上下文；候选入册时会保留原始事件 metadata，例如问答来源、打卡距离、照片/语音状态等。
 
 后端 `createMemory` 接收可选的 `spot_id`、`source_type` 和 `metadata_json`，不改变原有手动写记忆流程。
 

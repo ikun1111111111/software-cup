@@ -92,6 +92,14 @@ export function applyMouthOpen(vrm: VRM, value: number): void {
   vrm.expressionManager?.setValue('aa', Math.max(0, Math.min(1, currentMouthValue)));
 }
 
+/** 重置口型平滑状态，stop 时调用以实现即时闭合 */
+export function resetMouthState(vrm?: VRM): void {
+  currentMouthValue = 0;
+  if (vrm) {
+    vrm.expressionManager?.setValue('aa', 0);
+  }
+}
+
 // 记录上次设置的表情，避免每帧重复设置
 let lastAppliedExpression: string | null = null;
 

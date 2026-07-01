@@ -16,6 +16,7 @@ export interface TTSResult {
   audioUri: string;
   phonemes: Phoneme[];
   durationMs: number;
+  audioFormat: 'mp3' | 'wav';
 }
 
 function base64ToBlobUrl(base64: string, mime = 'audio/mpeg'): string {
@@ -45,12 +46,13 @@ export async function fetchTTS(
     throw new Error('TTS audio not available');
   }
 
+  const audioFormat: 'mp3' | 'wav' = data.audio_format === 'wav' ? 'wav' : 'mp3';
   let audioUri: string;
   if (Platform.OS === 'web') {
-    audioUri = base64ToBlobUrl(data.audio_base64);
+    audioUri = base64ToBlobUrl(data.audio_base64, audioFormat === 'wav' ? 'audio/wav' : 'audio/mpeg');
   } else {
     const FileSystem = require('expo-file-system');
-    const fileUri = `${FileSystem.cacheDirectory}tts_${Date.now()}.mp3`;
+    const fileUri = `${FileSystem.cacheDirectory}tts_${Date.now()}.${audioFormat}`;
     await FileSystem.writeAsStringAsync(fileUri, data.audio_base64, {
       encoding: FileSystem.EncodingType.Base64,
     });
@@ -61,5 +63,6 @@ export async function fetchTTS(
     audioUri,
     phonemes: data.phonemes || [],
     durationMs: data.duration_ms || 0,
+    audioFormat,
   };
 }

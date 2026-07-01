@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { listSpots, type Spot } from '@/api/spots';
-
-const LINGSHAN_CENTER = { latitude: 31.4268, longitude: 120.0962 };
+import { LINGSHAN_CENTER } from '@/components/map/AmapView.shared';
+import { getMapFallbackSpots, normalizeMapSpotResponse } from '@/utils/mapSpotsFallback';
 
 // In-memory cache for spots list
 let spotsCache: Spot[] | null = null;
@@ -15,8 +15,8 @@ interface RouteStep {
 }
 
 export function useMapSpots() {
-  const [spots, setSpots] = useState<Spot[]>(() => spotsCache ?? []);
-  const [loading, setLoading] = useState(() => !spotsCache);
+  const [spots, setSpots] = useState<Spot[]>(() => spotsCache ?? getMapFallbackSpots());
+  const [loading, setLoading] = useState(false);
   const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
   const [navigating, setNavigating] = useState(false);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -29,20 +29,30 @@ export function useMapSpots() {
       setLoading(false);
       return;
     }
+    let disposed = false;
     listSpots()
       .then((res) => {
-        const data = (res as any).data ?? res;
-        const withCoords = (Array.isArray(data) ? data : []).filter(
-          (s: Spot) => s.latitude != null && s.longitude != null,
-        );
+        if (disposed) return;
+        const withCoords = normalizeMapSpotResponse(res);
         spotsCache = withCoords;
         spotsCacheTime = Date.now();
         setSpots(withCoords);
       })
       .catch(() => {
-        if (!spotsCache) setSpots([]);
+        if (disposed) return;
+        const fallback = getMapFallbackSpots();
+        if (!spotsCache) {
+          spotsCache = fallback;
+          spotsCacheTime = Date.now();
+        }
+        setSpots(fallback);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!disposed) setLoading(false);
+      });
+    return () => {
+      disposed = true;
+    };
   }, []);
 
   const handleSpotTap = useCallback((spot: Spot) => {

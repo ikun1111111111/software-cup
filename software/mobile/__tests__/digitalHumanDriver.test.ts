@@ -1,4 +1,8 @@
-import { computeLookUpHeadRotation, estimateSpeechDuration } from '../utils/digitalHumanDriver';
+import {
+  computeLookUpHeadRotation,
+  estimateNarrationDurationSeconds,
+  estimateSpeechDuration,
+} from '../utils/digitalHumanDriver';
 
 describe('digitalHumanDriver utilities', () => {
   test('estimateSpeechDuration respects minimum duration', () => {
@@ -6,7 +10,15 @@ describe('digitalHumanDriver utilities', () => {
   });
 
   test('estimateSpeechDuration scales with text length', () => {
-    expect(estimateSpeechDuration('a'.repeat(30))).toBe(4500);
+    expect(estimateSpeechDuration('a'.repeat(30))).toBe(6600);
+  });
+
+  test('estimateNarrationDurationSeconds uses the speech estimate without a 30 second floor', () => {
+    expect(estimateNarrationDurationSeconds('短句')).toBe(3);
+  });
+
+  test('estimateNarrationDurationSeconds respects a real provided duration', () => {
+    expect(estimateNarrationDurationSeconds('a'.repeat(200), 9.7)).toBe(9.7);
   });
 
   test('computeLookUpHeadRotation starts and ends at neutral', () => {

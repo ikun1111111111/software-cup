@@ -17,6 +17,10 @@ class TravelMemory(Base):
     source_type: Mapped[str] = mapped_column(String(20), nullable=False, default="chat")  # chat / vision / route
     mood_tag: Mapped[str | None] = mapped_column(String(20))  # 敬畏/惊喜/平静/感动
     metadata_json: Mapped[dict | None] = mapped_column(JSON)
+    # 照片和语音字段
+    photo_url: Mapped[str | None] = mapped_column(String(500))
+    voice_url: Mapped[str | None] = mapped_column(String(500))
+    voice_duration: Mapped[int | None] = mapped_column(Integer)
     # 记忆胶囊字段
     is_capsule: Mapped[bool] = mapped_column(Boolean, default=False)
     capsule_unlock_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

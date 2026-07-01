@@ -8,12 +8,106 @@ export interface TimelineEvent {
   durationMs?: number;
 }
 
+export interface SubtitleCue {
+  timeMs: number;
+  text: string;
+  startChar: number;
+  endChar: number;
+}
+
+export function getTimedTextSlice(text: string, elapsedMs: number, durationMs: number): string {
+  if (!text) return '';
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return text;
+  if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) return '';
+
+  const progress = Math.min(Math.max(elapsedMs / durationMs, 0), 1);
+  const charCount = Math.min(text.length, Math.ceil(text.length * progress));
+  return text.slice(0, charCount);
+}
+
 // ── 分句器 ──
 
 export function splitSentences(text: string): string[] {
   if (!text.trim()) return [];
   const parts = text.split(/(?<=[。！？!?；;，,])/);
   return parts.filter((s) => s.trim().length > 0);
+}
+
+interface SubtitleChunk {
+  text: string;
+  startChar: number;
+  endChar: number;
+}
+
+function splitLongSubtitleChunk(text: string, startChar: number, maxChars: number): SubtitleChunk[] {
+  const chunk = text.trim();
+  if (!chunk) return [];
+
+  const trimmedStartChar = startChar + text.length - text.trimStart().length;
+  if (chunk.length <= maxChars) {
+    return [{ text: chunk, startChar: trimmedStartChar, endChar: trimmedStartChar + chunk.length }];
+  }
+
+  const chunks: SubtitleChunk[] = [];
+  for (let i = 0; i < chunk.length; i += maxChars) {
+    const textPart = chunk.slice(i, i + maxChars);
+    chunks.push({
+      text: textPart,
+      startChar: trimmedStartChar + i,
+      endChar: trimmedStartChar + i + textPart.length,
+    });
+  }
+  return chunks;
+}
+
+function textToSubtitleChunks(text: string, maxChars: number): SubtitleChunk[] {
+  let searchFrom = 0;
+  return splitSentences(text).flatMap((sentence) => {
+    const foundAt = text.indexOf(sentence, searchFrom);
+    const sentenceStart = foundAt >= 0 ? foundAt : searchFrom;
+    searchFrom = sentenceStart + sentence.length;
+    return splitLongSubtitleChunk(sentence, sentenceStart, maxChars);
+  });
+}
+
+export function textToSubtitleCues(
+  text: string,
+  durationMs: number,
+  maxChars = 36,
+): SubtitleCue[] {
+  const chunks = textToSubtitleChunks(text, maxChars);
+
+  if (chunks.length === 0) return [];
+
+  const totalChars = chunks.reduce((sum, chunk) => sum + chunk.text.length, 0);
+  let accumulatedRatio = 0;
+
+  return chunks.map((chunk) => {
+    const cue = {
+      timeMs: Math.round(accumulatedRatio * durationMs),
+      text: chunk.text,
+      startChar: chunk.startChar,
+      endChar: chunk.endChar,
+    };
+    accumulatedRatio += chunk.text.length / Math.max(totalChars, 1);
+    return cue;
+  });
+}
+
+export function getSubtitleCueForCharIndex(cues: SubtitleCue[], charIndex: number): SubtitleCue | undefined {
+  if (cues.length === 0) return undefined;
+  if (!Number.isFinite(charIndex)) return cues[0];
+
+  const index = Math.max(0, Math.floor(charIndex));
+  const directMatch = cues.find((cue) => index >= cue.startChar && index < cue.endChar);
+  if (directMatch) return directMatch;
+
+  for (let i = cues.length - 1; i >= 0; i--) {
+    if (index >= cues[i].startChar) {
+      return cues[i];
+    }
+  }
+  return cues[0];
 }
 
 // ── 情感分析 ──
@@ -65,7 +159,7 @@ export function analyzeSentence(sentence: string): { expression: Emotion; action
     action = 'wave';
   }
   // point: 指引方向
-  else if (/(请看|那边|这里|前方|左边|右边|看这|看那|这边|那边|往这|往那|指向|指着|看看|瞧|瞧这|瞧那)/.test(s)) {
+  else if (/(请看|那边|这里|这个|这座|这处|这一|前方|左边|右边|看这|看那|这边|那边|往这|往那|指向|指着|看看|瞧|瞧这|瞧那|路线|前往|导航|带路|跟随|继续|出发|到达|景点|地图|打开)/.test(s)) {
     action = 'point';
   }
   // clap: 鼓掌、祝贺
@@ -104,10 +198,50 @@ export function analyzeSentence(sentence: string): { expression: Emotion; action
   return { expression, action };
 }
 
+function mergeTimelineSentences(sentences: string[]): string[] {
+  const merged: string[] = [];
+
+  for (let i = 0; i < sentences.length; i++) {
+    const sentence = sentences[i];
+    const compact = sentence.trim().replace(/[，,。！？!?；;]+$/, '');
+    const next = sentences[i + 1];
+    if (/^(好|好的|嗯|是的|可以|明白)$/.test(compact) && next) {
+      merged.push(`${sentence}${next}`);
+      i += 1;
+      continue;
+    }
+    merged.push(sentence);
+  }
+
+  return merged;
+}
+
+function getDefaultActionDuration(action: Action): number {
+  switch (action) {
+    case 'wave':
+    case 'point':
+    case 'clap':
+    case 'bow':
+      return 1600;
+    case 'lookUp':
+      return 2500;
+    case 'shakeHead':
+    case 'tiltHead':
+      return 1400;
+    case 'nod':
+      return 1200;
+    case 'lookDown':
+      return 1300;
+    case 'none':
+    default:
+      return 800;
+  }
+}
+
 // ── 时间轴生成 ──
 
 export function textToTimeline(text: string, durationMs: number): TimelineEvent[] {
-  const sentences = splitSentences(text);
+  const sentences = mergeTimelineSentences(splitSentences(text));
   if (sentences.length === 0) {
     return [{ timeMs: 0, expression: 'neutral', action: 'none' }];
   }
@@ -119,7 +253,7 @@ export function textToTimeline(text: string, durationMs: number): TimelineEvent[
   for (const sentence of sentences) {
     const timeMs = Math.round(accumulatedRatio * durationMs);
     const { expression, action } = analyzeSentence(sentence);
-    events.push({ timeMs, expression, action, durationMs: action === 'lookUp' ? 2500 : 800 });
+    events.push({ timeMs, expression, action, durationMs: getDefaultActionDuration(action) });
     accumulatedRatio += sentence.length / Math.max(totalChars, 1);
   }
 

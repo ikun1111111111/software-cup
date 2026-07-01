@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     # Whisper
     whisper_model: str = "medium"  # tiny/base/small/medium/large
     whisper_device: str = "cpu"    # cpu / cuda
+    preload_asr_on_startup: bool = False
 
     # CosyVoice
     cosyvoice_endpoint: str = "http://localhost:5001"
@@ -86,6 +87,9 @@ class Settings(BaseSettings):
         "female": {"speaker_id": "zh-CN-XiaoyiNeural", "description": "普通话年轻女声"},
     }
 
+    # JWT
+    jwt_secret_key: str = "dev-secret-key-change-in-production"
+
     # RAG
     chunk_size: int = 512
     chunk_overlap: int = 64
@@ -103,6 +107,11 @@ class Settings(BaseSettings):
     # Context management
     context_max_rounds: int = 5
     context_ttl: int = 86400  # 24 hours
+
+    # Rate limiting
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 60  # 每窗口最大请求数
+    rate_limit_window: int = 60  # 窗口秒数
 
     class Config:
         env_file = ".env"

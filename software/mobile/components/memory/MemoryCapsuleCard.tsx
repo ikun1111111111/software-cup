@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
 import { type TravelMemory } from '@/api/memory';
+import { MemoryImage, MEMORY_IMAGES } from './MemoryVisual';
 
 export function MemoryCapsuleCard({ item, onUnlock }: {
   item: TravelMemory;
@@ -74,7 +75,13 @@ export function MemoryCapsuleCard({ item, onUnlock }: {
         <>
           <View style={styles.capsuleLockArea}>
             <Animated.View style={[styles.capsuleLockIcon, lockAnimStyle]}>
-              <Text style={styles.capsuleLockEmoji}>{isReady ? '🔓' : '🔒'}</Text>
+              <MemoryImage source={MEMORY_IMAGES.capsule} size={78} radius={18} fit="contain">
+                <View style={[styles.capsuleStateBadge, isReady && styles.capsuleStateBadgeReady]}>
+                  <Text style={[styles.capsuleStateBadgeText, isReady && styles.capsuleStateBadgeTextReady]}>
+                    {isReady ? '可开' : '封存'}
+                  </Text>
+                </View>
+              </MemoryImage>
             </Animated.View>
             <Text style={styles.capsuleTitle}>{item.title}</Text>
             <Text style={styles.capsuleHint}>
@@ -94,7 +101,7 @@ export function MemoryCapsuleCard({ item, onUnlock }: {
               {unlocking ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text style={styles.capsuleUnlockBtnText}>✨ 打开胶囊</Text>
+                <Text style={styles.capsuleUnlockBtnText}>打开胶囊</Text>
               )}
             </Pressable>
           )}
@@ -102,7 +109,10 @@ export function MemoryCapsuleCard({ item, onUnlock }: {
       ) : (
         <>
           <View style={styles.capsuleContentArea}>
-            <Text style={styles.capsuleContentTitle}>💌 {item.title}</Text>
+            <View style={styles.capsuleContentTitleRow}>
+              <MemoryImage source={MEMORY_IMAGES.capsule} size={30} radius={10} fit="contain" />
+              <Text style={styles.capsuleContentTitle}>{item.title}</Text>
+            </View>
             <Text style={styles.capsuleContent}>
               {item.capsule_content || item.original_content}
             </Text>
@@ -141,7 +151,26 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   capsuleLockIcon: { marginBottom: 12 },
-  capsuleLockEmoji: { fontSize: 48 },
+  capsuleStateBadge: {
+    position: 'absolute',
+    right: 5,
+    bottom: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(42,37,32,0.78)',
+  },
+  capsuleStateBadgeReady: {
+    backgroundColor: Colors.accent,
+  },
+  capsuleStateBadgeText: {
+    fontSize: 9,
+    color: '#fff',
+    fontWeight: '800',
+  },
+  capsuleStateBadgeTextReady: {
+    color: '#fff',
+  },
   capsuleTitle: {
     fontSize: 18,
     fontFamily: 'MaShanZheng',
@@ -171,6 +200,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   capsuleContentArea: { gap: 12 },
+  capsuleContentTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   capsuleContentTitle: {
     fontSize: 16,
     fontFamily: 'MaShanZheng',

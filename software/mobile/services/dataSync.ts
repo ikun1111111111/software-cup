@@ -6,13 +6,17 @@
 import * as localDb from './localDatabase';
 import { getSpotById, type SpotDetail } from '@/api/spots';
 import { listRoutes, getRouteById, type TourRoute, type TourRouteDetail } from '@/api/routes';
-import { listMemories, getLatestSummary, getUserProfile, getAchievements, type TravelMemory, type JourneySummary, type UserProfile, type Achievement } from '@/api/memory';
+import {
+  listMemories, getLatestSummary, getUserProfile, getAchievements, getSessionStats,
+  type TravelMemory, type JourneySummary, type UserProfile, type Achievement, type SessionStats,
+} from '@/api/memory';
 import { listSpots, type Spot } from '@/api/spots';
 import {
   getOfflineDemoRouteDetail,
   getOfflineDemoRoutes,
   isOfflineDemoRoute,
 } from '@/constants/offline-demo';
+import { getDemoSpotById } from '@/utils/localDemoData';
 
 export const SESSION_ID = 'mobile-app-session';
 const LOCAL_CACHE_TIMEOUT_MS = 1200;
@@ -115,13 +119,22 @@ export async function syncSpotsToDb(spotIds: string[]): Promise<void> {
  * 从本地数据库获取景点，如果没有则从后端获取
  */
 export async function getSpotWithFallback(spotId: string): Promise<SpotDetail | null> {
-  // 优先从本地数据库获取
-  const cached = await localDb.getSpot(spotId);
+  const fallback = getDemoSpotById(spotId) as unknown as SpotDetail | null;
+
+  const cached = await withLocalCacheFallback(
+    localDb.getSpot(spotId),
+    null,
+    `spot ${spotId} read`,
+  );
   if (cached) {
     return cached as unknown as SpotDetail;
   }
 
-  // 从后端获取并缓存（直接调用，不重复查DB）
+  if (fallback) {
+    syncSpotToDb(spotId).catch(() => {});
+    return fallback;
+  }
+
   return await syncSpotToDb(spotId);
 }
 
@@ -288,11 +301,14 @@ export async function getMemoriesWithFallback(
 
   // 从后端获取并缓存
   const synced = await syncMemoriesToDb(sessionId);
+  const sorted = [...synced].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
   if (typeof options.limit === 'number') {
     const offset = options.offset ?? 0;
-    return synced.slice(offset, offset + options.limit);
+    return sorted.slice(offset, offset + options.limit);
   }
-  return synced;
+  return sorted;
 }
 
 // ============ 用户画像同步 ============
@@ -307,10 +323,10 @@ export async function syncUserProfileToDb(sessionId: string = SESSION_ID): Promi
       await withLocalCacheFallback(
         localDb.saveUserProfile({
           session_id: sessionId,
-          nickname: null,
+          nickname: profile.level?.name ?? null,
           avatar_url: null,
           travel_style: null,
-          interests: null,
+          interests: JSON.stringify(profile.achievements ?? []),
         }),
         undefined,
         'profile write',
@@ -400,6 +416,23 @@ export async function getAchievementsWithFallback(sessionId: string = SESSION_ID
     unlocked_count: achievements.length,
     total_count: achievements.length,
   };
+}
+
+export async function getSessionStatsWithFallback(sessionId: string = SESSION_ID): Promise<SessionStats> {
+  try {
+    return await getSessionStats(sessionId);
+  } catch (error) {
+    console.warn('[DataSync] Failed to get session stats:', error);
+    return {
+      session_id: sessionId,
+      event_count: 0,
+      narration_count: 0,
+      question_count: 0,
+      checkin_count: 0,
+      memory_count: 0,
+      candidates: [],
+    };
+  }
 }
 
 // ============ 旅程总结同步 ============

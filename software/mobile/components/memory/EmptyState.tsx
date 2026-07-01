@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
 import { ScrollUnfurl } from './ScrollUnfurl';
+import { MemoryImage, MEMORY_IMAGES } from './MemoryVisual';
 
 export function EmptyState({ onGenerate, generating, onCreatePress }: {
   onGenerate: () => void;
@@ -42,7 +43,7 @@ export function EmptyState({ onGenerate, generating, onCreatePress }: {
           ]}
           onPress={onCreatePress}
         >
-          <Text style={styles.emptyBtnIcon}>✒️</Text>
+          <MemoryImage source={MEMORY_IMAGES.write} size={26} radius={8} fit="contain" />
           <Text style={styles.emptyBtnText}>写下第一笔</Text>
         </Pressable>
         <Pressable
@@ -50,9 +51,13 @@ export function EmptyState({ onGenerate, generating, onCreatePress }: {
             styles.emptyBtnOutline,
             pressed && { opacity: 0.8, transform: [{ scale: 0.97 }] },
           ]}
-          onPress={() => router.push('/chat')}
+          onPress={() => router.push({
+            pathname: '/chat',
+            params: { returnTo: '/memory', returnLabel: '返回记忆', fresh: '1' },
+          })}
         >
-          <Text style={styles.emptyBtnOutlineText}>💬 和小灵聊聊开始</Text>
+          <MemoryImage source={MEMORY_IMAGES.chat} size={26} radius={8} fit="cover" />
+          <Text style={styles.emptyBtnOutlineText}>和小灵聊聊开始</Text>
         </Pressable>
       </Animated.View>
     </View>
@@ -85,10 +90,12 @@ const styles = StyleSheet.create({
     shadowColor: Colors.primary, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3, shadowRadius: 12,
   },
-  emptyBtnIcon: { fontSize: 16 },
   emptyBtnText: { color: '#fff', fontSize: 14, fontWeight: '600', letterSpacing: 1 },
   emptyBtnOutline: {
+    flexDirection: 'row',
     paddingVertical: 13, alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     backgroundColor: '#fff', borderRadius: Radius.pill,
     borderWidth: 1.5, borderColor: Colors.primary + '40',
   },

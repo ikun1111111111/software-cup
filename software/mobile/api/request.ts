@@ -68,6 +68,19 @@ export function invalidateTokenCache() {
   cachedToken = undefined;
 }
 
+function getResponseMessage(error: AxiosError<ApiResponse | any>): string {
+  const data = error.response?.data;
+  if (!data) return error.message || '网络连接异常，请稍后再试';
+  if (typeof data === 'string') return data;
+  if (typeof data.message === 'string') return data.message;
+  if (typeof data.detail === 'string') return data.detail;
+  if (Array.isArray(data.detail) && data.detail.length > 0) {
+    const first = data.detail[0];
+    if (typeof first?.msg === 'string') return first.msg;
+  }
+  return error.message || '请求失败，请稍后再试';
+}
+
 const createAxiosInstance = (): AxiosInstance => {
   const instance = axios.create({
     baseURL: API_BASE_URL,
@@ -100,8 +113,9 @@ const createAxiosInstance = (): AxiosInstance => {
       // 401 统一登出
       if (error.response?.status === 401) {
         await AsyncStorage.removeItem('token');
+        invalidateTokenCache();
         authEvents.emit();
-        return Promise.reject(error);
+        return Promise.reject(new Error(getResponseMessage(error)));
       }
 
       const retryCount = (config as any).__retryCount || 0;
@@ -118,7 +132,7 @@ const createAxiosInstance = (): AxiosInstance => {
         return instance(config);
       }
 
-      return Promise.reject(error);
+      return Promise.reject(new Error(getResponseMessage(error)));
     },
   );
 

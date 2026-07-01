@@ -29,7 +29,12 @@ describe('memory graph candidates', () => {
         title: '问小灵：九龙灌浴什么时候表演',
         content: '问：九龙灌浴什么时候表演？\n答：通常每天有多场演出，建议入园后查看当日公告。',
         createdAt: '2026-06-23T10:05:00.000Z',
-        metadata: { source_page: 'chat' },
+        metadata: {
+          source_page: 'chat',
+          route_name: '九龙灌浴线',
+          spot_name: '九龙灌浴',
+          answer_source: 'offline_fallback',
+        },
       },
       {
         ...baseEvent,
@@ -49,7 +54,12 @@ describe('memory graph candidates', () => {
       sourceType: 'chat',
       sourcePage: 'chat',
       spotId: 'spot-1',
+      spotName: '九龙灌浴',
       routeId: 'route-1',
+      routeName: '九龙灌浴线',
+      metadata: expect.objectContaining({
+        answer_source: 'offline_fallback',
+      }),
     });
   });
 

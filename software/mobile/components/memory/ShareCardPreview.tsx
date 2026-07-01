@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import {
-  View, Text, ScrollView, Pressable, ActivityIndicator, Dimensions, StyleSheet,
+  View, Text, ScrollView, Pressable, ActivityIndicator, Dimensions, StyleSheet, Platform,
 } from 'react-native';
 import Svg, { Rect, Defs, RadialGradient, Stop } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
@@ -12,6 +12,7 @@ import { Radius } from '@/constants/spacing';
 import { type TravelMemory, type JourneySummary } from '@/api/memory';
 import InlineModal from '@/components/ui/InlineModal';
 import { MOOD_META } from './constants';
+import { MemoryImage, MEMORY_IMAGES } from './MemoryVisual';
 
 export function ShareCardPreview({ visible, onClose, memories, summary }: {
   visible: boolean;
@@ -21,6 +22,7 @@ export function ShareCardPreview({ visible, onClose, memories, summary }: {
 }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [generating, setGenerating] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const cardRef = useRef<View>(null);
 
   const cards = useMemo(() => {
@@ -56,23 +58,45 @@ export function ShareCardPreview({ visible, onClose, memories, summary }: {
 
   const currentCard = cards[currentIndex];
 
+  const captureCurrentCard = () => captureRef(cardRef, {
+    format: 'png',
+    quality: 1,
+    width: 1080,
+    height: 1440,
+  });
+
+  const downloadOnWeb = (uri: string) => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return false;
+    const link = document.createElement('a');
+    link.href = uri;
+    link.download = `lingshan-memory-${Date.now()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return true;
+  };
+
   const handleSave = async () => {
     if (!cardRef.current) return;
     setGenerating(true);
+    setNotice(null);
     try {
-      const uri = await captureRef(cardRef, {
-        format: 'png',
-        quality: 1,
-        width: 1080,
-        height: 1440,
-      });
+      const uri = await captureCurrentCard();
+      if (downloadOnWeb(uri)) {
+        setNotice('已下载朋友圈图片');
+        return;
+      }
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status === 'granted') {
         await MediaLibrary.createAssetAsync(uri);
+        setNotice('已保存到相册');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        setNotice('没有相册权限，暂时无法保存');
       }
     } catch (err) {
       console.error('Save failed:', err);
+      setNotice('保存失败，请稍后再试');
     } finally {
       setGenerating(false);
     }
@@ -81,19 +105,26 @@ export function ShareCardPreview({ visible, onClose, memories, summary }: {
   const handleShare = async () => {
     if (!cardRef.current) return;
     setGenerating(true);
+    setNotice(null);
     try {
-      const uri = await captureRef(cardRef, {
-        format: 'png',
-        quality: 1,
-        width: 1080,
-        height: 1440,
-      });
+      const uri = await captureCurrentCard();
+      if (Platform.OS === 'web') {
+        downloadOnWeb(uri);
+        setNotice('浏览器端已下载图片，可直接发朋友圈');
+        return;
+      }
+      const canShare = await Sharing.isAvailableAsync();
+      if (!canShare) {
+        setNotice('当前设备暂不支持系统分享');
+        return;
+      }
       await Sharing.shareAsync(uri, {
         mimeType: 'image/png',
         dialogTitle: '分享你的灵山墨卷',
       });
     } catch (err) {
       console.error('Share failed:', err);
+      setNotice('分享失败，请稍后再试');
     } finally {
       setGenerating(false);
     }
@@ -133,12 +164,20 @@ export function ShareCardPreview({ visible, onClose, memories, summary }: {
 
                   <View style={styles.shareCardMeta}>
                     {card.spotName && (
-                      <Text style={styles.shareCardSpot}>📍 {card.spotName}</Text>
+                      <View style={styles.shareCardMetaItem}>
+                        <MemoryImage source={MEMORY_IMAGES.map} size={22} radius={8} fit="cover" />
+                        <Text style={styles.shareCardSpot} numberOfLines={1}>{card.spotName}</Text>
+                      </View>
                     )}
                     {cardMood && (
-                      <Text style={styles.shareCardMood}>
-                        {cardMood.emoji} {cardMood.label}
-                      </Text>
+                      <View style={styles.shareCardMetaItem}>
+                        <View style={[styles.shareCardMoodEmoji, { borderColor: cardMood.color }]}>
+                          <Text style={styles.shareCardMoodEmojiText}>{cardMood.emoji}</Text>
+                        </View>
+                        <Text style={[styles.shareCardMood, { color: cardMood.color }]}>
+                          {cardMood.label}
+                        </Text>
+                      </View>
                     )}
                   </View>
 
@@ -164,7 +203,10 @@ export function ShareCardPreview({ visible, onClose, memories, summary }: {
             {generating ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={styles.shareModalBtnText}>💾 保存到相册</Text>
+              <>
+                <MemoryImage source={MEMORY_IMAGES.write} size={24} radius={8} fit="contain" />
+                <Text style={styles.shareModalBtnText}>保存到相册</Text>
+              </>
             )}
           </Pressable>
           <Pressable
@@ -175,9 +217,14 @@ export function ShareCardPreview({ visible, onClose, memories, summary }: {
             onPress={handleShare}
             disabled={generating}
           >
-            <Text style={styles.shareModalBtnOutlineText}>📤 分享</Text>
+            <MemoryImage source={MEMORY_IMAGES.share} size={24} radius={8} fit="contain" />
+            <Text style={styles.shareModalBtnOutlineText}>分享</Text>
           </Pressable>
         </View>
+
+        {notice && (
+          <Text style={styles.shareNotice}>{notice}</Text>
+        )}
 
         <View style={styles.shareModalDots}>
           {cards.map((_, idx) => (
@@ -242,9 +289,20 @@ const styles = StyleSheet.create({
     fontSize: 14, fontFamily: 'LongCang', color: Colors.gray600,
     lineHeight: 24, marginBottom: 20, zIndex: 1,
   },
-  shareCardMeta: { flexDirection: 'row', gap: 12, marginBottom: 20, zIndex: 1 },
-  shareCardSpot: { fontSize: 12, color: Colors.gray500 },
-  shareCardMood: { fontSize: 12, color: Colors.gray500 },
+  shareCardMeta: { flexDirection: 'row', gap: 12, marginBottom: 20, zIndex: 1, flexWrap: 'wrap' },
+  shareCardMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: 128 },
+  shareCardMoodEmoji: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shareCardMoodEmojiText: { fontSize: 12, lineHeight: 15 },
+  shareCardSpot: { fontSize: 12, color: Colors.gray500, flexShrink: 1 },
+  shareCardMood: { fontSize: 12, color: Colors.gray500, fontWeight: '600' },
   shareCardFooter: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'flex-end', marginTop: 'auto', zIndex: 1,
@@ -256,15 +314,25 @@ const styles = StyleSheet.create({
   shareModalActions: { flexDirection: 'row', gap: 12, paddingHorizontal: 24, paddingVertical: 16 },
   shareModalBtn: {
     flex: 1, paddingVertical: 13, alignItems: 'center',
+    justifyContent: 'center', flexDirection: 'row', gap: 8,
     backgroundColor: Colors.primary, borderRadius: Radius.lg,
   },
   shareModalBtnText: { color: '#fff', fontSize: 14, fontWeight: '600', letterSpacing: 1 },
   shareModalBtnOutline: {
     flex: 1, paddingVertical: 13, alignItems: 'center',
+    justifyContent: 'center', flexDirection: 'row', gap: 8,
     backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: Radius.lg,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)',
   },
   shareModalBtnOutlineText: { color: '#fff', fontSize: 14, fontWeight: '600', letterSpacing: 1 },
+  shareNotice: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 12,
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    marginTop: -4,
+    marginBottom: 12,
+  },
   shareModalDots: { flexDirection: 'row', justifyContent: 'center', gap: 6, paddingBottom: 24 },
   shareModalDot: {
     width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.3)',

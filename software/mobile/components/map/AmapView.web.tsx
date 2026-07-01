@@ -1,6 +1,15 @@
 import React, { useRef, useCallback, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
-import { LINGSHAN_CENTER, AMAP_KEY, type AmapViewRef, type AmapViewProps } from './AmapView.shared';
+import {
+  LINGSHAN_CENTER,
+  AMAP_KEY,
+  type AmapViewRef,
+  type AmapViewProps,
+  type CoordinateSource,
+} from './AmapView.shared';
+import { wgs84ToGcj02 } from '@/utils/geoCoordinates';
+import { toAmapPoint, toScenicAmapPoint } from '@/utils/amapCoordinates';
+import { getSpotViewportSignature } from '@/utils/mapViewport';
 import { CAT_COLORS } from '@/constants/scenic';
 import { Colors } from '@/constants/colors';
 
@@ -64,6 +73,10 @@ const WebAmapView = forwardRef<AmapViewRef, AmapViewProps>(function WebAmapView(
     style,
     onMapReady,
     onMapError,
+    showLocationControls = true,
+    calibrationMode = false,
+    calibratedCoordinates,
+    onSpotCoordinateChange,
   },
   ref,
 ) {
@@ -72,6 +85,7 @@ const WebAmapView = forwardRef<AmapViewRef, AmapViewProps>(function WebAmapView(
   const markersRef = useRef<any[]>([]);
   const userMarkerRef = useRef<any>(null);
   const routeLineRef = useRef<any>(null);
+  const fittedSpotsSignatureRef = useRef<string | null>(null);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
@@ -85,8 +99,9 @@ const WebAmapView = forwardRef<AmapViewRef, AmapViewProps>(function WebAmapView(
     loadAmapScript().then(() => {
       if (disposed || !containerRef.current || mapRef.current) return;
       try {
+        const mapCenter = toScenicAmapPoint(center);
         const map = new window.AMap.Map(containerRef.current, {
-          center: [center.longitude, center.latitude],
+          center: [mapCenter.longitude, mapCenter.latitude],
           zoom,
           zooms: [13, 18],
           resizeEnable: true,
@@ -127,6 +142,11 @@ const WebAmapView = forwardRef<AmapViewRef, AmapViewProps>(function WebAmapView(
 
     spots.forEach((s, i) => {
       if (s.latitude == null || s.longitude == null) return;
+      const workingPoint = calibratedCoordinates?.[s.id] ?? {
+        latitude: s.latitude,
+        longitude: s.longitude,
+      };
+      const point = toScenicAmapPoint(workingPoint);
       const color = CAT_COLORS[s.category || ''] || Colors.gray500 || '#999';
       const inRoute = routeSet.has(s.id);
       const active = activeSpotId === s.id;
@@ -144,34 +164,68 @@ const WebAmapView = forwardRef<AmapViewRef, AmapViewProps>(function WebAmapView(
         <div style="margin-top:2px;padding:2px 5px;background:rgba(255,255,255,0.92);border-radius:3px;font-size:10px;font-weight:500;color:#333;white-space:nowrap;max-width:80px;overflow:hidden;text-overflow:ellipsis;font-family:-apple-system,sans-serif">${s.name}</div>
       </div>`;
       const marker = new window.AMap.Marker({
-        position: [s.longitude, s.latitude],
+        position: [point.longitude, point.latitude],
         content,
         offset: new window.AMap.Pixel(-dotRadius, -dotRadius),
         extData: s,
         zIndex: active ? 90 : inRoute ? 70 : 50,
+        draggable: calibrationMode,
+        cursor: calibrationMode ? 'move' : 'pointer',
       });
       marker.on('click', () => onSpotTap?.(s));
+      if (calibrationMode) {
+        marker.on('dragend', () => {
+          const position = marker.getPosition?.();
+          if (!position) return;
+          const latitude = typeof position.getLat === 'function' ? position.getLat() : position.lat;
+          const longitude = typeof position.getLng === 'function' ? position.getLng() : position.lng;
+          if (typeof latitude === 'number' && typeof longitude === 'number') {
+            onSpotCoordinateChange?.(s.id, { latitude, longitude });
+          }
+        });
+      }
       map.add(marker);
       markersRef.current.push(marker);
     });
 
-    if (spots.length > 0) {
-      try { map.setFitView(null, false, [60, 60, 60, 60]); } catch {}
+    const spotsSignature = calibrationMode ? 'calibration-initial-fit' : getSpotViewportSignature(spots);
+    if (spotsSignature && fittedSpotsSignatureRef.current !== spotsSignature) {
+      try {
+        if (markersRef.current.length > 0) {
+          map.setFitView(markersRef.current, false, [118, 48, 240, 48]);
+        }
+      } catch {}
+      fittedSpotsSignatureRef.current = spotsSignature;
     }
-  }, [spots, ready, onSpotTap, routeSpotIds, activeSpotId]);
+  }, [
+    spots,
+    ready,
+    onSpotTap,
+    routeSpotIds,
+    activeSpotId,
+    calibrationMode,
+    calibratedCoordinates,
+    onSpotCoordinateChange,
+  ]);
 
   useImperativeHandle(ref, () => ({
-    setCenter(lat: number, lng: number, z?: number) {
+    setCenter(lat: number, lng: number, z?: number, source?: CoordinateSource) {
       const map = mapRef.current;
       if (!map) return;
-      map.setCenter(new window.AMap.LngLat(lng, lat));
+      const point = source
+        ? toAmapPoint({ latitude: lat, longitude: lng }, source)
+        : toScenicAmapPoint({ latitude: lat, longitude: lng });
+      map.setCenter(new window.AMap.LngLat(point.longitude, point.latitude));
       if (z) map.setZoom(z);
     },
     drawRoute(points) {
       const map = mapRef.current;
       if (!map) return;
       if (routeLineRef.current) map.remove(routeLineRef.current);
-      const path = points.map((p) => new window.AMap.LngLat(p.longitude, p.latitude));
+      const path = points.map((p) => {
+        const point = p.source ? toAmapPoint(p) : toScenicAmapPoint(p);
+        return new window.AMap.LngLat(point.longitude, point.latitude);
+      });
       routeLineRef.current = new window.AMap.Polyline({
         path,
         strokeColor: '#6A9C89',
@@ -195,9 +249,10 @@ const WebAmapView = forwardRef<AmapViewRef, AmapViewProps>(function WebAmapView(
   const sendLocation = useCallback((lat: number, lng: number) => {
     const map = mapRef.current;
     if (!map) return;
+    const point = wgs84ToGcj02(lat, lng);
     if (userMarkerRef.current) map.remove(userMarkerRef.current);
     userMarkerRef.current = new window.AMap.Marker({
-      position: [lng, lat],
+      position: [point.longitude, point.latitude],
       content: '<div style="position:relative"><div style="position:absolute;top:-8px;left:-8px;width:30px;height:30px;border-radius:15px;background:rgba(74,144,217,0.18);animation:userPulse 2s ease-out infinite"></div><div style="width:14px;height:14px;border-radius:7px;background:#4A90D9;border:2.5px solid #fff;box-shadow:0 0 8px rgba(74,144,217,0.5)"></div></div>',
       offset: new window.AMap.Pixel(-7, -7),
       zIndex: 100,
@@ -213,7 +268,8 @@ const WebAmapView = forwardRef<AmapViewRef, AmapViewProps>(function WebAmapView(
         sendLocation(pos.coords.latitude, pos.coords.longitude);
         const map = mapRef.current;
         if (map) {
-          map.setCenter(new window.AMap.LngLat(pos.coords.longitude, pos.coords.latitude));
+          const point = wgs84ToGcj02(pos.coords.latitude, pos.coords.longitude);
+          map.setCenter(new window.AMap.LngLat(point.longitude, point.latitude));
           map.setZoom(16);
         }
         setLocating(false);
@@ -284,6 +340,7 @@ const WebAmapView = forwardRef<AmapViewRef, AmapViewProps>(function WebAmapView(
       )}
 
       {/* 定位按钮组 */}
+      {showLocationControls && (
       <View style={locStyles.wrap}>
         <Pressable
           style={({ pressed }) => [locStyles.btn, pressed && locStyles.btnPressed]}
@@ -309,8 +366,9 @@ const WebAmapView = forwardRef<AmapViewRef, AmapViewProps>(function WebAmapView(
           </Text>
         </Pressable>
       </View>
+      )}
 
-      {tracking && (
+      {showLocationControls && tracking && (
         <View style={locStyles.trackingBadge}>
           <View style={locStyles.pulseDot} />
           <Text style={locStyles.trackingText}>追踪中</Text>

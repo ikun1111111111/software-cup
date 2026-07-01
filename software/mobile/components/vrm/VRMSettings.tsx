@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, ScrollView,
+  View, Text, Pressable, StyleSheet, ScrollView, Platform,
 } from 'react-native';
 import InlineModal from '@/components/ui/InlineModal';
 import { Colors } from '@/constants/colors';
 import { COSTUMES, ALL_COSTUME_IDS } from '@/constants/costumeMap';
+import { API_BASE_URL } from '@/api/config';
+import type { VoiceConfig } from '@/hooks/useVRMSync';
 
 export type VoiceMode = 'silent' | 'browser' | 'tts';
 
@@ -15,20 +17,32 @@ interface VRMSettingsProps {
   onCostumeChange: (id: string) => void;
   voiceMode: VoiceMode;
   onVoiceModeChange: (mode: VoiceMode) => void;
+  voiceConfig?: VoiceConfig;
+  onVoiceConfigChange?: (config: VoiceConfig) => void;
+}
+
+interface TTSVoiceEntry {
+  speaker_id: string;
+  description: string;
 }
 
 const VOICE_MODES: { id: VoiceMode; label: string; desc: string }[] = [
-  { id: 'silent', label: '纯演示', desc: '无声音，只看动作表情' },
-  { id: 'browser', label: '浏览器语音', desc: '使用系统TTS' },
-  { id: 'tts', label: '后端TTS', desc: '需要后端服务' },
+  { id: 'silent', label: 'Demo', desc: 'No audio, animation only' },
+  { id: 'browser', label: 'Browser voice', desc: 'Use system TTS' },
+  { id: 'tts', label: 'Backend TTS', desc: 'Requires backend service' },
 ];
 
 const DEMO_TEXTS = [
-  '你好！欢迎来到灵山景区，我是你的数字人导游。',
-  '灵山梵宫是景区的核心景点，建筑气势恢宏。',
-  '灵山大佛高八十八米，是世界上最高的青铜佛像之一。',
-  '每年春节，灵山景区都会举办盛大的庙会活动。',
+  'Hello, welcome to Lingshan. I am your digital guide.',
+  'Lingshan Fan Palace is a core scenic spot with a grand interior.',
+  'The Lingshan Grand Buddha is 88 meters tall.',
+  'Every Spring Festival, Lingshan hosts major temple fair events.',
 ];
+
+const DEFAULT_VOICE_CONFIG: VoiceConfig = {
+  rate: 1,
+  pitch: 1,
+};
 
 export default function VRMSettings({
   visible,
@@ -37,7 +51,49 @@ export default function VRMSettings({
   onCostumeChange,
   voiceMode,
   onVoiceModeChange,
+  voiceConfig = DEFAULT_VOICE_CONFIG,
+  onVoiceConfigChange,
 }: VRMSettingsProps) {
+  const [ttsVoices, setTtsVoices] = useState<Record<string, TTSVoiceEntry>>({});
+  const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_BASE_URL}/tts/voices`)
+      .then((res) => res.json())
+      .then((data) => setTtsVoices(data || {}))
+      .catch(() => setTtsVoices({}));
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+
+    const load = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const zhVoices = voices.filter((v) => v.lang.toLowerCase().startsWith('zh'));
+      setBrowserVoices(zhVoices.length > 0 ? zhVoices : voices);
+    };
+
+    load();
+    window.speechSynthesis.onvoiceschanged = load;
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  const updateConfig = (patch: Partial<VoiceConfig>) => {
+    onVoiceConfigChange?.({ ...voiceConfig, ...patch });
+  };
+
+  const adjust = (key: 'rate' | 'pitch', delta: number) => {
+    const current = voiceConfig[key] ?? 1;
+    const next = Math.round(Math.max(0.5, Math.min(2.0, current + delta)) * 10) / 10;
+    updateConfig({ [key]: next });
+  };
+
+  const selectedBrowserVoice = browserVoices.find((v) => v.voiceURI === voiceConfig.browserVoiceUri);
+  const ttsVoiceIds = Object.keys(ttsVoices);
+
   return (
     <InlineModal visible={visible} animationType="slide" transparent onClose={onClose}>
       <View style={styles.overlay}>
@@ -87,6 +143,95 @@ export default function VRMSettings({
                 );
               })}
             </View>
+
+            {/* 浏览器音色 */}
+            {voiceMode === 'browser' && Platform.OS === 'web' && (
+              <>
+                <Text style={styles.sectionTitle}>浏览器音色</Text>
+                {browserVoices.length === 0 ? (
+                  <Text style={styles.emptyText}>未检测到浏览器语音</Text>
+                ) : (
+                  <View style={styles.voiceList}>
+                    {browserVoices.map((voice) => {
+                      const active = voice.voiceURI === voiceConfig.browserVoiceUri;
+                      return (
+                        <Pressable
+                          key={voice.voiceURI}
+                          style={[styles.voiceBtn, active && styles.voiceBtnActive]}
+                          onPress={() => updateConfig({ browserVoiceUri: voice.voiceURI })}
+                        >
+                          <Text style={[styles.voiceName, active && styles.voiceNameActive]}>
+                            {voice.name}
+                          </Text>
+                          <Text style={styles.voiceDesc}>{voice.lang}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+                {selectedBrowserVoice && (
+                  <Text style={styles.selectedHint}>
+                    当前：{selectedBrowserVoice.name}
+                  </Text>
+                )}
+              </>
+            )}
+
+            {/* 后端音色 */}
+            {voiceMode === 'tts' && (
+              <>
+                <Text style={styles.sectionTitle}>后端音色</Text>
+                {ttsVoiceIds.length === 0 ? (
+                  <Text style={styles.emptyText}>未获取到后端音色列表</Text>
+                ) : (
+                  <View style={styles.voiceList}>
+                    {ttsVoiceIds.map((id) => {
+                      const voice = ttsVoices[id];
+                      const active = id === voiceConfig.ttsVoiceId;
+                      return (
+                        <Pressable
+                          key={id}
+                          style={[styles.voiceBtn, active && styles.voiceBtnActive]}
+                          onPress={() => updateConfig({ ttsVoiceId: id })}
+                        >
+                          <Text style={[styles.voiceName, active && styles.voiceNameActive]}>
+                            {voice.description || id}
+                          </Text>
+                          <Text style={styles.voiceDesc}>{voice.speaker_id}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+              </>
+            )}
+
+            {/* 语速 / 音高 */}
+            {voiceMode !== 'silent' && (
+              <>
+                <Text style={styles.sectionTitle}>语速与音高</Text>
+                <View style={styles.adjustRow}>
+                  <Text style={styles.adjustLabel}>语速</Text>
+                  <Pressable style={styles.adjustBtn} onPress={() => adjust('rate', -0.1)}>
+                    <Text style={styles.adjustBtnText}>−</Text>
+                  </Pressable>
+                  <Text style={styles.adjustValue}>{(voiceConfig.rate ?? 1).toFixed(1)}</Text>
+                  <Pressable style={styles.adjustBtn} onPress={() => adjust('rate', 0.1)}>
+                    <Text style={styles.adjustBtnText}>+</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.adjustRow}>
+                  <Text style={styles.adjustLabel}>音高</Text>
+                  <Pressable style={styles.adjustBtn} onPress={() => adjust('pitch', -0.1)}>
+                    <Text style={styles.adjustBtnText}>−</Text>
+                  </Pressable>
+                  <Text style={styles.adjustValue}>{(voiceConfig.pitch ?? 1).toFixed(1)}</Text>
+                  <Pressable style={styles.adjustBtn} onPress={() => adjust('pitch', 0.1)}>
+                    <Text style={styles.adjustBtnText}>+</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
 
             {/* 功能说明 */}
             <View style={styles.featureBox}>
@@ -218,6 +363,75 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: Colors.gray400,
     textAlign: 'center',
+  },
+  voiceList: {
+    gap: 8,
+    marginBottom: 16,
+  },
+  voiceBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.borderLight,
+    backgroundColor: '#fff',
+  },
+  voiceBtnActive: {
+    borderColor: Colors.accent,
+    backgroundColor: Colors.accentBg,
+  },
+  voiceName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.ink,
+    marginBottom: 2,
+  },
+  voiceNameActive: {
+    color: Colors.accent,
+  },
+  voiceDesc: {
+    fontSize: 10,
+    color: Colors.gray400,
+  },
+  selectedHint: {
+    fontSize: 12,
+    color: Colors.accent,
+    marginBottom: 20,
+  },
+  emptyText: {
+    fontSize: 12,
+    color: Colors.gray400,
+    marginBottom: 20,
+  },
+  adjustRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  adjustLabel: {
+    width: 48,
+    fontSize: 13,
+    color: Colors.ink,
+  },
+  adjustBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: Colors.gray100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adjustBtnText: {
+    fontSize: 18,
+    color: Colors.ink,
+    fontWeight: '600',
+  },
+  adjustValue: {
+    width: 44,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.accent,
   },
   featureBox: {
     backgroundColor: Colors.gray50,

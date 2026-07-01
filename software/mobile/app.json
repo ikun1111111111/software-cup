@@ -29,6 +29,12 @@
       "expo-font",
       "expo-asset",
       [
+        "expo-av",
+        {
+          "microphonePermission": "Allow $(PRODUCT_NAME) to use the microphone for voice input and travel memory recordings."
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Allow $(PRODUCT_NAME) to use the camera for photo and QR code check-ins."

@@ -10,11 +10,16 @@ import { Colors } from '@/constants/colors';
 import { VRMView } from '@/components/vrm/VRMView';
 import type { Emotion } from '@/components/vrm/VRMTypes';
 import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
 import { useSSE } from '@/hooks/useSSE';
 import { useChatStore } from '@/stores/chatStore';
 import type { PageGuideConfig } from '@/config/pageGuide';
 import { API_BASE_URL } from '@/api/config';
 import { estimateSpeechDuration } from '@/utils/digitalHumanDriver';
+import {
+  buildDigitalHumanChatPayload,
+  buildDigitalHumanChatStreamUrl,
+} from '@/utils/aiChat';
 
 type GuideState = 'prompt' | 'speaking' | 'question' | 'dismissed' | 'idle';
 
@@ -70,7 +75,7 @@ export default function GuideDemoPage() {
     speak,
     setExpression,
     playAction,
-  } = useDigitalHumanDriver('tts');
+  } = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE);
 
   const {
     messages, addMessage,
@@ -147,6 +152,10 @@ export default function GuideDemoPage() {
 
   const doSend = useCallback((text: string) => {
     if (!text.trim() || isStreaming) return;
+    const activeSessionId = currentSessionId ?? `demo_${Date.now()}`;
+    if (!currentSessionId) {
+      setCurrentSession(activeSessionId);
+    }
 
     addMessage({
       id: `msg_${Date.now()}`,
@@ -165,13 +174,13 @@ export default function GuideDemoPage() {
     setStreaming(true);
     setQuestionsAsked(q => q + 1);
 
-    connect(`${API_BASE_URL}/chat/stream`, {
-      session_id: currentSessionId,
-      question: text.trim(),
-      stream: true,
+    connect(buildDigitalHumanChatStreamUrl(API_BASE_URL), buildDigitalHumanChatPayload({
+      sessionId: activeSessionId,
+      question: text,
       history: getHistory(5),
-    });
-  }, [isStreaming, currentSessionId, addMessage, setStreaming, connect, getHistory]);
+      sourcePage: 'guide_demo',
+    }));
+  }, [isStreaming, currentSessionId, setCurrentSession, addMessage, setStreaming, connect, getHistory]);
 
   const handleDismiss = useCallback(() => {
     clearIdleTimer();

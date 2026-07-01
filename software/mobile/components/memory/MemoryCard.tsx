@@ -11,6 +11,7 @@ import { type TravelMemory, type Achievement } from '@/api/memory';
 import { MOOD_META } from './constants';
 import { AnimatedText } from './AnimatedText';
 import { InkDropAnimation } from './InkDropAnimation';
+import { MemoryImage, getMemoryArtwork, getSpotImageByName, MEMORY_IMAGES } from './MemoryVisual';
 
 const MemoryCard = React.memo(function MemoryCard({ item, index, onPolish, achievements }: {
   item: TravelMemory;
@@ -25,13 +26,18 @@ const MemoryCard = React.memo(function MemoryCard({ item, index, onPolish, achie
   const [showAnimatedText, setShowAnimatedText] = useState(false);
   const [displayContent, setDisplayContent] = useState(item.polished_content || item.original_content);
 
-  const mood = MOOD_META[item.mood_tag || ''] || { emoji: '📝', color: Colors.gray400, label: '' };
+  const mood = MOOD_META[item.mood_tag || ''] || { color: Colors.gray400, label: '', sealText: '记', emoji: '✨' };
+  const moodEmoji = mood.emoji || '✨';
   const isLong = displayContent.length > 80;
   const hasPolished = !!item.polished_content;
   const unlockedAchievements = useMemo(
     () => achievements.filter((achievement) => achievement.unlocked).slice(0, 3),
     [achievements],
   );
+  const artworkSeed = item.id + index + (item.spot_name?.length ?? 0);
+  const spotArtwork = getSpotImageByName(item.spot_name);
+  const memoryArtwork = spotArtwork ?? getMemoryArtwork(artworkSeed);
+  const memoryArtifact = getMemoryArtwork(artworkSeed + 2);
 
   const flipProgress = useSharedValue(0);
   const stampScale = useSharedValue(1);
@@ -114,7 +120,10 @@ const MemoryCard = React.memo(function MemoryCard({ item, index, onPolish, achie
         <Animated.View style={[styles.cardFace, frontStyle]}>
           <View style={styles.cardHeader}>
             {item.spot_name && (
-              <Text style={styles.cardSpotName}>📍 {item.spot_name}</Text>
+              <View style={styles.cardSpotName}>
+                <MemoryImage source={spotArtwork ?? MEMORY_IMAGES.map} size={22} radius={8} fit="cover" />
+                <Text style={styles.cardSpotText} numberOfLines={1}>{item.spot_name}</Text>
+              </View>
             )}
             <Text style={styles.cardDate}>
               {new Date(item.created_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
@@ -123,19 +132,45 @@ const MemoryCard = React.memo(function MemoryCard({ item, index, onPolish, achie
 
           <View style={styles.cardDivider} />
 
-          {item.photo_url && (
+          {item.photo_url ? (
             <View style={styles.cardPhoto}>
               <Image source={{ uri: item.photo_url }} style={styles.cardPhotoImage} resizeMode="cover" />
               <View style={styles.cardPhotoBadge}>
-                <Text style={styles.cardPhotoBadgeText}>📷</Text>
+                <MemoryImage source={MEMORY_IMAGES.photo} size={24} radius={12} fit="cover" />
               </View>
+              <View style={styles.cardPhotoArtifact}>
+                <View style={[styles.moodMiniChip, { borderColor: mood.color }]}>
+                  <Text style={styles.moodMiniEmoji}>{moodEmoji}</Text>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.cardArtwork}>
+              <MemoryImage
+                source={memoryArtwork}
+                height={130}
+                radius={14}
+                fit={spotArtwork ? 'cover' : artworkSeed % 3 === 0 ? 'cover' : 'contain'}
+                style={styles.cardArtworkImage}
+              >
+                <View style={styles.cardArtworkWash} />
+                <View style={styles.cardArtworkTag}>
+                  <Text style={styles.cardArtworkTagText}>{mood.label || '灵山片段'}</Text>
+                </View>
+                <View style={styles.cardArtworkObjects}>
+                  <MemoryImage source={memoryArtifact} size={34} radius={10} fit="contain" />
+                  <View style={[styles.moodMiniChip, styles.moodObjectChip, { borderColor: mood.color }]}>
+                    <Text style={styles.moodObjectEmoji}>{moodEmoji}</Text>
+                  </View>
+                </View>
+              </MemoryImage>
             </View>
           )}
 
           {item.voice_url && (
             <View style={styles.cardVoice}>
               <View style={styles.cardVoiceIcon}>
-                <Text style={styles.cardVoiceIconText}>🎤</Text>
+                <MemoryImage source={MEMORY_IMAGES.chat} size={22} radius={11} fit="cover" />
               </View>
               <Text style={styles.cardVoiceText}>
                 语音记录 · {Math.floor((item.voice_duration || 0) / 60)}:{((item.voice_duration || 0) % 60).toString().padStart(2, '0')}
@@ -167,7 +202,7 @@ const MemoryCard = React.memo(function MemoryCard({ item, index, onPolish, achie
           <Animated.View style={[styles.moodStamp, stampAnimStyle, {
             borderColor: mood.color,
           }]}>
-            <Text style={styles.moodStampEmoji}>{mood.emoji}</Text>
+            <Text style={styles.moodStampEmoji}>{moodEmoji}</Text>
             <Text style={[styles.moodStampLabel, { color: mood.color }]}>
               {mood.label}
             </Text>
@@ -175,9 +210,9 @@ const MemoryCard = React.memo(function MemoryCard({ item, index, onPolish, achie
 
           {unlockedAchievements.length > 0 && (
             <View style={styles.cardAchievements}>
-              {unlockedAchievements.map((ach) => (
+              {unlockedAchievements.map((ach, achIndex) => (
                 <View key={ach.id} style={styles.cardAchievementBadge}>
-                  <Text style={styles.cardAchievementIcon}>{ach.icon}</Text>
+                  <MemoryImage source={getMemoryArtwork(achIndex + artworkSeed)} size={20} radius={8} fit="contain" />
                   <Text style={styles.cardAchievementName} numberOfLines={1}>{ach.name}</Text>
                 </View>
               ))}
@@ -195,7 +230,7 @@ const MemoryCard = React.memo(function MemoryCard({ item, index, onPolish, achie
                 ]}
                 onPress={handleFlip}
               >
-                <Text style={styles.flipBtnText}>🖋 查看原文</Text>
+                <Text style={styles.flipBtnText}>查看原文</Text>
               </Pressable>
             )}
             <Pressable
@@ -217,7 +252,10 @@ const MemoryCard = React.memo(function MemoryCard({ item, index, onPolish, achie
         {hasPolished && (
           <Animated.View style={[styles.cardFace, styles.cardBack, backStyle]}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardSpotName}>📜 原文</Text>
+              <View style={styles.cardSpotName}>
+                <MemoryImage source={MEMORY_IMAGES.write} size={22} radius={8} fit="contain" />
+                <Text style={styles.cardSpotText}>原文</Text>
+              </View>
               <Text style={styles.cardDate}>
                 {new Date(item.created_at).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
               </Text>
@@ -240,7 +278,7 @@ const MemoryCard = React.memo(function MemoryCard({ item, index, onPolish, achie
               ]}
               onPress={handleFlip}
             >
-              <Text style={styles.flipBtnText}>↩ 返回润色版</Text>
+              <Text style={styles.flipBtnText}>返回润色版</Text>
             </Pressable>
           </Animated.View>
         )}
@@ -284,7 +322,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
-  cardSpotName: { fontSize: 11, color: Colors.gray500, fontWeight: '500' },
+  cardSpotName: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    minWidth: 0,
+  },
+  cardSpotText: { fontSize: 11, color: Colors.gray500, fontWeight: '600', flexShrink: 1 },
   cardDate: { fontSize: 11, color: Colors.gray400 },
   cardDivider: { height: 1, backgroundColor: Colors.borderLight, marginBottom: 12 },
   cardTitle: {
@@ -301,9 +346,13 @@ const styles = StyleSheet.create({
     width: 52, height: 52, borderRadius: 26,
     borderWidth: 2, borderStyle: 'dashed',
     justifyContent: 'center', alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.7)',
+    backgroundColor: 'rgba(255,255,255,0.82)',
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 5,
   },
-  moodStampEmoji: { fontSize: 20 },
+  moodStampEmoji: { fontSize: 18, lineHeight: 20 },
   moodStampLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 },
   cardAchievements: { flexDirection: 'row', gap: 6, marginTop: 10, flexWrap: 'wrap' },
   cardAchievementBadge: {
@@ -312,7 +361,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 4,
     borderWidth: 1, borderColor: Colors.borderLight, gap: 4,
   },
-  cardAchievementIcon: { fontSize: 12 },
   cardAchievementName: { fontSize: 10, fontWeight: '600', color: Colors.ink, maxWidth: 60 },
   inkDottedLine: {
     height: 1, borderStyle: 'dotted', borderWidth: 0.5,
@@ -338,10 +386,73 @@ const styles = StyleSheet.create({
   cardPhotoImage: { width: '100%', height: '100%' },
   cardPhotoBadge: {
     position: 'absolute', top: 8, right: 8,
-    backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.22)', borderRadius: 12,
     width: 24, height: 24, justifyContent: 'center', alignItems: 'center',
   },
-  cardPhotoBadgeText: { fontSize: 12 },
+  cardPhotoArtifact: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+  },
+  moodMiniChip: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+  moodMiniEmoji: {
+    fontSize: 15,
+    lineHeight: 18,
+  },
+  cardArtwork: {
+    marginVertical: 8,
+  },
+  cardArtworkImage: {
+    width: '100%',
+    backgroundColor: '#F2E7D6',
+  },
+  cardArtworkWash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(42,37,32,0.06)',
+  },
+  cardArtworkTag: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.accent,
+  },
+  cardArtworkTagText: {
+    fontSize: 10,
+    color: '#fff',
+    fontWeight: '800',
+  },
+  cardArtworkObjects: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+  },
+  moodObjectChip: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+  },
+  moodObjectEmoji: {
+    fontSize: 17,
+    lineHeight: 20,
+  },
   cardVoice: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: 'rgba(106,156,137,0.08)', borderRadius: 8,
@@ -352,6 +463,5 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(106,156,137,0.15)',
     justifyContent: 'center', alignItems: 'center',
   },
-  cardVoiceIconText: { fontSize: 12 },
   cardVoiceText: { fontSize: 12, color: Colors.gray500 },
 });

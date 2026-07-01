@@ -2,12 +2,12 @@ import { post, get, put } from './request';
 
 export const authApi = {
   register: (username: string, password: string, nickname?: string) =>
-    post('/api/auth/register', { username, password, nickname }),
+    post('/auth/register', { username, password, nickname }, { retries: 0 }),
   login: (username: string, password: string) =>
-    post('/api/auth/login', { username, password }),
-  getMe: () => get('/api/auth/me'),
+    post('/auth/login', { username, password }, { retries: 0 }),
+  getMe: () => get('/auth/me', undefined, { retries: 0 }),
   updateProfile: (data: { nickname?: string; avatar?: string }) =>
-    put('/api/auth/profile', data),
+    put('/auth/profile', data),
   changePassword: (oldPassword: string, newPassword: string) =>
-    post('/api/auth/change-password', { old_password: oldPassword, new_password: newPassword }),
+    post('/auth/change-password', { old_password: oldPassword, new_password: newPassword }),
 };

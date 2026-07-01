@@ -4,9 +4,9 @@ import {
 } from 'react-native';
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
+import InlineModal from '@/components/ui/InlineModal';
 import type { TourRouteDetail } from '@/api/routes';
 import { getRoutesWithFallback, getRouteDetailWithFallback } from '@/services/dataSync';
-import { OFFLINE_DEMO_NOTICE, isOfflineDemoRoute } from '@/constants/offline-demo';
 
 const { height: SCREEN_H } = Dimensions.get('window');
 
@@ -33,7 +33,7 @@ interface Props {
 
 /**
  * 导览方案选择弹窗
- * Step 1: 询问是否协同导览
+ * Step 1: 选择小灵陪伴强度
  * Step 2: 选择导览方案
  */
 export function GuidePlanModal({
@@ -47,7 +47,6 @@ export function GuidePlanModal({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [routes, setRoutes] = useState<RouteOption[]>(externalRoutes || []);
   const [loading, setLoading] = useState(false);
-  const [demoMode, setDemoMode] = useState(false);
   const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -84,7 +83,6 @@ export function GuidePlanModal({
           });
 
           setRoutes(routeOptions);
-          setDemoMode(dbRoutes.some((route) => isOfflineDemoRoute(route.id)));
         })
         .catch((err) => {
           console.error('获取路线列表失败:', err);
@@ -94,7 +92,6 @@ export function GuidePlanModal({
         });
     } else if (externalRoutes) {
       setRoutes(externalRoutes);
-      setDemoMode(false);
     }
   }, [visible, externalRoutes]);
 
@@ -132,11 +129,11 @@ export function GuidePlanModal({
     }
   }, [visible]);
 
-  const handleCollab = () => {
+  const handleProactiveGuide = () => {
     onCollabTour();
   };
 
-  const handleSolo = () => {
+  const handleQuietCompanion = () => {
     setStep('plan');
   };
 
@@ -157,6 +154,7 @@ export function GuidePlanModal({
     d === 'easy' ? '轻松' : d === 'medium' ? '适中' : '挑战';
 
   return (
+    <InlineModal visible={visible} transparent animationType="fade" onClose={onClose}>
     <View style={styles.overlay}>
       {/* 遮罩 */}
       <Pressable style={[styles.backdrop, { opacity: fadeAnim }]} onPress={onClose} />
@@ -172,40 +170,40 @@ export function GuidePlanModal({
         <View style={styles.handle} />
 
         {step === 'collab' ? (
-          /* ───────── Step 1: 协同导览询问 ───────── */
+          /* ───────── Step 1: 小灵陪伴强度 ───────── */
           <View style={styles.collabStep}>
             <Text style={styles.stepTitle}>开始您的灵山之旅</Text>
             <Text style={styles.stepSub}>选择游览方式，开启专属导览体验</Text>
 
             <View style={styles.collabOptions}>
-              {/* 协同导览 */}
+              {/* 小灵主动带路 */}
               <Pressable
                 style={({ pressed }) => [styles.collabCard, pressed && { opacity: 0.85 }]}
-                onPress={handleCollab}
+                onPress={handleProactiveGuide}
                 accessibilityRole="button"
-                accessibilityLabel="创建协同导览"
+                accessibilityLabel="开启小灵主动带路"
               >
                 <View style={[styles.collabIconWrap, { backgroundColor: Colors.primaryBg }]}>
                   <Text style={styles.collabIcon}>👥</Text>
                 </View>
-                <Text style={styles.collabCardTitle}>协同导览</Text>
-                <Text style={styles.collabCardDesc}>邀请好友一起游览，共享路线</Text>
-                <Text style={styles.collabCardCta}>前往创建 →</Text>
+                <Text style={styles.collabCardTitle}>小灵主动带路</Text>
+                <Text style={styles.collabCardDesc}>小灵规划路线、提醒下一站，到点主动讲解</Text>
+                <Text style={styles.collabCardCta}>开始主动导览 →</Text>
               </Pressable>
 
-              {/* 独自游览 */}
+              {/* 小灵安静陪伴 */}
               <Pressable
                 style={({ pressed }) => [styles.collabCard, pressed && { opacity: 0.85 }]}
-                onPress={handleSolo}
+                onPress={handleQuietCompanion}
                 accessibilityRole="button"
-                accessibilityLabel="选择独自游览导览方案"
+                accessibilityLabel="选择小灵安静陪伴方案"
               >
                 <View style={[styles.collabIconWrap, { backgroundColor: Colors.accentBg }]}>
                   <Text style={styles.collabIcon}>🎤</Text>
                 </View>
-                <Text style={styles.collabCardTitle}>独自游览</Text>
-                <Text style={styles.collabCardDesc}>小灵陪你一个人逛，按节奏推荐路线</Text>
-                <Text style={styles.collabCardCta}>选择独游节奏 →</Text>
+                <Text style={styles.collabCardTitle}>小灵安静陪伴</Text>
+                <Text style={styles.collabCardDesc}>你自由慢逛，小灵只在关键节点轻声提醒</Text>
+                <Text style={styles.collabCardCta}>选择陪伴节奏 →</Text>
               </Pressable>
             </View>
           </View>
@@ -223,13 +221,6 @@ export function GuidePlanModal({
               </Pressable>
               <Text style={styles.stepTitle}>选择导览方案</Text>
             </View>
-
-            {demoMode && (
-              <View style={styles.demoBanner} accessible accessibilityRole="text">
-                <Text style={styles.demoBannerTitle}>演示数据模式</Text>
-                <Text style={styles.demoBannerText}>{OFFLINE_DEMO_NOTICE}</Text>
-              </View>
-            )}
 
             {loading ? (
               <View style={styles.loadingWrap}>
@@ -310,20 +301,21 @@ export function GuidePlanModal({
               accessibilityLabel={selectedId ? '开始行程' : '请选择导览方案'}
             >
               <Text style={styles.startBtnTxt}>
-                {selectedId ? '开始独自游览 →' : '请选择方案'}
+                {selectedId ? '开始小灵陪伴 →' : '请选择方案'}
               </Text>
             </Pressable>
           </View>
         )}
       </Animated.View>
     </View>
+    </InlineModal>
   );
 }
 
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 200,
+    zIndex: 10000,
     justifyContent: 'flex-end',
   },
   backdrop: {
@@ -557,27 +549,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     letterSpacing: 2,
-  },
-  demoBanner: {
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    minHeight: 48,
-    borderRadius: Radius.md,
-    backgroundColor: 'rgba(200,169,81,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(200,169,81,0.35)',
-    marginBottom: 12,
-  },
-  demoBannerTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: Colors.accent,
-    marginBottom: 2,
-  },
-  demoBannerText: {
-    fontSize: 12,
-    lineHeight: 17,
-    color: Colors.gray600,
   },
   loadingWrap: {
     paddingVertical: 60,

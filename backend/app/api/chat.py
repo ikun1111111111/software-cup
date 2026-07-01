@@ -22,6 +22,10 @@ class ChatRequest(BaseModel):
     question: str
     stream: bool = True
     history: list[dict] = []  # Optional conversation history from frontend
+    spot_id: str | None = None
+    spot_name: str | None = None
+    route_id: str | None = None
+    source_page: str | None = None  # e.g. 'chat' | 'attraction'
 
 
 def _exact_cache_key(session_id: str, question: str) -> str:
@@ -139,6 +143,10 @@ async def chat_stream(
         question, session_id, db,
         stream=request_data.stream,
         history=request_data.history if request_data.history else None,
+        spot_id=request_data.spot_id,
+        spot_name=request_data.spot_name,
+        route_id=request_data.route_id,
+        source_page=request_data.source_page,
     )
 
     # Fast paths: FAQ or semantic cache hit -> immediate response
@@ -167,11 +175,11 @@ async def chat_stream(
         await finalize_chat(session_id, question, answer, "cache")
         await _log_interaction(
             db, session_id, question, answer, "cache", [],
-            0.5, "neutral", latency_ms,
+            result.get("sentiment_score", 0.5), result.get("sentiment_label", "neutral"), latency_ms,
         )
 
         async def cache_generator():
-            yield f"event: done\ndata: {json.dumps(result, ensure_ascii=False)}\n\n"
+            yield f"event: cache_hit\ndata: {json.dumps(result, ensure_ascii=False)}\n\n"
 
         return StreamingResponse(
             cache_generator(),
@@ -213,6 +221,7 @@ async def chat_stream(
                     "latency_ms": latency_ms,
                     "sentiment_score": sentiment_score,
                     "sentiment_label": sentiment_label,
+                    "emotion": result.get("emotion", "neutral"),
                 }
 
                 # Send done immediately — don't block on cache/log writes

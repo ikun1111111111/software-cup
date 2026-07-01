@@ -1,5 +1,6 @@
 import { Tabs } from 'expo-router';
-import { Text, View, StyleSheet } from 'react-native';
+import { Text, View, StyleSheet, Platform } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import React from 'react';
@@ -11,6 +12,10 @@ import { Colors } from '@/constants/colors';
 
 const TAB_EMOJIS: Record<string, string> = {
   '启扉': '🏯', '问讯': '💬', '云游': '🗺️', '记忆': '📝', '我的': '🧘',
+};
+
+const TAB_IMAGES: Record<string, any> = {
+  '云游': require('../../assets/images/explore/route-map.png'),
 };
 
 const TabIcon = React.memo(function TabIcon({ label, focused }: { label: string; focused: boolean }) {
@@ -36,7 +41,7 @@ const TabIcon = React.memo(function TabIcon({ label, focused }: { label: string;
   }, [focused, bounce, dotScale, prevFocused]);
 
   React.useEffect(() => {
-    if (!focused) {
+    if (!focused && Platform.OS !== 'web') {
       breath.value = withRepeat(
         withSequence(
           withTiming(0.92, { duration: 1800, easing: Easing.inOut(Easing.ease) }),
@@ -63,9 +68,15 @@ const TabIcon = React.memo(function TabIcon({ label, focused }: { label: string;
 
   return (
     <View style={styles.tabIcon}>
-      <Animated.Text style={[styles.tabEmoji, emojiStyle]}>
-        {TAB_EMOJIS[label] || '📍'}
-      </Animated.Text>
+      {TAB_IMAGES[label] ? (
+        <Animated.View style={[styles.tabImageWrap, emojiStyle]}>
+          <Image source={TAB_IMAGES[label]} style={styles.tabImage} contentFit="cover" />
+        </Animated.View>
+      ) : (
+        <Animated.Text style={[styles.tabEmoji, emojiStyle]}>
+          {TAB_EMOJIS[label] || '📍'}
+        </Animated.Text>
+      )}
       <Animated.View style={[styles.inkDot, dotStyle]} />
     </View>
   );
@@ -153,6 +164,19 @@ const styles = StyleSheet.create({
   },
   tabEmoji: {
     fontSize: 20,
+  },
+  tabImageWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(42,37,32,0.08)',
+    backgroundColor: '#F7F1E5',
+  },
+  tabImage: {
+    width: '100%',
+    height: '100%',
   },
   inkDot: {
     width: 5,

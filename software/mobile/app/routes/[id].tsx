@@ -5,19 +5,25 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { VRMManager } from '@/components/vrm/VRMManager';
-import { getRouteById, type TourRouteDetail } from '@/api/routes';
-import { getSpotById, type SpotDetail } from '@/api/spots';
+import { useVRM } from '@/components/vrm/VRMProvider';
+import type { TourRouteDetail } from '@/api/routes';
+import type { SpotDetail } from '@/api/spots';
+import { getRouteDetailWithFallback, getSpotWithFallback } from '@/services/dataSync';
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
 import { ROUTE_TYPE_META } from '@/constants/scenic';
 import { useTour } from '@/context/TourContext';
 import type { Route as TourRouteType } from '@/hooks/useTourOrchestrator';
 import TourProgressIndicator from '@/components/guide/TourProgressIndicator';
+import { XIAOLING_ROUTE_COPY } from '@/utils/digitalHumanProduct';
 
 export default function RouteDetailPage() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; returnTo?: string; returnLabel?: string }>();
+  const { id } = params;
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { avoidance } = useVRM();
+  const bottomSpacerHeight = Math.max(120, avoidance.bottom + 48);
 
   const [route, setRoute] = useState<TourRouteDetail | null>(null);
   const [spotDetails, setSpotDetails] = useState<Record<string, SpotDetail>>({});
@@ -25,30 +31,95 @@ export default function RouteDetailPage() {
   const [expandedSpot, setExpandedSpot] = useState<string | null>(null);
 
   const [tourState, tourActions] = useTour();
+  const returnTo = typeof params.returnTo === 'string' ? params.returnTo : undefined;
+  const returnLabel = typeof params.returnLabel === 'string' ? params.returnLabel : '返回';
+  const showContextBack = Boolean(returnTo);
+  const attractionReturnTo = returnTo ?? (id ? `/routes/${id}` : '/routes');
+  const attractionReturnLabel = returnTo ? returnLabel : '返回路线';
+
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace((returnTo || '/routes') as any);
+  }, [returnTo, router]);
+
+  const openAttractionDetail = useCallback((spotId: string) => {
+    router.push({
+      pathname: '/attractions/[id]',
+      params: {
+        id: spotId,
+        returnTo: attractionReturnTo,
+        returnLabel: attractionReturnLabel,
+      },
+    });
+  }, [attractionReturnLabel, attractionReturnTo, router]);
 
   useEffect(() => {
     if (!id) return;
+    let mounted = true;
     setLoading(true);
-    getRouteById(id)
-      .then(async (res) => {
-        const data = (res as any).data ?? res;
-        setRoute(data);
+    setSpotDetails({});
 
-        // Fetch spot details for each spot in the route
-        const details: Record<string, SpotDetail> = {};
+    getRouteDetailWithFallback(id)
+      .then((data) => {
+        if (!mounted) return;
+        if (!data) {
+          setRoute(null);
+          setLoading(false);
+          return;
+        }
+
+        setRoute(data);
         const spotIds = data.spot_order || [];
-        await Promise.all(
+        const inlineDetails: Record<string, SpotDetail> = {};
+
+        spotIds.forEach((spotId: string) => {
+          const namedSpot = data.spot_names?.find((spot) => spot.id === spotId);
+          const routeMeta = data.spot_details?.[spotId] as Record<string, any> | undefined;
+          if (namedSpot || routeMeta) {
+            inlineDetails[spotId] = {
+              id: spotId,
+              name: namedSpot?.name || routeMeta?.name || spotId,
+              overview: routeMeta?.overview || routeMeta?.description || '',
+              detail: routeMeta?.detail || routeMeta?.description || '',
+              category: routeMeta?.category || '',
+              tags: [],
+              latitude: null,
+              longitude: null,
+              qr_code: null,
+            } as unknown as SpotDetail;
+          }
+        });
+        setSpotDetails(inlineDetails);
+        setLoading(false);
+
+        Promise.all(
           spotIds.map(async (spotId: string) => {
-            try {
-              const spotRes = await getSpotById(spotId);
-              details[spotId] = (spotRes as any).data ?? spotRes;
-            } catch {}
+            const spot = await getSpotWithFallback(spotId).catch(() => null);
+            return [spotId, spot] as const;
           }),
-        );
-        setSpotDetails(details);
+        ).then((entries) => {
+          if (!mounted) return;
+          const details: Record<string, SpotDetail> = {};
+          entries.forEach(([spotId, spot]) => {
+            if (spot) details[spotId] = spot;
+          });
+          if (Object.keys(details).length > 0) {
+            setSpotDetails((prev) => ({ ...prev, ...details }));
+          }
+        });
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!mounted) return;
+        setRoute(null);
+        setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, [id]);
 
   // 进入路线详情，数字人介绍路线亮点
@@ -69,7 +140,7 @@ export default function RouteDetailPage() {
         // 自由模式：简单介绍
         const t = setTimeout(() => {
           VRMManager.speak(
-            `${route.name}，${route.description}。您可以点击景点查看详情`,
+            `${route.name}，${route.description}。你可以点沿途景点，让小灵先讲重点。`,
             'neutral'
           );
         }, 800);
@@ -101,28 +172,28 @@ export default function RouteDetailPage() {
       route_type: route.route_type,
     };
     tourActions.startTour(tourRoute);
-    VRMManager.speak(`好的，我们开始${route.name}，现在前往第一个景点`, 'happy');
+    VRMManager.speak(`好的，小灵带你开始${route.name}，现在前往第一个景点。`, 'happy');
 
     // 导航到第一个景点
     const firstSpot = route.spot_order?.[0];
-    if (firstSpot && spotDetails[firstSpot]) {
+    if (firstSpot) {
       setTimeout(() => {
-        router.push(`/attractions/${firstSpot}`);
-      }, 1200);
+        openAttractionDetail(firstSpot);
+      }, 250);
     }
-  }, [route, spotDetails, tourActions.startTour]);
+  }, [openAttractionDetail, route, spotDetails, tourActions.startTour]);
 
   // 继续导览（恢复已暂停的导览）
   const handleResumeTour = useCallback(() => {
     tourActions.resumeTour();
-    VRMManager.speak('好的，我们继续导览', 'neutral');
+    VRMManager.speak('好的，小灵继续带路。', 'neutral');
   }, [tourActions.resumeTour]);
 
   if (loading) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>加载路线...</Text>
+        <Text style={styles.loadingText}>小灵正在加载路线...</Text>
       </View>
     );
   }
@@ -163,9 +234,11 @@ export default function RouteDetailPage() {
 
           <Pressable
             style={[styles.backBtn, { top: insets.top + 8 }]}
-            onPress={() => (router.canGoBack() ? router.back() : router.replace('/routes'))}
+            onPress={handleBack}
+            accessibilityRole="button"
+            accessibilityLabel={returnLabel}
           >
-            <Text style={styles.backText}>← 返回</Text>
+            <Text style={styles.backText}>← {showContextBack ? returnLabel : '返回'}</Text>
           </Pressable>
 
           <View style={styles.heroContent}>
@@ -193,7 +266,7 @@ export default function RouteDetailPage() {
                 ]}
                 onPress={handleStartTour}
               >
-                <Text style={styles.startTourBtnText}>🧭 开始导览</Text>
+                <Text style={styles.startTourBtnText}>{XIAOLING_ROUTE_COPY.primaryCta}</Text>
               </Pressable>
             ) : tourState.status === 'completed' ? (
               <Pressable
@@ -202,9 +275,15 @@ export default function RouteDetailPage() {
                   styles.resumeTourBtn,
                   pressed && { opacity: 0.85, transform: [{ scale: 0.97 }] },
                 ]}
-                onPress={() => router.push('/memory')}
+                onPress={() => router.push({
+                  pathname: '/memory',
+                  params: {
+                    returnTo: returnTo ?? `/routes/${id}`,
+                    returnLabel: returnTo ? returnLabel : '返回路线',
+                  },
+                })}
               >
-                <Text style={styles.resumeTourBtnText}>查看灵山手帐</Text>
+                <Text style={styles.resumeTourBtnText}>查看小灵回忆</Text>
               </Pressable>
             ) : (
               <Pressable
@@ -215,7 +294,7 @@ export default function RouteDetailPage() {
                 ]}
                 onPress={handleResumeTour}
               >
-                <Text style={styles.resumeTourBtnText}>▶ 继续导览</Text>
+                <Text style={styles.resumeTourBtnText}>继续跟小灵走</Text>
               </Pressable>
             )}
           </View>
@@ -223,14 +302,14 @@ export default function RouteDetailPage() {
 
         {/* Description */}
         <View style={styles.descSection}>
-          <Text style={styles.sectionTitle}>路线简介</Text>
+          <Text style={styles.sectionTitle}>小灵路线说明</Text>
           <View style={styles.sectionLine} />
           <Text style={styles.descText}>{route.description}</Text>
         </View>
 
         {/* Spot Timeline */}
         <View style={styles.timelineSection}>
-          <Text style={styles.sectionTitle}>游览顺序</Text>
+          <Text style={styles.sectionTitle}>小灵带路顺序</Text>
           <View style={styles.sectionLine} />
 
           {spotOrder.map((spotId, idx) => {
@@ -284,7 +363,7 @@ export default function RouteDetailPage() {
                       </Text>
                       <Pressable
                         hitSlop={8}
-                        onPress={() => spot && router.push(`/attractions/${spotId}`)}
+                        onPress={() => spot && openAttractionDetail(spotId)}
                         style={({ pressed }) => [
                           styles.arrowBtn,
                           pressed && { opacity: 0.6 },
@@ -307,7 +386,7 @@ export default function RouteDetailPage() {
                       <View style={styles.spotDetailBlock}>
                         {spotMeta['讲解重点'] && spotMeta['讲解重点'].length > 0 && (
                           <View style={styles.detailGroup}>
-                            <Text style={styles.detailGroupTitle}>讲解重点</Text>
+                            <Text style={styles.detailGroupTitle}>小灵讲解重点</Text>
                             {spotMeta['讲解重点'].map((item, i) => (
                               <View key={i} style={styles.detailItem}>
                                 <View style={[styles.detailDot, { backgroundColor: meta.color }]} />
@@ -318,7 +397,7 @@ export default function RouteDetailPage() {
                         )}
                         {spotMeta['特色体验'] && spotMeta['特色体验'].length > 0 && (
                           <View style={styles.detailGroup}>
-                            <Text style={styles.detailGroupTitle}>特色体验</Text>
+                            <Text style={styles.detailGroupTitle}>小灵推荐体验</Text>
                             {spotMeta['特色体验'].map((item, i) => (
                               <View key={i} style={styles.detailItem}>
                                 <View style={[styles.detailDot, { backgroundColor: Colors.accent }]} />
@@ -336,7 +415,7 @@ export default function RouteDetailPage() {
           })}
         </View>
 
-        <View style={{ height: 120 }} />
+        <View style={{ height: bottomSpacerHeight }} />
     </ScrollView>
   </View>
   );

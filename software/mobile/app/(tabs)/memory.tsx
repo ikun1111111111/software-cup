@@ -9,7 +9,7 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { setDigitalHumanPageContext, speakWithDigitalHuman } from '@/services/digitalHuman';
 import { SectionHeader } from '@/components/scenic/SectionHeader';
 import { useTour } from '@/context/TourContext';
@@ -19,6 +19,7 @@ import {
   createCapsule, unlockCapsule,
   type TravelMemory, type JourneySummary,
   type Achievement, type UserProfile,
+  type SessionStatsCandidate,
 } from '@/api/memory';
 import { recordMobileTourEvent } from '@/api/analytics';
 import { Colors } from '@/constants/colors';
@@ -28,6 +29,7 @@ import {
   getUserProfileWithFallback,
   getAchievementsWithFallback,
   getJourneySummaryWithFallback,
+  getSessionStatsWithFallback,
   refreshMemoryPageDataInBackground,
   SESSION_ID,
 } from '@/services/dataSync';
@@ -47,8 +49,9 @@ import { InkTimelineNode } from '@/components/memory/InkTimelineNode';
 import { EmptyState } from '@/components/memory/EmptyState';
 import { TodayReviewCard } from '@/components/memory/TodayReviewCard';
 import { MemoryGraphPanel } from '@/components/memory/MemoryGraphPanel';
+import { MemoryImage, MemoryRouteImage, MEMORY_IMAGES } from '@/components/memory/MemoryVisual';
 import { MemoryPageSkeleton } from '@/components/ui/SkeletonLoader';
-import { buildMemoryGraphCandidates, type MemoryGraphCandidate } from '@/utils/memoryGraph';
+import type { MemoryGraphCandidate } from '@/utils/memoryGraph';
 
 const MemoryMapView = lazy(() =>
   import('@/components/memory/MemoryMapView').then((module) => ({
@@ -67,21 +70,146 @@ const VISIBLE_MEMORY_BATCH = 6;
 const AnimatedMemoryList = Animated.createAnimatedComponent(FlatList) as React.ComponentType<
   FlatListProps<TravelMemory> & { onScroll?: ReturnType<typeof useAnimatedScrollHandler> }
 >;
+type MemoryFeedback = { type: 'success' | 'info' | 'error'; text: string };
+
+function sortMemoriesForTimeline(items: TravelMemory[]) {
+  return [...items].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+}
+
+function mergeTimelineMemories(current: TravelMemory[], incoming: TravelMemory[]) {
+  const map = new Map<number, TravelMemory>();
+  [...incoming, ...current].forEach((item) => {
+    map.set(item.id, item);
+  });
+  return sortMemoriesForTimeline(Array.from(map.values()));
+}
+
+function MemoryFinalePanel({
+  routeName,
+  progressText,
+  eventCount,
+  clueCount,
+  narrationCount,
+  questionCount,
+  checkinCount,
+  savedCount,
+  canEnroll,
+  onEnrollFirst,
+  onGenerateSummary,
+  onShare,
+  summaryGenerating,
+}: {
+  routeName?: string;
+  progressText: string;
+  eventCount: number;
+  clueCount: number;
+  narrationCount: number;
+  questionCount: number;
+  checkinCount: number;
+  savedCount: number;
+  canEnroll: boolean;
+  onEnrollFirst: () => void;
+  onGenerateSummary: () => void;
+  onShare: () => void;
+  summaryGenerating: boolean;
+}) {
+  if (eventCount === 0 && savedCount === 0) return null;
+
+  return (
+    <View style={styles.finaleCard}>
+      <View style={styles.finaleTop}>
+        <View>
+          <Text style={styles.finaleEyebrow}>AI TRAVEL ALBUM</Text>
+          <Text style={styles.finaleTitle}>小灵手账生成台</Text>
+        </View>
+        <View style={styles.finaleBadge}>
+          <Text style={styles.finaleBadgeText}>{clueCount} 条线索</Text>
+        </View>
+      </View>
+      <Text style={styles.finaleDesc} numberOfLines={2}>
+        {routeName
+          ? `${routeName} · ${progressText}，小灵已把导览过程整理成可入册素材。`
+          : `已沉淀 ${eventCount} 条互动事件，小灵可以把它们整理成旅行手账。`}
+      </Text>
+
+      <View style={styles.finaleStats}>
+        <View style={styles.finaleStat}>
+          <Text style={styles.finaleStatNum}>{narrationCount}</Text>
+          <Text style={styles.finaleStatLabel}>讲解</Text>
+        </View>
+        <View style={styles.finaleStat}>
+          <Text style={styles.finaleStatNum}>{checkinCount}</Text>
+          <Text style={styles.finaleStatLabel}>打卡</Text>
+        </View>
+        <View style={styles.finaleStat}>
+          <Text style={styles.finaleStatNum}>{questionCount}</Text>
+          <Text style={styles.finaleStatLabel}>问答</Text>
+        </View>
+        <View style={styles.finaleStat}>
+          <Text style={styles.finaleStatNum}>{savedCount}</Text>
+          <Text style={styles.finaleStatLabel}>已入册</Text>
+        </View>
+      </View>
+
+      <View style={styles.finaleActions}>
+        <Pressable
+          style={[styles.finalePrimary, !canEnroll && styles.finaleDisabled]}
+          onPress={onEnrollFirst}
+          disabled={!canEnroll}
+          accessibilityRole="button"
+          accessibilityLabel="将第一条旅程线索入册"
+        >
+          <Text style={styles.finalePrimaryText}>{canEnroll ? '一键入册' : '暂无线索'}</Text>
+        </Pressable>
+        <Pressable
+          style={styles.finaleSecondary}
+          onPress={onGenerateSummary}
+          disabled={summaryGenerating}
+          accessibilityRole="button"
+          accessibilityLabel="生成旅行总结"
+        >
+          <Text style={styles.finaleSecondaryText}>{summaryGenerating ? '生成中' : '生成总结'}</Text>
+        </Pressable>
+        <Pressable
+          style={styles.finaleSecondary}
+          onPress={onShare}
+          accessibilityRole="button"
+          accessibilityLabel="分享旅行手帐"
+        >
+          <Text style={styles.finaleSecondaryText}>分享手帐</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 // ═══════════════════════════════════════
 //  Main Page
 // ═══════════════════════════════════════
 export default function MemoryPage() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ returnTo?: string; returnLabel?: string }>();
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
   const [tourState, tourActions] = useTour();
   const { spots } = useMapSpots();
+  const returnTo = typeof params.returnTo === 'string' ? params.returnTo : undefined;
+  const returnLabel = typeof params.returnLabel === 'string' ? params.returnLabel : '返回';
+  const showContextBack = Boolean(returnTo);
 
   const [memories, setMemories] = useState<TravelMemory[]>([]);
   const [summary, setSummary] = useState<JourneySummary | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [sessionStats, setSessionStats] = useState<{
+    eventCount: number;
+    narrationCount: number;
+    questionCount: number;
+    checkinCount: number;
+    candidates: MemoryGraphCandidate[];
+  }>({ eventCount: 0, narrationCount: 0, questionCount: 0, checkinCount: 0, candidates: [] });
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [summaryGenerating, setSummaryGenerating] = useState(false);
@@ -96,6 +224,7 @@ export default function MemoryPage() {
   const [showCapsuleModal, setShowCapsuleModal] = useState(false);
   const [capsuleLoading, setCapsuleLoading] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState<MemoryGraphCandidate | null>(null);
+  const [feedback, setFeedback] = useState<MemoryFeedback | null>(null);
 
   const loadData = useCallback(async (forceRefresh = false) => {
     try {
@@ -103,12 +232,22 @@ export default function MemoryPage() {
         await refreshMemoryPageDataInBackground(SESSION_ID);
       }
 
-      const memoriesData = await getMemoriesWithFallback(SESSION_ID, {
-        limit: VISIBLE_MEMORY_BATCH,
-        offset: 0,
-      });
-      setMemories(memoriesData);
+      const [memoriesData, stats] = await Promise.all([
+        getMemoriesWithFallback(SESSION_ID, {
+          limit: VISIBLE_MEMORY_BATCH,
+          offset: 0,
+        }),
+        getSessionStatsWithFallback(SESSION_ID),
+      ]);
+      setMemories(sortMemoriesForTimeline(memoriesData));
       setHasMoreMemories(memoriesData.length === VISIBLE_MEMORY_BATCH);
+      setSessionStats({
+        eventCount: stats.event_count,
+        narrationCount: stats.narration_count,
+        questionCount: stats.question_count,
+        checkinCount: stats.checkin_count,
+        candidates: stats.candidates as MemoryGraphCandidate[],
+      });
       setLoading(false);
 
       void Promise.all([
@@ -123,17 +262,25 @@ export default function MemoryPage() {
 
       if (!forceRefresh) {
         void refreshMemoryPageDataInBackground(SESSION_ID).then(async () => {
-          const [freshMemories, summaryRes, profileRes, achRes] = await Promise.all([
+          const [freshMemories, summaryRes, profileRes, achRes, freshStats] = await Promise.all([
             getMemoriesWithFallback(SESSION_ID, { limit: VISIBLE_MEMORY_BATCH, offset: 0 }),
             getJourneySummaryWithFallback(SESSION_ID),
             getUserProfileWithFallback(SESSION_ID),
             getAchievementsWithFallback(SESSION_ID),
+            getSessionStatsWithFallback(SESSION_ID),
           ]);
-          setMemories(freshMemories);
+          setMemories(sortMemoriesForTimeline(freshMemories));
           setHasMoreMemories(freshMemories.length === VISIBLE_MEMORY_BATCH);
           setSummary(summaryRes);
           setProfile(profileRes);
           setAchievements(achRes.achievements);
+          setSessionStats({
+            eventCount: freshStats.event_count,
+            narrationCount: freshStats.narration_count,
+            questionCount: freshStats.question_count,
+            checkinCount: freshStats.checkin_count,
+            candidates: freshStats.candidates as MemoryGraphCandidate[],
+          });
         });
       }
     } finally {
@@ -143,6 +290,12 @@ export default function MemoryPage() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (!feedback) return undefined;
+    const timer = setTimeout(() => setFeedback(null), 4200);
+    return () => clearTimeout(timer);
+  }, [feedback]);
 
   // ─── 打卡数据到达 → 自动弹出新建记忆 ───
   const checkinConsumedRef = useRef(false);
@@ -182,15 +335,28 @@ export default function MemoryPage() {
   const handleGenerate = useCallback(async () => {
     setGenerating(true);
     try {
-      await generateMemories(SESSION_ID);
-      await loadData();
-      speakWithDigitalHuman('已从对话中提取旅行记忆', 'neutral');
+      const result = await generateMemories(SESSION_ID);
+      if (Array.isArray(result.memories)) {
+        const nextMemories = sortMemoriesForTimeline(result.memories);
+        const visibleCount = Math.max(VISIBLE_MEMORY_BATCH, memories.length);
+        setMemories(nextMemories.slice(0, visibleCount));
+        setHasMoreMemories(nextMemories.length > visibleCount);
+      }
+      if (result.new_count > 0) {
+        setFeedback({ type: 'success', text: `已从对话生成 ${result.new_count} 条记忆` });
+        speakWithDigitalHuman('已从对话中提取旅行记忆', 'neutral');
+      } else {
+        setFeedback({ type: 'info', text: '暂时没有新的对话可入册，先和小灵聊聊景点或路线再试试' });
+        speakWithDigitalHuman('暂时没有找到新的对话记忆，可以先和我聊聊今天的景点', 'neutral');
+      }
+      void loadData(true);
     } catch {
+      setFeedback({ type: 'error', text: '对话生成失败，请稍后再试' });
       speakWithDigitalHuman('记忆生成失败，请稍后再试', 'sad');
     } finally {
       setGenerating(false);
     }
-  }, [loadData]);
+  }, [loadData, memories.length]);
 
   const handleGenerateSummary = useCallback(async () => {
     setSummaryGenerating(true);
@@ -261,13 +427,14 @@ export default function MemoryPage() {
   }) => {
     setCreateLoading(true);
     try {
-      await createMemory({
+      const created = await createMemory({
         session_id: SESSION_ID,
         ...data,
         spot_name: data.spot_name ?? selectedCandidate?.spotName,
         spot_id: selectedCandidate?.spotId,
         source_type: selectedCandidate?.sourceType,
         metadata_json: selectedCandidate ? {
+          ...(selectedCandidate.metadata ?? {}),
           source_event_id: selectedCandidate.eventId,
           event_type: selectedCandidate.eventType,
           source_page: selectedCandidate.sourcePage,
@@ -277,6 +444,8 @@ export default function MemoryPage() {
           spot_name: selectedCandidate.spotName,
         } : undefined,
       });
+      setMemories((prev) => mergeTimelineMemories(prev, [created]));
+      setHasMoreMemories((prev) => prev || memories.length + 1 > VISIBLE_MEMORY_BATCH);
       void trackMobileEvent('memory_created', {
         spot_name: data.spot_name,
         source: tourState.pendingCheckin ? tourState.pendingCheckin.type : 'manual',
@@ -290,14 +459,16 @@ export default function MemoryPage() {
       if (tourState.pendingCheckin) {
         tourActions.clearPendingCheckin();
       }
-      await loadData();
+      setFeedback({ type: 'success', text: '已写入一条新记忆' });
+      void loadData(true);
       speakWithDigitalHuman('记忆已为你书写并保存', 'neutral');
     } catch {
+      setFeedback({ type: 'error', text: '写入记忆失败，请稍后再试' });
       speakWithDigitalHuman('记忆生成失败，请稍后再试', 'sad');
     } finally {
       setCreateLoading(false);
     }
-  }, [loadData, recordMemoryCreated, selectedCandidate, tourState.pendingCheckin, tourActions.clearPendingCheckin]);
+  }, [loadData, memories.length, recordMemoryCreated, selectedCandidate, tourState.pendingCheckin, tourActions.clearPendingCheckin]);
 
   const handleCreateCapsule = useCallback(async (data: {
     title: string;
@@ -306,19 +477,23 @@ export default function MemoryPage() {
   }) => {
     setCapsuleLoading(true);
     try {
-      await createCapsule({
+      const created = await createCapsule({
         session_id: SESSION_ID,
         ...data,
       });
+      setMemories((prev) => mergeTimelineMemories(prev, [created]));
+      setHasMoreMemories((prev) => prev || memories.length + 1 > VISIBLE_MEMORY_BATCH);
       setShowCapsuleModal(false);
-      await loadData();
+      setFeedback({ type: 'success', text: '胶囊已封存，会出现在记忆时光里' });
+      void loadData(true);
       speakWithDigitalHuman('记忆胶囊已封存，时间到了我会提醒你', 'neutral');
     } catch {
+      setFeedback({ type: 'error', text: '胶囊创建失败，请稍后再试' });
       speakWithDigitalHuman('胶囊创建失败，请稍后再试', 'sad');
     } finally {
       setCapsuleLoading(false);
     }
-  }, [loadData]);
+  }, [loadData, memories.length]);
 
   const handleUnlockCapsule = useCallback(async (capsuleId: number) => {
     await unlockCapsule(capsuleId);
@@ -359,18 +534,49 @@ export default function MemoryPage() {
     () => profile?.visited_count ?? new Set(memories.filter((m) => m.spot_name).map((m) => m.spot_name)).size,
     [memories, profile],
   );
-  const memoryGraphCandidates = useMemo(
-    () => buildMemoryGraphCandidates(tourState.memoryEvents, memories),
-    [memories, tourState.memoryEvents],
-  );
+  const memoryGraphCandidates = sessionStats.candidates;
+  const memoryFinaleStats = useMemo(() => {
+    return {
+      eventCount: sessionStats.eventCount,
+      narrationCount: sessionStats.narrationCount,
+      questionCount: sessionStats.questionCount,
+      checkinCount: sessionStats.checkinCount,
+    };
+  }, [sessionStats]);
+  const routeProgressText = tourState.progress.total > 0
+    ? `${tourState.progress.completed}/${tourState.progress.total} 景点`
+    : '自由探索';
   const handleEnrollCandidate = useCallback((candidate: MemoryGraphCandidate) => {
     setSelectedCandidate(candidate);
     setShowCreateModal(true);
   }, []);
+  const handleEnrollFirstCandidate = useCallback(() => {
+    if (!memoryGraphCandidates[0]) return;
+    handleEnrollCandidate(memoryGraphCandidates[0]);
+  }, [handleEnrollCandidate, memoryGraphCandidates]);
+  const handleContextBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace((returnTo || '/explore') as any);
+  }, [returnTo, router]);
   const listMemories = viewMode === 'timeline' && !loading && memories.length > 0 ? memories : [];
 
   return (
     <View style={styles.root}>
+      {showContextBack && (
+        <Pressable
+          style={[styles.contextBackBtn, { top: insets.top + 12 }]}
+          onPress={handleContextBack}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel={returnLabel}
+        >
+          <Text style={styles.contextBackText}>‹ {returnLabel}</Text>
+        </Pressable>
+      )}
+
       <AnimatedMemoryList
         style={styles.scroll}
         data={listMemories}
@@ -406,6 +612,22 @@ export default function MemoryPage() {
               <MemoryPageSkeleton />
             ) : (
               <View style={styles.content}>
+            <MemoryFinalePanel
+              routeName={tourState.currentRoute?.name}
+              progressText={routeProgressText}
+              eventCount={memoryFinaleStats.eventCount}
+              clueCount={memoryGraphCandidates.length}
+              narrationCount={memoryFinaleStats.narrationCount}
+              questionCount={memoryFinaleStats.questionCount}
+              checkinCount={memoryFinaleStats.checkinCount}
+              savedCount={memories.length}
+              canEnroll={memoryGraphCandidates.length > 0}
+              onEnrollFirst={handleEnrollFirstCandidate}
+              onGenerateSummary={handleGenerateSummary}
+              onShare={() => setShowShareModal(true)}
+              summaryGenerating={summaryGenerating}
+            />
+
             {/* 导览进度回顾卡片 */}
             {tourState.currentRoute && tourState.progress.completed > 0 && (
               <View style={styles.tourReviewCard}>
@@ -534,7 +756,10 @@ export default function MemoryPage() {
             {/* 无导览时显示导览快捷入口 */}
             {!tourState.currentRoute && (
               <View style={styles.tourQuickCard}>
-                <Text style={styles.tourQuickTitle}>🗺️ 开始数字人导览</Text>
+                <View style={styles.tourQuickTitleRow}>
+                  <MemoryRouteImage width={44} height={32} radius={10} />
+                  <Text style={styles.tourQuickTitle}>开始数字人导览</Text>
+                </View>
                 <Text style={styles.tourQuickDesc}>小灵全程语音讲解，智能导航，让游览更轻松</Text>
                 <Pressable
                   style={({ pressed }) => [
@@ -561,6 +786,22 @@ export default function MemoryPage() {
               candidates={memoryGraphCandidates}
               onEnroll={handleEnrollCandidate}
             />
+
+            {feedback && (
+              <View style={[
+                styles.feedbackBanner,
+                feedback.type === 'success' && styles.feedbackBannerSuccess,
+                feedback.type === 'error' && styles.feedbackBannerError,
+              ]}>
+                <Text style={[
+                  styles.feedbackText,
+                  feedback.type === 'success' && styles.feedbackTextSuccess,
+                  feedback.type === 'error' && styles.feedbackTextError,
+                ]}>
+                  {feedback.text}
+                </Text>
+              </View>
+            )}
 
             {memories.length === 0 ? (
               <EmptyState
@@ -594,11 +835,12 @@ export default function MemoryPage() {
                     ]}
                     onPress={() => setViewMode('timeline')}
                   >
+                    <MemoryImage source={MEMORY_IMAGES.write} size={24} radius={8} fit="contain" />
                     <Text style={[
                       styles.mapViewToggleText,
                       viewMode === 'timeline' && styles.mapViewToggleTextActive,
                     ]}>
-                      📜 时间线
+                      时间线
                     </Text>
                   </Pressable>
                   <Pressable
@@ -608,11 +850,12 @@ export default function MemoryPage() {
                     ]}
                     onPress={() => setViewMode('map')}
                   >
+                    <MemoryImage source={MEMORY_IMAGES.map} size={24} radius={8} fit="cover" />
                     <Text style={[
                       styles.mapViewToggleText,
                       viewMode === 'map' && styles.mapViewToggleTextActive,
                     ]}>
-                      🗺️ 地图
+                      地图
                     </Text>
                   </Pressable>
                 </View>
@@ -736,10 +979,177 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 16 },
   section: { marginBottom: 20 },
+  feedbackBanner: {
+    marginBottom: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primaryBg,
+    borderWidth: 1,
+    borderColor: Colors.primary + '25',
+  },
+  feedbackBannerSuccess: {
+    backgroundColor: 'rgba(106,156,137,0.12)',
+    borderColor: 'rgba(106,156,137,0.26)',
+  },
+  feedbackBannerError: {
+    backgroundColor: 'rgba(200,75,49,0.10)',
+    borderColor: 'rgba(200,75,49,0.24)',
+  },
+  feedbackText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: Colors.primary,
+    fontWeight: '600',
+  },
+  feedbackTextSuccess: {
+    color: Colors.success,
+  },
+  feedbackTextError: {
+    color: Colors.error,
+  },
+  contextBackBtn: {
+    position: 'absolute',
+    left: 16,
+    zIndex: 20,
+    elevation: 8,
+    height: 38,
+    paddingHorizontal: 14,
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(28,28,28,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+  },
+  contextBackText: {
+    fontSize: 13,
+    color: Colors.ink,
+    fontWeight: '800',
+  },
 
   // Loading
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 80 },
   loadingText: { fontSize: 14, color: Colors.gray400, letterSpacing: 4, marginTop: 16 },
+
+  // AI 手账生成台
+  finaleCard: {
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.ink,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    elevation: 6,
+  },
+  finaleTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 10,
+  },
+  finaleEyebrow: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.56)',
+    fontWeight: '800',
+    letterSpacing: 2,
+    marginBottom: 4,
+  },
+  finaleTitle: {
+    fontSize: 19,
+    color: '#fff',
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  finaleBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(200,75,49,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(200,75,49,0.34)',
+  },
+  finaleBadgeText: {
+    fontSize: 11,
+    color: '#FFD8C8',
+    fontWeight: '900',
+  },
+  finaleDesc: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.74)',
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  finaleStats: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  finaleStat: {
+    flex: 1,
+    minHeight: 58,
+    borderRadius: Radius.md,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  finaleStatNum: {
+    fontSize: 19,
+    color: '#fff',
+    fontWeight: '900',
+  },
+  finaleStatLabel: {
+    marginTop: 2,
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.56)',
+    fontWeight: '700',
+  },
+  finaleActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  finalePrimary: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: Radius.pill,
+    backgroundColor: Colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  finalePrimaryText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  finaleSecondary: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: Radius.pill,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  finaleSecondaryText: {
+    color: 'rgba(255,255,255,0.84)',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  finaleDisabled: {
+    opacity: 0.55,
+  },
 
   // 导览回顾卡片
   tourReviewCard: {
@@ -955,11 +1365,17 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.primary + '20',
   },
+  tourQuickTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
   tourQuickTitle: {
     fontSize: 15,
     fontWeight: '700',
     color: Colors.ink,
-    marginBottom: 6,
+    flex: 1,
   },
   tourQuickDesc: {
     fontSize: 12,
@@ -995,8 +1411,11 @@ const styles = StyleSheet.create({
   },
   mapViewToggleBtn: {
     flex: 1,
+    flexDirection: 'row',
+    gap: 8,
     paddingVertical: 10,
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: Radius.pill,
   },
   mapViewToggleBtnActive: {

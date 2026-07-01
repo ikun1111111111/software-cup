@@ -51,6 +51,7 @@ def build_chat_prompt(
     context_chunks: list[dict],
     history: list[dict] | None = None,
     use_fallback: bool = False,
+    spot_context: dict | None = None,
 ) -> list[dict]:
     """Build LLM messages for chat with retrieved context and optional history.
 
@@ -59,8 +60,16 @@ def build_chat_prompt(
         context_chunks: Retrieved knowledge chunks.
         history: Optional list of previous messages, each as {"role": "user|assistant", "content": "..."}.
         use_fallback: Whether the chunks are fallback knowledge (not from RAG).
+        spot_context: Optional spot context with keys like spot_id, spot_name, route_id, source_page.
     """
-    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT_CHAT}]
+    system_content = SYSTEM_PROMPT_CHAT
+    spot_name = spot_context.get("spot_name") if spot_context else None
+    if spot_name:
+        system_content += (
+            "\n如果游客正在某个具体景点前提问，请使用『这一站』『在这里』等现场语气，"
+            "围绕该景点回答，不要泛泛介绍整个灵山胜境。"
+        )
+    messages: list[dict] = [{"role": "system", "content": system_content}]
 
     # Inject conversation history (oldest first) before the current turn
     if history:
@@ -70,17 +79,21 @@ def build_chat_prompt(
             if role in ("user", "assistant") and content:
                 messages.append({"role": role, "content": content})
 
+    spot_prefix = ""
+    if spot_name:
+        spot_prefix = f"游客当前在景点「{spot_name}」前提问。"
+
     if context_chunks:
         context_text = "\n\n---\n\n".join(
             f"[资料片段 {i+1}]\n{c['text']}" for i, c in enumerate(context_chunks)
         )
         if use_fallback:
             # Fallback knowledge: present as background info, not as strict reference
-            user_content = f"你对灵山景点很了解，以下是一些背景信息供你参考：\n{context_text}\n\n游客问: {question}\n请直接给出建议，不要说自己不清楚:"
+            user_content = f"{spot_prefix}你对灵山景点很了解，以下是一些背景信息供你参考：\n{context_text}\n\n游客问: {question}\n请直接给出建议，不要说自己不清楚:"
         else:
-            user_content = f"参考资料:\n{context_text}\n\n游客问: {question}\n请回答:"
+            user_content = f"{spot_prefix}参考资料:\n{context_text}\n\n游客问: {question}\n请回答:"
     else:
-        user_content = f"游客问: {question}\n请回答:"
+        user_content = f"{spot_prefix}游客问: {question}\n请回答:"
 
     messages.append({"role": "user", "content": user_content})
     return messages

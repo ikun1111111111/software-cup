@@ -1,7 +1,13 @@
-import React, { useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useCallback, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { View } from 'react-native';
 import WebView from 'react-native-webview';
-import { LINGSHAN_CENTER, buildHTML, type AmapViewRef, type AmapViewProps } from './AmapView.shared';
+import {
+  LINGSHAN_CENTER,
+  buildHTML,
+  type AmapViewRef,
+  type AmapViewProps,
+  type CoordinateSource,
+} from './AmapView.shared';
 
 const NativeAmapView = forwardRef<AmapViewRef, AmapViewProps>(function NativeAmapView(
   {
@@ -23,8 +29,10 @@ const NativeAmapView = forwardRef<AmapViewRef, AmapViewProps>(function NativeAma
   const webRef = useRef<WebView>(null);
 
   useImperativeHandle(ref, () => ({
-    setCenter(lat: number, lng: number, z?: number) {
-      webRef.current?.injectJavaScript(`window.setCenter(${lat},${lng},${z || ''});`);
+    setCenter(lat: number, lng: number, z?: number, source?: CoordinateSource) {
+      webRef.current?.injectJavaScript(
+        `window.setCenter(${lat},${lng},${z || 'undefined'},${JSON.stringify(source)});`,
+      );
     },
     drawRoute(points) {
       webRef.current?.injectJavaScript(`window.drawRoute(${JSON.stringify(points)});`);
@@ -56,10 +64,18 @@ const NativeAmapView = forwardRef<AmapViewRef, AmapViewProps>(function NativeAma
     } catch {}
   }, [spots, onSpotTap, onMapReady, onMapError]);
 
-  const html = buildHTML(spots, center, zoom,
-    'window.ReactNativeWebView.postMessage(JSON.stringify({type:"spotTap",spotId:s.id}))',
-    routeSpotIds,
-    activeSpotId);
+  const html = useMemo(
+    () => buildHTML(
+      spots,
+      center,
+      zoom,
+      'window.ReactNativeWebView.postMessage(JSON.stringify({type:"spotTap",spotId:s.id}))',
+      routeSpotIds,
+      activeSpotId,
+    ),
+    [activeSpotId, center.latitude, center.longitude, routeSpotIds, spots, zoom],
+  );
+  const source = useMemo(() => ({ html }), [html]);
 
   return (
     <View style={[{
@@ -70,7 +86,7 @@ const NativeAmapView = forwardRef<AmapViewRef, AmapViewProps>(function NativeAma
     }, style]}>
       <WebView
         ref={webRef}
-        source={{ html }}
+        source={source}
         style={{ flex: 1 }}
         onMessage={handleMessage}
         onLoadEnd={() => onMapReady?.()}

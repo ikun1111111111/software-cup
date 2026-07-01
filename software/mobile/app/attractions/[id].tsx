@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useState, useEffect, useRef, useCallback } from 
 import {
   View, Text, Pressable, StyleSheet, ActivityIndicator, Image,
   Animated as RNAnimated,
+  InteractionManager,
 } from 'react-native';
 import Animated, {
   useAnimatedScrollHandler, useSharedValue, useAnimatedStyle,
@@ -13,6 +14,7 @@ import { getSpotById, recordVisit, type SpotDetail } from '@/api/spots';
 import { spotCacheService } from '@/services/spotCache';
 import { getSpotWithFallback } from '@/services/dataSync';
 import { SESSION_ID } from '@/services/dataSync';
+import { getDemoSpotById } from '@/utils/localDemoData';
 import { setDigitalHumanPageContext, speakWithDigitalHuman } from '@/services/digitalHuman';
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
@@ -20,6 +22,7 @@ import { SPOT_IMAGES } from '@/constants/scenic';
 import { TRAVEL_TIPS } from '@/data/travelTips';
 import type { NarrationContent } from '@/components/guide/NarrationSheet';
 import TourProgressIndicator from '@/components/guide/TourProgressIndicator';
+import { useVRM } from '@/components/vrm/VRMProvider';
 import { useTour } from '@/context/TourContext';
 import { useTourGeolocation } from '@/hooks/useTourGeolocation';
 import { useTourGuide } from '@/hooks/useTourGuide';
@@ -28,6 +31,9 @@ import type { MomentResult } from '@/components/memory/MomentModal';
 import { createMemory } from '@/api/memory';
 import { recordMobileTourEvent } from '@/api/analytics';
 import { AttractionDetailSkeleton } from '@/components/ui/SkeletonLoader';
+import { buildMemorySourceMetadata } from '@/utils/memorySource';
+import { XIAOLING_ATTRACTION_COPY } from '@/utils/digitalHumanProduct';
+import { estimateNarrationDurationSeconds } from '@/utils/digitalHumanDriver';
 
 const NarrationSheet = lazy(() => import('@/components/guide/NarrationSheet'));
 const CheckinPanel = lazy(() => import('@/components/guide/CheckinPanel'));
@@ -35,14 +41,32 @@ const MemoryMomentModal = lazy(() => import('@/components/memory/MomentModal'));
 
 const HERO_H = 280;
 
+function buildNarrationContent(spot: SpotDetail): NarrationContent {
+  const text = spot.detail || spot.overview || `${spot.name}是灵山胜境的重要景点之一。`;
+
+  return {
+    spot: {
+      id: spot.id,
+      name: spot.name,
+      image: undefined,
+      overview: spot.overview,
+    },
+    text,
+    duration: estimateNarrationDurationSeconds(text),
+  };
+}
+
 function hasTourCheckinTarget(result: unknown): result is TourCheckinResult {
   return typeof result === 'object' && result !== null && 'nextTargetSpot' in result;
 }
 
 export default function AttractionDetailPage() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; returnTo?: string; returnLabel?: string }>();
+  const { id } = params;
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { avoidance } = useVRM();
+  const bottomSpacerHeight = Math.max(160, avoidance.bottom + 48);
   const scrollY = useSharedValue(0);
   const heroFade = useSharedValue(1);
   const headerOpacity = useSharedValue(0);
@@ -56,19 +80,48 @@ export default function AttractionDetailPage() {
   const [justCheckedIn, setJustCheckedIn] = useState(false);
   const [autoNavigating, setAutoNavigating] = useState(false);
   const [showCheckinPanel, setShowCheckinPanel] = useState(false);
+  const returnTo = typeof params.returnTo === 'string' ? params.returnTo : undefined;
+  const returnLabel = typeof params.returnLabel === 'string' ? params.returnLabel : '返回';
+  const showContextBack = Boolean(returnTo);
+
+  const handleBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace((returnTo || '/attractions') as any);
+  }, [returnTo, router]);
 
   // 使用全局 TourContext
   const [tourState, tourActions] = useTour();
+  const guideMode = tourState.guideRuntime?.mode
+    ?? (tourState.preferences.mode === 'tour' ? 'proactive' : 'companion');
+  const isCurrentRouteSpot = Boolean(
+    id
+    && tourState.currentRoute
+    && tourState.progress.total > 0
+    && tourState.currentSpot?.id === id,
+  );
+  const isProactiveGuide = guideMode === 'proactive' && isCurrentRouteSpot;
 
   // GPS定位 - 当导览模式下追踪目标景点
-  const targetSpot = tourState.currentRoute?.spots.find(s => s.id === id) ?? null;
+  const targetSpot = isCurrentRouteSpot
+    ? tourState.currentRoute?.spots.find(s => s.id === id) ?? tourState.currentSpot
+    : null;
   const { distanceInfo } = useTourGeolocation(
-    tourState.preferences.mode === 'tour' ? targetSpot : null,
-    { enabled: tourState.preferences.mode === 'tour' },
+    isProactiveGuide ? targetSpot : null,
+    { enabled: isProactiveGuide },
   );
 
   // 记录已导航过的景点ID，防止重复导航
   const navigatedSpotsRef = useRef<Set<string>>(new Set());
+
+  const openMemoryFromAttraction = useCallback(() => {
+    router.push({
+      pathname: '/memory' as const,
+      params: { returnTo: `/attractions/${id}`, returnLabel: '返回景点' },
+    });
+  }, [id, router]);
 
   // 打卡成功后，立即跳转到下一个景点
   const navigateToNextSpot = useCallback(async (completedSpotId?: string, explicitNextSpot?: { id: string; name: string } | null) => {
@@ -83,7 +136,7 @@ export default function AttractionDetailPage() {
     if (!nextSpot) {
       speakWithDigitalHuman('恭喜您完成了所有景点的打卡！我已整理好本次路线，可以生成灵山手帐了。', 'happy');
       setTimeout(() => {
-        router.replace('/memory');
+        openMemoryFromAttraction();
       }, 2000);
       return;
     }
@@ -100,7 +153,7 @@ export default function AttractionDetailPage() {
       }
       router.replace(`/attractions/${nextSpot.id}`);
     }
-  }, [tourState.currentRoute, tourState.progress.completed, tourActions, router]);
+  }, [tourState.currentRoute, tourState.progress.completed, tourActions, router, openMemoryFromAttraction]);
 
   // 用ref追踪最新的navigateToNextSpot，避免handleCheckIn闭包中的stale closure问题
   const navigateToNextSpotRef = useRef(navigateToNextSpot);
@@ -111,26 +164,44 @@ export default function AttractionDetailPage() {
   // 加载景点数据 - 优先使用本地数据库，其次内存缓存，最后网络请求
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
 
     // 先检查内存缓存
     const cached = spotCacheService.get(id);
     if (cached) {
       setSpot(cached);
       setLoading(false);
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
-    // 使用本地数据库优先策略
-    setLoading(true);
+    const localSnapshot = getDemoSpotById(id) as unknown as SpotDetail | null;
+    if (localSnapshot) {
+      setSpot(localSnapshot);
+      spotCacheService.set(id, localSnapshot);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
     getSpotWithFallback(id)
       .then((data) => {
-        if (data) {
+        if (!cancelled && data) {
           setSpot(data);
           spotCacheService.set(id, data); // 同时写入内存缓存
         }
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!cancelled && !localSnapshot) setSpot(null);
+      })
+      .finally(() => {
+        if (!cancelled && !localSnapshot) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   // 到达景点时，数字人主动介绍
@@ -138,29 +209,29 @@ export default function AttractionDetailPage() {
     if (spot) {
       setDigitalHumanPageContext('attraction-detail', { spotName: spot.name });
 
-      if (tourState.preferences.mode === 'tour' && !autoNavigating) {
-        // 主动导览模式：数字人主动介绍
+      if (isProactiveGuide && !autoNavigating) {
+        // 主动导览模式：数字人主动介绍，到点即开口
         const timer = setTimeout(() => {
           const soloIntro = tourState.soloTour.enabled
-            ? `到${spot.name}了。你可以先自己看一眼，我在旁边陪你；想听重点时点讲解就好。${spot.overview}`
-            : `${spot.name}，${spot.overview}。要听听详细讲解吗？`;
-          speakWithDigitalHuman(soloIntro, 'neutral');
+            ? `到${spot.name}啦。我是小灵，你先自己看一眼；想听重点时点我就好。${spot.overview}`
+            : `到${spot.name}啦，我是小灵。${spot.overview}。要听我详细讲解吗？`;
+          speakWithDigitalHuman(soloIntro, 'happy');
         }, 800);
         return () => clearTimeout(timer);
-      } else if (tourState.preferences.mode === 'free') {
+      } else if (!isProactiveGuide) {
         // 自由模式：仅简单欢迎
         const timer = setTimeout(() => {
-          speakWithDigitalHuman(`${spot.name}，${spot.overview}。有什么想了解的吗？`, 'neutral');
+          speakWithDigitalHuman(`我是小灵，这里是${spot.name}。${spot.overview}。有什么想追问的吗？`, 'relaxed');
         }, 800);
         return () => clearTimeout(timer);
       }
     }
-  }, [spot, tourState.preferences.mode, tourState.soloTour.enabled]);
+  }, [spot, isProactiveGuide, tourState.soloTour.enabled]);
 
   // 数字人GPS距离引导
   useTourGuide(distanceInfo, {
     vrmSpeak: speakWithDigitalHuman,
-    enabled: tourState.preferences.mode === 'tour' && !!targetSpot && !autoNavigating,
+    enabled: isProactiveGuide && !!targetSpot && !autoNavigating,
   });
 
   // Animated styles - MUST be before early returns
@@ -279,23 +350,44 @@ export default function AttractionDetailPage() {
   // 开始讲解
   const handleStartNarration = useCallback(() => {
     if (!spot) return;
-    const content: NarrationContent = {
-      spot: {
-        id: spot.id,
-        name: spot.name,
-        image: undefined,
-        overview: spot.overview,
-      },
-      text: spot.detail || spot.overview || `${spot.name}是灵山胜境的重要景点之一。`,
-      duration: Math.max(30, (spot.detail?.length || 100) / 5),
-    };
+    const content = buildNarrationContent(spot);
     setShowNarration(true);
     tourActions.startNarration({
       id: spot.id,
       name: spot.name,
-      description: spot.overview,
+      description: content.text,
     });
   }, [spot, tourActions.startNarration]);
+
+  const handleAskFromNarration = useCallback(() => {
+    setShowNarration(false);
+    tourActions.endNarration();
+    tourActions.startConversation();
+
+    InteractionManager.runAfterInteractions(() => {
+      router.push({
+        pathname: '/chat',
+        params: { returnTo: `/attractions/${id}`, returnLabel: '返回景点', fresh: '1' },
+      });
+    });
+  }, [id, router, tourActions]);
+
+  // 在景点页点击快捷问题，携带上下文跳转到聊天页
+  const handleAskSpotQuestion = useCallback((q: string) => {
+    if (!spot) return;
+    router.push({
+      pathname: '/chat',
+      params: {
+        initialQuestion: q,
+        spotId: spot.id,
+        spotName: spot.name,
+        sourcePage: 'attraction',
+        routeId: tourState.currentRoute?.id,
+        returnTo: `/attractions/${spot.id}`,
+        returnLabel: '返回景点',
+      },
+    });
+  }, [spot, router, tourState.currentRoute?.id]);
 
   // 继续导览到下一个景点
   const handleContinueTour = useCallback(async () => {
@@ -320,7 +412,7 @@ export default function AttractionDetailPage() {
         router.push(`/attractions/${nextTargetSpot.id}`);
       } else {
         speakWithDigitalHuman('恭喜您完成了所有景点！去旅行记忆里生成本次手帐吧。', 'happy');
-        router.push('/memory');
+        openMemoryFromAttraction();
       }
       return;
     }
@@ -332,8 +424,8 @@ export default function AttractionDetailPage() {
     }
 
     speakWithDigitalHuman('恭喜您完成了所有景点！去旅行记忆里生成本次手帐吧。', 'happy');
-    router.push('/memory');
-  }, [spot, tourActions, tourState.currentRoute, tourState.currentSpot, router]);
+    openMemoryFromAttraction();
+  }, [spot, tourActions, tourState.currentRoute, tourState.currentSpot, router, openMemoryFromAttraction]);
 
   // 结束导览确认弹窗
   const [showEndTourModal, setShowEndTourModal] = useState(false);
@@ -369,10 +461,23 @@ export default function AttractionDetailPage() {
         session_id: SESSION_ID,
         user_input: result.text,
         spot_name: spot.name,
+        spot_id: spot.id,
+        source_type: 'attraction',
         mood_tag: result.mood,
         photo_url: result.photoUri,
         voice_url: result.voiceUri,
         voice_duration: result.voiceDuration,
+        metadata_json: buildMemorySourceMetadata({
+          sourcePage: 'attraction',
+          route: tourState.currentRoute,
+          spot,
+          extra: {
+            mood: result.mood,
+            has_photo: Boolean(result.photoUri),
+            has_voice: Boolean(result.voiceUri),
+            voice_duration: result.voiceDuration ?? null,
+          },
+        }),
       });
       recordMobileTourEvent({
         session_id: SESSION_ID,
@@ -413,7 +518,7 @@ export default function AttractionDetailPage() {
   return (
     <View style={styles.root}>
       {/* 导览进度指示器 */}
-      {tourState.currentRoute && tourState.progress.total > 0 && (
+      {isCurrentRouteSpot && tourState.currentRoute && tourState.progress.total > 0 && (
         <View style={[styles.progressOverlay, { paddingTop: insets.top + 10 }]}>
           <TourProgressIndicator
             progress={tourState.progress}
@@ -445,15 +550,19 @@ export default function AttractionDetailPage() {
 
             <Pressable
               style={styles.backBtn}
-              onPress={() => (router.canGoBack() ? router.back() : router.replace('/attractions'))}
+              onPress={handleBack}
+              accessibilityRole="button"
+              accessibilityLabel={returnLabel}
               hitSlop={12}
             >
-              <Text style={styles.backText}>← 返回</Text>
+              <Text style={styles.backText}>← {showContextBack ? returnLabel : '返回'}</Text>
             </Pressable>
 
             <View style={styles.heroContent}>
               <View style={styles.categoryBadge}>
-                <Text style={styles.categoryText}>{spot.category}</Text>
+                <Text style={styles.categoryText} numberOfLines={1}>
+                  {XIAOLING_ATTRACTION_COPY.heroBadge} · {spot.category}
+                </Text>
               </View>
               <Text style={styles.heroTitle}>{spot.name}</Text>
               <Text style={styles.heroOverview}>{spot.overview}</Text>
@@ -463,7 +572,13 @@ export default function AttractionDetailPage() {
 
         {/* 固定头部（滚动时显示） */}
         <Animated.View style={[styles.fixedHeader, headerStyle, { top: insets.top }]}>
-          <Pressable style={styles.backBtnFixed} onPress={() => (router.canGoBack() ? router.back() : router.replace('/attractions'))} hitSlop={8}>
+          <Pressable
+            style={styles.backBtnFixed}
+            onPress={handleBack}
+            accessibilityRole="button"
+            accessibilityLabel={returnLabel}
+            hitSlop={8}
+          >
             <Text style={styles.backTextFixed}>←</Text>
           </Pressable>
           <Text style={styles.headerTitle} numberOfLines={1}>{spot.name}</Text>
@@ -471,7 +586,7 @@ export default function AttractionDetailPage() {
         </Animated.View>
 
         {/* 主动导览模式下的操作按钮 */}
-        {tourState.preferences.mode === 'tour' && !autoNavigating && (
+        {isProactiveGuide && !autoNavigating && (
           <View style={styles.tourActions}>
             <Pressable
               style={({ pressed }) => [
@@ -481,8 +596,8 @@ export default function AttractionDetailPage() {
               ]}
               onPress={handleStartNarration}
             >
-              <Text style={styles.narrateBtnIcon}>🎤</Text>
-              <Text style={styles.narrateBtnText}>讲解</Text>
+              <Text style={styles.narrateBtnIcon}>讲</Text>
+              <Text style={styles.narrateBtnText}>{XIAOLING_ATTRACTION_COPY.narrationCta}</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [
@@ -492,8 +607,8 @@ export default function AttractionDetailPage() {
               ]}
               onPress={handleOpenMomentModal}
             >
-              <Text style={styles.momentBtnIcon}>📝</Text>
-              <Text style={styles.momentBtnText}>记忆</Text>
+              <Text style={styles.momentBtnIcon}>记</Text>
+              <Text style={styles.momentBtnText}>{XIAOLING_ATTRACTION_COPY.memoryCta}</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [
@@ -504,15 +619,15 @@ export default function AttractionDetailPage() {
               onPress={handleContinueTour}
             >
               <Text style={styles.continueBtnIcon}>→</Text>
-              <Text style={styles.continueBtnText}>
-                {tourState.nextSpot ? tourState.nextSpot.name : '完成'}
+              <Text style={styles.continueBtnText} numberOfLines={1}>
+                {tourState.nextSpot ? `去${tourState.nextSpot.name}` : '完成路线'}
               </Text>
             </Pressable>
           </View>
         )}
 
         {/* 自由模式下的操作按钮 */}
-        {tourState.preferences.mode !== 'tour' && !autoNavigating && (
+        {!isProactiveGuide && !autoNavigating && (
           <View style={styles.tourActions}>
             <Pressable
               style={({ pressed }) => [
@@ -522,8 +637,8 @@ export default function AttractionDetailPage() {
               ]}
               onPress={handleStartNarration}
             >
-              <Text style={styles.narrateBtnIcon}>🎤</Text>
-              <Text style={styles.narrateBtnText}>讲解</Text>
+              <Text style={styles.narrateBtnIcon}>讲</Text>
+              <Text style={styles.narrateBtnText}>{XIAOLING_ATTRACTION_COPY.narrationCta}</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [
@@ -533,8 +648,8 @@ export default function AttractionDetailPage() {
               ]}
               onPress={handleOpenMomentModal}
             >
-              <Text style={styles.momentBtnIcon}>📝</Text>
-              <Text style={styles.momentBtnText}>记忆</Text>
+              <Text style={styles.momentBtnIcon}>记</Text>
+              <Text style={styles.momentBtnText}>{XIAOLING_ATTRACTION_COPY.memoryCta}</Text>
             </Pressable>
           </View>
         )}
@@ -545,7 +660,7 @@ export default function AttractionDetailPage() {
             <View style={styles.autoNavCard}>
               <ActivityIndicator size="small" color={Colors.primary} />
               <Text style={styles.autoNavText}>
-                正在前往{tourState.nextSpot?.name || '下一个景点'}...
+                小灵正在带你前往{tourState.nextSpot?.name || '下一个景点'}...
               </Text>
             </View>
           </View>
@@ -554,7 +669,7 @@ export default function AttractionDetailPage() {
         {/* Detail */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>详细介绍</Text>
+            <Text style={styles.sectionTitle}>{XIAOLING_ATTRACTION_COPY.detailSectionTitle}</Text>
             <View style={styles.sectionLine} />
           </View>
           <Text style={styles.detailText}>{spot.detail}</Text>
@@ -581,7 +696,7 @@ export default function AttractionDetailPage() {
         {TRAVEL_TIPS[spot.id] && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>游览贴士</Text>
+              <Text style={styles.sectionTitle}>{XIAOLING_ATTRACTION_COPY.tipsSectionTitle}</Text>
               <View style={styles.sectionLine} />
             </View>
             <View style={styles.tipsCard}>
@@ -622,7 +737,7 @@ export default function AttractionDetailPage() {
         {/* Quick Questions */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>向小灵提问</Text>
+            <Text style={styles.sectionTitle}>{XIAOLING_ATTRACTION_COPY.askSectionTitle}</Text>
             <View style={styles.sectionLine} />
           </View>
           <View style={styles.quickGrid}>
@@ -637,9 +752,9 @@ export default function AttractionDetailPage() {
                   styles.quickBtn,
                   pressed && { opacity: 0.8, transform: [{ scale: 0.98 }] },
                 ]}
-                onPress={() => speakWithDigitalHuman(q, 'thinking')}
+                onPress={() => handleAskSpotQuestion(q)}
               >
-                <Text style={styles.quickBtnIcon}>💬</Text>
+                <Text style={styles.quickBtnIcon}>问</Text>
                 <Text style={styles.quickBtnText}>{q}</Text>
               </Pressable>
             ))}
@@ -672,14 +787,14 @@ export default function AttractionDetailPage() {
                 <View style={styles.checkInContent}>
                   <Text style={styles.checkInIcon}>{checkedIn ? '✓' : ''}</Text>
                   <Text style={[styles.checkInBtnText, checkedIn && styles.checkInBtnTextDone]}>
-                    {checkedIn ? '已打卡' : '打卡此地'}
+                    {checkedIn ? XIAOLING_ATTRACTION_COPY.checkedInCta : XIAOLING_ATTRACTION_COPY.checkInCta}
                   </Text>
                 </View>
               )}
             </Pressable>
 
             {/* 导览控制按钮 - 在打卡按钮下方 */}
-            {tourState.preferences.mode === 'tour' && (
+            {isProactiveGuide && (
               <View style={styles.tourControlRow}>
                 {tourState.status !== 'completed' && (
                   <Pressable
@@ -690,7 +805,7 @@ export default function AttractionDetailPage() {
                     ]}
                     onPress={handleContinueTour}
                   >
-                    <Text style={styles.tourControlResumeText}>继续导览</Text>
+                    <Text style={styles.tourControlResumeText}>{XIAOLING_ATTRACTION_COPY.continueTourCta}</Text>
                   </Pressable>
                 )}
                 <Pressable
@@ -701,14 +816,14 @@ export default function AttractionDetailPage() {
                   ]}
                   onPress={handleEndTour}
                 >
-                  <Text style={styles.tourControlEndText}>结束导览</Text>
+                  <Text style={styles.tourControlEndText}>{XIAOLING_ATTRACTION_COPY.endTourCta}</Text>
                 </Pressable>
               </View>
             )}
           </View>
         )}
 
-        <View style={{ height: 160 }} />
+        <View style={{ height: bottomSpacerHeight }} />
       </Animated.ScrollView>
 
       {showNarration && (
@@ -720,16 +835,7 @@ export default function AttractionDetailPage() {
           {spot && (
             <Suspense fallback={null}>
               <NarrationSheet
-                content={{
-                  spot: {
-                    id: spot.id,
-                    name: spot.name,
-                    image: undefined,
-                    overview: spot.overview,
-                  },
-                  text: spot.detail || spot.overview || `${spot.name}是灵山胜境的重要景点之一。`,
-                  duration: Math.max(30, (spot.detail?.length || 100) / 5),
-                }}
+                content={buildNarrationContent(spot)}
                 onClose={() => {
                   setShowNarration(false);
                   tourActions.endNarration();
@@ -739,10 +845,7 @@ export default function AttractionDetailPage() {
                   tourActions.endNarration();
                   handleContinueTour();
                 }}
-                onQuestion={() => {
-                  tourActions.startConversation();
-                  router.push('/chat');
-                }}
+                onQuestion={handleAskFromNarration}
               />
             </Suspense>
           )}
@@ -872,6 +975,7 @@ const styles = StyleSheet.create({
   },
   categoryBadge: {
     alignSelf: 'flex-start',
+    maxWidth: '92%',
     paddingHorizontal: 10, paddingVertical: 3,
     backgroundColor: 'rgba(200,75,49,0.8)',
     borderRadius: 4, marginBottom: 8,

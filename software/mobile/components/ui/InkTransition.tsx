@@ -25,8 +25,8 @@ export function InkOverlay() {
 
   useEffect(() => {
     _listener = () => {
-      scale.value = 0;
-      opacity.value = 1;
+      scale.value = withTiming(0, { duration: 0 });
+      opacity.value = withTiming(1, { duration: 0 });
       scale.value = withTiming(1, { duration: 120, easing: Easing.out(Easing.ease) }, (finished) => {
         if (finished) {
           scale.value = withTiming(0, { duration: 180, easing: Easing.in(Easing.ease) });

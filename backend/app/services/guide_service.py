@@ -291,15 +291,38 @@ class GuideService:
         return "".join(parts)
 
     @classmethod
-    async def generate_route_suggestion(cls, spots: list[dict], route_type: str = "经典全景") -> dict:
-        """生成一条推荐路线。"""
-        selected = spots[:3] if len(spots) >= 3 else spots
+    async def generate_route_suggestion(cls, spots: list[dict], route_type: str = "经典全景", routes: list[dict] | None = None) -> dict:
+        """生成一条推荐路线，优先使用数据库中的真实路线。"""
+        # 优先从已有路线中匹配
+        if routes:
+            matched = next((r for r in routes if r.get("route_type") == route_type), None)
+            if not matched:
+                matched = routes[0] if routes else None
+            if matched:
+                spot_order = matched.get("spot_order", [])
+                matched_spots = [s for s in spots if s["id"] in spot_order]
+                # 按 spot_order 排序
+                if matched_spots:
+                    spot_name_map = {s["id"]: s for s in matched_spots}
+                    ordered = [spot_name_map[sid] for sid in spot_order if sid in spot_name_map]
+                    return {
+                        "id": matched["id"],
+                        "name": matched["name"],
+                        "route_type": matched.get("route_type", route_type),
+                        "duration": matched.get("duration", "2-3小时"),
+                        "description": matched.get("description", f"为您推荐{matched['name']}"),
+                        "spots": ordered,
+                        "spot_order": spot_order,
+                    }
+
+        # 无匹配路线时，从景点列表中选取
+        selected = spots[:6] if len(spots) >= 6 else spots
         spot_names = [s["name"] for s in selected]
         route = {
             "id": f"guide_auto_{route_type}",
             "name": f"{route_type}推荐路线",
             "route_type": route_type,
-            "duration": "1.5小时" if len(selected) <= 3 else "2.5小时",
+            "duration": f"约{len(selected) // 2 + 1}小时",
             "description": f"为您推荐一条{route_type}路线，沿途经过：{' → '.join(spot_names)}。",
             "spots": selected,
         }

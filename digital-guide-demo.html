@@ -1,0 +1,1369 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>景区智能导览数字人</title>
+  <style>
+    :root {
+      --paper: #f7f2e8;
+      --paper-soft: #fffaf1;
+      --ink: #1e1814;
+      --muted: #6a5f55;
+      --celadon: #5f9a86;
+      --celadon-dark: #284f49;
+      --vermilion: #bf4b32;
+      --blue-ink: #243f58;
+      --gold: #c5a152;
+      --line: rgba(42, 34, 27, 0.14);
+      --shadow: 0 22px 70px rgba(27, 21, 15, 0.18);
+      --radius: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+    }
+
+    body {
+      overflow-x: hidden;
+      color: var(--ink);
+      background:
+        linear-gradient(112deg, rgba(247, 242, 232, 0.94) 0%, rgba(247, 242, 232, 0.78) 44%, rgba(36, 63, 88, 0.16) 100%),
+        url("frontend/public/image/bg-mountain-clean.png") center bottom / cover fixed no-repeat;
+      font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "Microsoft YaHei", serif;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .app {
+      min-height: 100vh;
+      padding: 22px clamp(14px, 3vw, 34px) 28px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      max-width: 1460px;
+      margin: 0 auto 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 260px;
+    }
+
+    .brand-mark {
+      position: relative;
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      background:
+        linear-gradient(135deg, rgba(36, 63, 88, 0.95), rgba(95, 154, 134, 0.95));
+      box-shadow: 0 14px 28px rgba(36, 63, 88, 0.22);
+    }
+
+    .brand-mark::before,
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      left: 11px;
+      right: 11px;
+      height: 2px;
+      background: rgba(255, 250, 241, 0.86);
+      border-radius: 2px;
+    }
+
+    .brand-mark::before {
+      top: 15px;
+      box-shadow: 0 7px 0 rgba(255, 250, 241, 0.74);
+    }
+
+    .brand-mark::after {
+      bottom: 10px;
+      transform: rotate(-32deg);
+      transform-origin: left center;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 20px;
+      letter-spacing: 0.09em;
+      line-height: 1.1;
+    }
+
+    .brand span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.22em;
+    }
+
+    .status-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(150px, 1fr));
+      gap: 10px;
+      width: min(740px, 100%);
+    }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-height: 42px;
+      padding: 0 13px;
+      border: 1px solid rgba(58, 80, 70, 0.18);
+      border-radius: var(--radius);
+      background: rgba(255, 250, 241, 0.75);
+      backdrop-filter: blur(12px);
+      color: #38534d;
+      font-size: 13px;
+      box-shadow: 0 8px 22px rgba(39, 31, 23, 0.06);
+    }
+
+    .status-icon {
+      display: inline-grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(95, 154, 134, 0.15);
+      color: var(--celadon-dark);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .workbench {
+      display: grid;
+      grid-template-columns: minmax(0, 1.32fr) minmax(360px, 0.68fr);
+      gap: 18px;
+      max-width: 1460px;
+      margin: 0 auto;
+      align-items: stretch;
+    }
+
+    .stage,
+    .control-panel {
+      min-height: 730px;
+      border: 1px solid rgba(54, 45, 36, 0.15);
+      border-radius: var(--radius);
+      background: rgba(255, 250, 241, 0.75);
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow);
+    }
+
+    .stage {
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: minmax(420px, 0.62fr) minmax(310px, 0.38fr);
+      isolation: isolate;
+    }
+
+    .scene-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+    }
+
+    .scene-backdrop img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: saturate(0.96) contrast(1.04);
+      transform: scale(1.02);
+      transition: opacity 360ms ease, transform 900ms ease;
+    }
+
+    .scene-backdrop::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(90deg, rgba(18, 24, 22, 0.56) 0%, rgba(18, 24, 22, 0.24) 42%, rgba(247, 242, 232, 0.9) 72%, rgba(247, 242, 232, 0.96) 100%),
+        linear-gradient(160deg, rgba(197, 161, 82, 0.18), transparent 42%),
+        linear-gradient(20deg, transparent 54%, rgba(95, 154, 134, 0.16) 100%);
+    }
+
+    .stage-label {
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      border: 1px solid rgba(255, 250, 241, 0.34);
+      border-radius: var(--radius);
+      color: #fffaf1;
+      background: rgba(19, 24, 22, 0.35);
+      backdrop-filter: blur(10px);
+      font-size: 12px;
+      letter-spacing: 0.12em;
+    }
+
+    .signal {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--gold);
+      box-shadow: 0 0 0 0 rgba(197, 161, 82, 0.45);
+      animation: signal 1.8s ease-out infinite;
+    }
+
+    .guide-zone {
+      position: relative;
+      align-self: end;
+      justify-self: center;
+      z-index: 2;
+      width: min(480px, 96%);
+      height: 650px;
+      margin-left: 4vw;
+      margin-bottom: 12px;
+    }
+
+    .digital-human {
+      position: absolute;
+      left: 50%;
+      bottom: 0;
+      width: 300px;
+      height: 590px;
+      transform: translateX(-50%);
+      filter: drop-shadow(0 28px 36px rgba(10, 16, 16, 0.35));
+      animation: idle-body 5.6s ease-in-out infinite;
+    }
+
+    .halo-plate {
+      position: absolute;
+      left: 50%;
+      bottom: 34px;
+      width: 330px;
+      height: 84px;
+      border-radius: 50%;
+      transform: translateX(-50%);
+      background: radial-gradient(ellipse, rgba(24, 31, 28, 0.28) 0%, rgba(24, 31, 28, 0.12) 44%, transparent 70%);
+    }
+
+    .head {
+      position: absolute;
+      left: 82px;
+      top: 54px;
+      width: 136px;
+      height: 154px;
+      border-radius: 46% 46% 44% 44%;
+      background: linear-gradient(180deg, #f2c8ac 0%, #e8ad8b 100%);
+      border: 1px solid rgba(95, 59, 42, 0.2);
+      overflow: hidden;
+      animation: head-breathe 4.6s ease-in-out infinite;
+    }
+
+    .hair {
+      position: absolute;
+      left: 70px;
+      top: 36px;
+      width: 160px;
+      height: 120px;
+      border-radius: 50% 50% 42% 42%;
+      background: linear-gradient(145deg, #1b1515 0%, #44302a 100%);
+    }
+
+    .hair::before {
+      content: "";
+      position: absolute;
+      left: -3px;
+      top: 55px;
+      width: 34px;
+      height: 100px;
+      border-radius: 60% 38% 60% 42%;
+      background: #221918;
+      transform: rotate(10deg);
+    }
+
+    .hair::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 58px;
+      width: 31px;
+      height: 106px;
+      border-radius: 40% 62% 42% 60%;
+      background: #2a1d1a;
+      transform: rotate(-8deg);
+    }
+
+    .bangs {
+      position: absolute;
+      left: 91px;
+      top: 43px;
+      z-index: 3;
+      width: 120px;
+      height: 62px;
+      border-radius: 50% 50% 30% 30%;
+      background:
+        linear-gradient(135deg, transparent 54%, rgba(255, 255, 255, 0.08) 55%),
+        linear-gradient(165deg, #281d1a 0%, #49322b 100%);
+      clip-path: polygon(0 0, 100% 0, 96% 62%, 76% 42%, 58% 72%, 39% 40%, 18% 66%, 0 46%);
+    }
+
+    .eye {
+      position: absolute;
+      top: 74px;
+      width: 18px;
+      height: 9px;
+      border-radius: 50%;
+      border-top: 3px solid #2f221d;
+      animation: blink 5.2s infinite;
+    }
+
+    .eye.left {
+      left: 34px;
+    }
+
+    .eye.right {
+      right: 34px;
+    }
+
+    .cheek {
+      position: absolute;
+      top: 98px;
+      width: 24px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(190, 77, 59, 0.16);
+    }
+
+    .cheek.left {
+      left: 20px;
+    }
+
+    .cheek.right {
+      right: 20px;
+    }
+
+    .nose {
+      position: absolute;
+      left: 65px;
+      top: 82px;
+      width: 8px;
+      height: 22px;
+      border-right: 2px solid rgba(103, 67, 51, 0.22);
+      border-radius: 50%;
+    }
+
+    .mouth {
+      position: absolute;
+      left: 56px;
+      top: 118px;
+      width: 24px;
+      height: 8px;
+      border-radius: 0 0 18px 18px;
+      border-bottom: 3px solid #7e372f;
+      background: rgba(120, 45, 44, 0.05);
+      transform-origin: center top;
+    }
+
+    .is-speaking .mouth {
+      height: 22px;
+      border: 0;
+      border-radius: 50%;
+      background: radial-gradient(circle at 50% 68%, #6a2021 0%, #491315 68%);
+      animation: talk 260ms ease-in-out infinite;
+    }
+
+    .neck {
+      position: absolute;
+      left: 128px;
+      top: 190px;
+      width: 44px;
+      height: 54px;
+      border-radius: 0 0 18px 18px;
+      background: linear-gradient(180deg, #e7ae8c 0%, #d79a78 100%);
+    }
+
+    .torso {
+      position: absolute;
+      left: 51px;
+      top: 224px;
+      width: 198px;
+      height: 250px;
+      border-radius: 78px 78px 22px 22px;
+      background:
+        linear-gradient(90deg, transparent 48%, rgba(255, 250, 241, 0.42) 49%, rgba(255, 250, 241, 0.42) 51%, transparent 52%),
+        linear-gradient(145deg, #2d5b55 0%, #76a995 54%, #f1d293 55%, #9b4033 100%);
+      border: 1px solid rgba(17, 38, 34, 0.18);
+      overflow: hidden;
+    }
+
+    .torso::before {
+      content: "";
+      position: absolute;
+      left: -32px;
+      top: 54px;
+      width: 250px;
+      height: 66px;
+      background: rgba(255, 250, 241, 0.18);
+      transform: rotate(-23deg);
+    }
+
+    .torso::after {
+      content: "";
+      position: absolute;
+      left: 58px;
+      top: 22px;
+      width: 82px;
+      height: 46px;
+      border-radius: 0 0 50% 50%;
+      border-bottom: 2px solid rgba(255, 250, 241, 0.62);
+    }
+
+    .arm {
+      position: absolute;
+      top: 250px;
+      width: 62px;
+      height: 210px;
+      border-radius: 34px;
+      background: linear-gradient(180deg, #6ca18e 0%, #294f49 100%);
+      transform-origin: top center;
+    }
+
+    .arm.left {
+      left: 34px;
+      transform: rotate(19deg);
+    }
+
+    .arm.right {
+      right: 33px;
+      transform: rotate(-22deg);
+    }
+
+    .hand {
+      position: absolute;
+      bottom: -18px;
+      left: 14px;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #e4aa86;
+    }
+
+    .is-speaking .arm.right {
+      animation: right-hand-talk 1.8s ease-in-out infinite;
+    }
+
+    .is-speaking .arm.left {
+      animation: left-hand-talk 2.2s ease-in-out infinite;
+    }
+
+    .skirt {
+      position: absolute;
+      left: 44px;
+      top: 430px;
+      width: 212px;
+      height: 120px;
+      clip-path: polygon(12% 0, 88% 0, 100% 100%, 0 100%);
+      background:
+        repeating-linear-gradient(90deg, rgba(255, 250, 241, 0.16) 0 2px, transparent 2px 22px),
+        linear-gradient(180deg, #284f49 0%, #1b3734 100%);
+    }
+
+    .caption-panel {
+      position: relative;
+      z-index: 3;
+      align-self: end;
+      grid-column: 2;
+      width: min(450px, calc(100% - 28px));
+      margin: 0 18px 18px auto;
+      padding: 20px;
+      border: 1px solid rgba(255, 250, 241, 0.62);
+      border-radius: var(--radius);
+      background: rgba(255, 250, 241, 0.88);
+      box-shadow: 0 18px 42px rgba(48, 38, 28, 0.18);
+    }
+
+    .caption-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .caption-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--vermilion);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+    }
+
+    .caption-time {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .speech-bars {
+      display: inline-flex;
+      align-items: flex-end;
+      gap: 3px;
+      width: 19px;
+      height: 15px;
+    }
+
+    .speech-bars i {
+      display: block;
+      width: 3px;
+      height: 6px;
+      border-radius: 2px;
+      background: var(--vermilion);
+    }
+
+    .is-speaking-text .speech-bars i:nth-child(1) {
+      animation: bar 420ms ease-in-out infinite alternate;
+    }
+
+    .is-speaking-text .speech-bars i:nth-child(2) {
+      animation: bar 500ms ease-in-out 80ms infinite alternate;
+    }
+
+    .is-speaking-text .speech-bars i:nth-child(3) {
+      animation: bar 380ms ease-in-out 130ms infinite alternate;
+    }
+
+    .caption-text {
+      min-height: 112px;
+      margin: 0;
+      color: #2b231f;
+      font-size: 15px;
+      line-height: 1.9;
+    }
+
+    .primary-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .primary-actions button,
+    .send-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 42px;
+      border: 0;
+      border-radius: var(--radius);
+      color: #fffaf1;
+      background: var(--vermilion);
+      box-shadow: 0 10px 24px rgba(191, 75, 50, 0.24);
+      transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
+    }
+
+    .primary-actions button {
+      flex: 1;
+      padding: 0 14px;
+    }
+
+    .primary-actions button:hover,
+    .send-button:hover {
+      background: #a83f2a;
+      transform: translateY(-1px);
+      box-shadow: 0 14px 28px rgba(191, 75, 50, 0.28);
+    }
+
+    .secondary-button {
+      color: var(--celadon-dark) !important;
+      background: rgba(40, 79, 73, 0.08) !important;
+      box-shadow: none !important;
+    }
+
+    .control-panel {
+      padding: 20px;
+      overflow: hidden auto;
+    }
+
+    .panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-kicker {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.22em;
+    }
+
+    .panel-head h1 {
+      margin: 5px 0 0;
+      font-size: clamp(26px, 3vw, 34px);
+      line-height: 1.12;
+      letter-spacing: 0.05em;
+    }
+
+    .compass {
+      position: relative;
+      width: 42px;
+      height: 42px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(191, 75, 50, 0.32);
+      border-radius: 50%;
+    }
+
+    .compass::before {
+      content: "";
+      position: absolute;
+      left: 19px;
+      top: 7px;
+      width: 4px;
+      height: 28px;
+      border-radius: 4px;
+      background: linear-gradient(180deg, var(--vermilion) 0 50%, var(--celadon-dark) 50% 100%);
+      transform: rotate(34deg);
+      transform-origin: center;
+    }
+
+    .scene-title {
+      margin: 15px 0 16px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.8;
+    }
+
+    .scene-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .scene-button {
+      position: relative;
+      min-height: 94px;
+      overflow: hidden;
+      border: 1px solid rgba(36, 63, 88, 0.14);
+      border-radius: var(--radius);
+      color: #fffaf1;
+      background: #26342f;
+      text-align: left;
+    }
+
+    .scene-button img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.76;
+      transition: transform 260ms ease, opacity 260ms ease;
+    }
+
+    .scene-button::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, transparent 28%, rgba(0, 0, 0, 0.64) 100%);
+    }
+
+    .scene-button span {
+      position: absolute;
+      left: 11px;
+      right: 11px;
+      bottom: 10px;
+      z-index: 1;
+      font-size: 14px;
+      font-weight: 800;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+    }
+
+    .scene-button.is-active {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 2px rgba(197, 161, 82, 0.3);
+    }
+
+    .scene-button:hover img {
+      opacity: 0.94;
+      transform: scale(1.05);
+    }
+
+    .section {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      color: var(--celadon-dark);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+    }
+
+    .title-mark {
+      width: 4px;
+      height: 16px;
+      border-radius: 3px;
+      background: var(--celadon);
+    }
+
+    .route-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .route-list li {
+      position: relative;
+      min-height: 42px;
+      padding: 10px 10px 10px 34px;
+      border-radius: var(--radius);
+      color: #3f342d;
+      background: rgba(95, 154, 134, 0.1);
+      font-size: 13px;
+    }
+
+    .route-list li::before {
+      content: counter(list-item);
+      position: absolute;
+      left: 10px;
+      top: 11px;
+      display: grid;
+      place-items: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      color: #fffaf1;
+      background: var(--celadon);
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .fact-tags,
+    .prompt-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .fact-tags {
+      margin-top: 14px;
+    }
+
+    .fact-tags span,
+    .prompt-row button {
+      border: 1px solid rgba(191, 75, 50, 0.18);
+      border-radius: 999px;
+      color: #8a4334;
+      background: rgba(252, 235, 230, 0.72);
+      font-size: 12px;
+    }
+
+    .fact-tags span {
+      padding: 6px 10px;
+    }
+
+    .prompt-row {
+      margin-top: 12px;
+    }
+
+    .prompt-row button {
+      min-height: 30px;
+      padding: 0 11px;
+      transition: background 180ms ease, border-color 180ms ease;
+    }
+
+    .prompt-row button:hover {
+      border-color: rgba(191, 75, 50, 0.42);
+      background: rgba(252, 235, 230, 0.96);
+    }
+
+    .messages {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      max-height: 185px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .message {
+      width: fit-content;
+      max-width: 88%;
+      padding: 9px 11px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .message.guide {
+      align-self: flex-start;
+      border: 1px solid rgba(95, 154, 134, 0.18);
+      color: #2d2823;
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .message.visitor {
+      align-self: flex-end;
+      color: #fffaf1;
+      background: var(--blue-ink);
+    }
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr) 42px;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+      padding: 7px;
+      border: 1px solid rgba(54, 45, 36, 0.16);
+      border-radius: var(--radius);
+      background: rgba(255, 250, 241, 0.78);
+    }
+
+    .mic-icon {
+      position: relative;
+      justify-self: center;
+      width: 12px;
+      height: 18px;
+      border-radius: 8px;
+      background: var(--celadon);
+    }
+
+    .mic-icon::after {
+      content: "";
+      position: absolute;
+      left: -4px;
+      bottom: -5px;
+      width: 20px;
+      height: 10px;
+      border-bottom: 2px solid var(--celadon);
+      border-radius: 0 0 12px 12px;
+    }
+
+    .input-row input {
+      min-width: 0;
+      height: 38px;
+      border: 0;
+      outline: 0;
+      color: #2c241e;
+      background: transparent;
+      font-size: 14px;
+    }
+
+    .send-button {
+      width: 42px;
+      min-height: 38px;
+      box-shadow: none;
+    }
+
+    .send-button::before {
+      content: "";
+      width: 0;
+      height: 0;
+      border-top: 7px solid transparent;
+      border-bottom: 7px solid transparent;
+      border-left: 11px solid #fffaf1;
+      transform: translateX(1px);
+    }
+
+    .pulse-line {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 16px;
+      z-index: 2;
+      height: 2px;
+      overflow: hidden;
+      background: rgba(255, 250, 241, 0.24);
+    }
+
+    .pulse-line::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -30%;
+      width: 30%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      animation: scan 2.4s linear infinite;
+    }
+
+    @keyframes signal {
+      0% {
+        box-shadow: 0 0 0 0 rgba(197, 161, 82, 0.45);
+      }
+      100% {
+        box-shadow: 0 0 0 12px rgba(197, 161, 82, 0);
+      }
+    }
+
+    @keyframes idle-body {
+      0%, 100% {
+        transform: translateX(-50%) translateY(0);
+      }
+      50% {
+        transform: translateX(-50%) translateY(-5px);
+      }
+    }
+
+    @keyframes head-breathe {
+      0%, 100% {
+        transform: rotate(0deg);
+      }
+      50% {
+        transform: rotate(1.2deg);
+      }
+    }
+
+    @keyframes blink {
+      0%, 92%, 100% {
+        transform: scaleY(1);
+      }
+      94%, 96% {
+        transform: scaleY(0.12);
+      }
+    }
+
+    @keyframes talk {
+      0%, 100% {
+        transform: scaleY(0.45) scaleX(1.15);
+      }
+      50% {
+        transform: scaleY(1.05) scaleX(0.9);
+      }
+    }
+
+    @keyframes right-hand-talk {
+      0%, 100% {
+        transform: rotate(-24deg);
+      }
+      50% {
+        transform: rotate(-39deg) translateY(-6px);
+      }
+    }
+
+    @keyframes left-hand-talk {
+      0%, 100% {
+        transform: rotate(18deg);
+      }
+      50% {
+        transform: rotate(31deg) translateY(-4px);
+      }
+    }
+
+    @keyframes bar {
+      from {
+        height: 5px;
+      }
+      to {
+        height: 15px;
+      }
+    }
+
+    @keyframes scan {
+      to {
+        left: 100%;
+      }
+    }
+
+    @media (max-width: 1120px) {
+      .workbench {
+        grid-template-columns: 1fr;
+      }
+
+      .stage,
+      .control-panel {
+        min-height: auto;
+      }
+
+      .stage {
+        min-height: 650px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        padding: 14px 12px 24px;
+      }
+
+      .topbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .status-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .stage {
+        display: block;
+        min-height: 760px;
+      }
+
+      .guide-zone {
+        width: 100%;
+        height: 640px;
+        margin: 70px auto 0;
+        transform: scale(0.72);
+        transform-origin: center top;
+      }
+
+      .caption-panel {
+        width: calc(100% - 24px);
+        margin: -150px 12px 12px;
+      }
+
+      .scene-list,
+      .route-list {
+        grid-template-columns: 1fr;
+      }
+
+      .primary-actions {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div>
+          <strong>灵小澄</strong>
+          <span>景区智能导览数字人</span>
+        </div>
+      </div>
+      <div class="status-strip" aria-label="实时状态">
+        <div class="status-pill"><span class="status-icon">时</span><span id="statusTime">09:40 入园黄金时段</span></div>
+        <div class="status-pill"><span class="status-icon">位</span><span id="statusScene">入园迎宾</span></div>
+        <div class="status-pill"><span class="status-icon">客</span><span id="statusCrowd">客流 舒适</span></div>
+      </div>
+    </header>
+
+    <section class="workbench">
+      <div class="stage">
+        <div class="scene-backdrop">
+          <img id="sceneImage" src="frontend/public/image/zhaobi.png" alt="入园迎宾">
+        </div>
+        <div class="stage-label"><span class="signal"></span><span>AI TOUR GUIDE ONLINE</span></div>
+
+        <div class="guide-zone">
+          <div class="halo-plate" aria-hidden="true"></div>
+          <div id="digitalHuman" class="digital-human" aria-label="景区智能导览数字人">
+            <div class="hair"></div>
+            <div class="bangs"></div>
+            <div class="head">
+              <div class="eye left"></div>
+              <div class="eye right"></div>
+              <div class="cheek left"></div>
+              <div class="cheek right"></div>
+              <div class="nose"></div>
+              <div class="mouth"></div>
+            </div>
+            <div class="neck"></div>
+            <div class="arm left"><div class="hand"></div></div>
+            <div class="arm right"><div class="hand"></div></div>
+            <div class="torso"></div>
+            <div class="skirt"></div>
+          </div>
+        </div>
+
+        <article id="captionPanel" class="caption-panel">
+          <div class="caption-head">
+            <div class="caption-state">
+              <span class="speech-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span id="speakingState">待机</span>
+            </div>
+            <span id="sceneDuration" class="caption-time">建议停留 12 min</span>
+          </div>
+          <p id="captionText" class="caption-text"></p>
+          <div class="primary-actions">
+            <button id="playButton" type="button">开始讲解</button>
+            <button id="pauseButton" class="secondary-button" type="button">暂停</button>
+          </div>
+        </article>
+
+        <div class="pulse-line" aria-hidden="true"></div>
+      </div>
+
+      <aside class="control-panel">
+        <div class="panel-head">
+          <div>
+            <div class="panel-kicker">当前位置</div>
+            <h1 id="sceneName">入园迎宾</h1>
+          </div>
+          <div class="compass" aria-hidden="true"></div>
+        </div>
+        <p id="sceneTitle" class="scene-title"></p>
+
+        <div id="sceneList" class="scene-list" aria-label="景点切换"></div>
+
+        <section class="section">
+          <div class="section-title"><span class="title-mark"></span><span>推荐动线</span></div>
+          <ol id="routeList" class="route-list"></ol>
+          <div id="factTags" class="fact-tags"></div>
+        </section>
+
+        <section class="section">
+          <div class="section-title"><span class="title-mark"></span><span>现场问答</span></div>
+          <div id="messages" class="messages"></div>
+          <div id="promptRow" class="prompt-row"></div>
+          <form id="questionForm" class="input-row">
+            <span class="mic-icon" aria-hidden="true"></span>
+            <input id="questionInput" type="text" autocomplete="off" placeholder="问路线、客流、拍照点...">
+            <button class="send-button" type="submit" aria-label="send question"></button>
+          </form>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const scenes = [
+      {
+        id: "gate",
+        name: "入园迎宾",
+        image: "frontend/public/image/zhaobi.png",
+        title: "从照壁入园，先把一天的节奏定下来。",
+        duration: "12 min",
+        crowd: "舒适",
+        script: "欢迎来到灵山胜境。我是你的数字导览员灵小澄。建议先从照壁慢行入园，顺着香水海的水线向前，听见钟声时放慢脚步，第一段游览不要急，我们把视线交给山势和轴线。",
+        route: ["照壁", "香水海", "九龙灌浴", "降魔浮雕"],
+        facts: ["入口轴线适合拍全景", "上午光线更柔", "这一段适合建立方位感"],
+        prompts: ["今天先去哪里最顺路？", "适合老人小孩吗？", "哪里适合第一张照片？"]
+      },
+      {
+        id: "dragon",
+        name: "九龙灌浴",
+        image: "frontend/public/image/nine dragon.png",
+        title: "水幕、音乐和仪式感，是游客最容易停留的节点。",
+        duration: "18 min",
+        crowd: "较热",
+        script: "现在我们来到九龙灌浴。表演开始前建议站在广场中后段，视野最完整，也方便结束后顺着人流去灵山大佛方向。这里的重点不是只看喷泉，而是看音乐、雕塑和叙事如何把一个故事推到高潮。",
+        route: ["广场中轴", "喷泉观演点", "转经廊", "大佛步道"],
+        facts: ["表演前五分钟人流升高", "中后段视角更稳", "雨天注意石面湿滑"],
+        prompts: ["表演几点看合适？", "拍视频站哪里？", "下一站怎么走？"]
+      },
+      {
+        id: "buddha",
+        name: "灵山大佛",
+        image: "frontend/public/image/bigfo.png",
+        title: "核心地标适合慢讲解，少走回头路。",
+        duration: "35 min",
+        crowd: "中等",
+        script: "灵山大佛是今天的核心地标。建议你先在台阶下方看整体比例，再逐级向上。上行时不要一直低头赶路，可以在每个平台停留十秒，回望湖面和山线，你会更容易理解这个空间为什么有庄严感。",
+        route: ["祥符禅寺", "大佛台阶", "抱佛脚平台", "观景回望点"],
+        facts: ["台阶平台适合分段休息", "远景比近景更显比例", "傍晚逆光更有层次"],
+        prompts: ["抱佛脚需要多久？", "体力不够怎么走？", "这里怎么讲给孩子听？"]
+      },
+      {
+        id: "fangong",
+        name: "灵山梵宫",
+        image: "frontend/public/image/fangong.png",
+        title: "室内艺术空间，适合用故事线串起来。",
+        duration: "28 min",
+        crowd: "舒适",
+        script: "梵宫适合放慢语速讲。你可以先看穹顶，再看壁画和廊柱，最后把视线落到舞台区域。这里最打动人的地方，是传统工艺、灯光和空间尺度一起营造出的沉浸感。",
+        route: ["序厅", "廊柱区", "穹顶观赏点", "舞台区"],
+        facts: ["室内适合避暑避雨", "穹顶细节需要抬头慢看", "低声讲解体验更好"],
+        prompts: ["梵宫最值得看什么？", "下雨天路线怎么排？", "这里有什么工艺细节？"]
+      }
+    ];
+
+    const state = {
+      scene: scenes[0],
+      speaking: false,
+      timer: 0
+    };
+
+    const sceneImage = document.getElementById("sceneImage");
+    const statusScene = document.getElementById("statusScene");
+    const statusCrowd = document.getElementById("statusCrowd");
+    const sceneName = document.getElementById("sceneName");
+    const sceneTitle = document.getElementById("sceneTitle");
+    const sceneDuration = document.getElementById("sceneDuration");
+    const captionText = document.getElementById("captionText");
+    const captionPanel = document.getElementById("captionPanel");
+    const speakingState = document.getElementById("speakingState");
+    const digitalHuman = document.getElementById("digitalHuman");
+    const routeList = document.getElementById("routeList");
+    const factTags = document.getElementById("factTags");
+    const sceneList = document.getElementById("sceneList");
+    const promptRow = document.getElementById("promptRow");
+    const messages = document.getElementById("messages");
+    const questionForm = document.getElementById("questionForm");
+    const questionInput = document.getElementById("questionInput");
+
+    function setSpeaking(active) {
+      state.speaking = active;
+      digitalHuman.classList.toggle("is-speaking", active);
+      captionPanel.classList.toggle("is-speaking-text", active);
+      speakingState.textContent = active ? "讲解中" : "待机";
+    }
+
+    function stopSpeaking() {
+      window.clearTimeout(state.timer);
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      setSpeaking(false);
+    }
+
+    function speak(text) {
+      stopSpeaking();
+      captionText.textContent = text;
+      setSpeaking(true);
+      const fallbackMs = Math.max(4200, Math.min(16000, text.length * 150));
+      state.timer = window.setTimeout(() => setSpeaking(false), fallbackMs);
+
+      if (!("speechSynthesis" in window)) return;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "zh-CN";
+      utterance.rate = 0.96;
+      utterance.pitch = 1.05;
+      utterance.onend = () => {
+        window.clearTimeout(state.timer);
+        setSpeaking(false);
+      };
+      utterance.onerror = () => {
+        window.clearTimeout(state.timer);
+        setSpeaking(false);
+      };
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function addMessage(role, text) {
+      const bubble = document.createElement("div");
+      bubble.className = `message ${role}`;
+      bubble.textContent = text;
+      messages.appendChild(bubble);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function answerQuestion(question) {
+      const scene = state.scene;
+      if (/路线|怎么走|下一站|顺路|排/.test(question)) {
+        return `${scene.name}之后建议走${scene.route.slice(1).join("、")}。这条线回头路少，节奏大约${scene.duration}，适合边走边听讲解。`;
+      }
+      if (/老人|小孩|体力|累|方便/.test(question)) {
+        return `${scene.name}这一段可以放慢到${scene.duration}左右。建议每到一个节点停留一分钟，我会把讲解拆短，避免赶路式游览。`;
+      }
+      if (/拍|照片|视频|机位/.test(question)) {
+        return `${scene.name}推荐先找中轴偏后的位置取景。这样主体、背景和人流都更容易控制，拍完再靠近看细节。`;
+      }
+      if (/人|拥挤|排队|热/.test(question)) {
+        return `当前${scene.name}客流状态是${scene.crowd}。如果你想更安静，我建议先听完这一段，再错峰前往下一个节点。`;
+      }
+      return `${scene.name}的重点可以记三件事：${scene.facts.join("；")}。我可以继续把它讲成一分钟故事版。`;
+    }
+
+    function ask(question) {
+      const text = question.trim();
+      if (!text) return;
+      addMessage("visitor", text);
+      const answer = answerQuestion(text);
+      addMessage("guide", answer);
+      questionInput.value = "";
+      speak(answer);
+    }
+
+    function renderSceneButtons() {
+      sceneList.innerHTML = "";
+      scenes.forEach((scene) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `scene-button${scene.id === state.scene.id ? " is-active" : ""}`;
+        button.innerHTML = `<img src="${scene.image}" alt=""><span>${scene.name}</span>`;
+        button.addEventListener("click", () => selectScene(scene.id));
+        sceneList.appendChild(button);
+      });
+    }
+
+    function renderRoute(scene) {
+      routeList.innerHTML = "";
+      scene.route.forEach((step) => {
+        const item = document.createElement("li");
+        item.textContent = step;
+        routeList.appendChild(item);
+      });
+
+      factTags.innerHTML = "";
+      scene.facts.forEach((fact) => {
+        const tag = document.createElement("span");
+        tag.textContent = fact;
+        factTags.appendChild(tag);
+      });
+    }
+
+    function renderPrompts(scene) {
+      promptRow.innerHTML = "";
+      scene.prompts.forEach((prompt) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = prompt;
+        button.addEventListener("click", () => ask(prompt));
+        promptRow.appendChild(button);
+      });
+    }
+
+    function selectScene(sceneId) {
+      const next = scenes.find((scene) => scene.id === sceneId) || scenes[0];
+      state.scene = next;
+      stopSpeaking();
+      sceneImage.src = next.image;
+      sceneImage.alt = next.name;
+      statusScene.textContent = next.name;
+      statusCrowd.textContent = `客流 ${next.crowd}`;
+      sceneName.textContent = next.name;
+      sceneTitle.textContent = next.title;
+      sceneDuration.textContent = `建议停留 ${next.duration}`;
+      captionText.textContent = next.script;
+      messages.innerHTML = "";
+      addMessage("guide", `已切换到${next.name}。我会按当前位置讲解、规划下一站，也可以回答现场问题。`);
+      renderSceneButtons();
+      renderRoute(next);
+      renderPrompts(next);
+    }
+
+    document.getElementById("playButton").addEventListener("click", () => speak(state.scene.script));
+    document.getElementById("pauseButton").addEventListener("click", stopSpeaking);
+
+    questionForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      ask(questionInput.value);
+    });
+
+    selectScene("gate");
+  </script>
+</body>
+</html>

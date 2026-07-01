@@ -6,10 +6,33 @@ import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 
 import type { Emotion, PageContext, VRMState } from './VRMTypes';
+import type { Action } from './VRMIdleAnim';
 import { createVRMTransformKey, type VRMRenderMode } from './vrmTransformCache';
+import { estimateSpeechDuration } from '../../utils/digitalHumanDriver';
 export type { Emotion, PageContext, VRMState } from './VRMTypes';
 
 type Listener = (data: any) => void;
+
+export class StaleVRMLoadError extends Error {
+  constructor(modelFile: string) {
+    super(`VRM load for ${modelFile} was superseded`);
+    this.name = 'StaleVRMLoadError';
+  }
+}
+
+export function isStaleVRMLoadError(error: unknown): error is StaleVRMLoadError {
+  return error instanceof StaleVRMLoadError
+    || (typeof error === 'object' && error !== null && (error as Error).name === 'StaleVRMLoadError');
+}
+
+interface SpeechRequest {
+  text: string;
+  emotion: Emotion;
+  duration: number;
+  action?: Action;
+  actionDuration?: number;
+  targetId?: string;
+}
 
 const EMOTION_MAP: Record<Emotion, string> = {
   neutral: 'neutral',
@@ -35,18 +58,20 @@ class VRMManagerClass {
   };
 
   private listeners: Map<string, Set<Listener>> = new Map();
-  private speakTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingSpeech: SpeechRequest | null = null;
+  private activeSpeakerId: string | null = null;
 
   // VRM 3D model management
   private vrm: VRM | null = null;
   private loadingPromise: Promise<VRM> | null = null;
+  private loadRequestId = 0;
   private currentModelFile: string = 'avatar.vrm';
   private transformCache = new Map<string, { scale: THREE.Vector3; position: THREE.Vector3 }>();
   private preloadedModelFile: string | null = null;
   private cacheDir = (Platform.OS === 'web' ? '' : (FileSystem.cacheDirectory || '') + 'vrm_cache/');
 
   private constructor() {
-    ['speak', 'emotionChange', 'mouthChange', 'stateChange'].forEach((event) => {
+    ['speak', 'emotionChange', 'mouthChange', 'stateChange', 'manualReload'].forEach((event) => {
       this.listeners.set(event, new Set());
     });
   }
@@ -62,28 +87,74 @@ class VRMManagerClass {
     return { ...this.state };
   }
 
-  speak(text: string, emotion: Emotion = 'neutral', duration?: number): void {
-    if (this.speakTimer) clearTimeout(this.speakTimer);
+  speak(
+    text: string,
+    emotion: Emotion = 'neutral',
+    duration?: number,
+    action?: Action,
+    actionDuration?: number,
+    targetId?: string,
+  ): void {
+    const request: SpeechRequest = {
+      text,
+      emotion,
+      duration: duration || estimateSpeechDuration(text),
+      action,
+      actionDuration,
+      targetId: targetId ?? this.activeSpeakerId ?? undefined,
+    };
 
-    this.state.subtitle = text;
-    this.state.isSpeaking = true;
-    this.state.currentEmotion = emotion;
+    if (this.state.isSpeaking) {
+      this.pendingSpeech = request;
+      return;
+    }
 
-    // 同步设置 VRM 表情
-    this.setEmotionByName(emotion);
-
-    this.emit('speak', { text, emotion });
-    this.emit('stateChange', this.getState());
-
-    const autoDuration = duration || Math.max(2000, text.length * 150);
-    this.speakTimer = setTimeout(() => this.stopSpeaking(), autoDuration);
+    this.startSpeech(request);
   }
 
-  stopSpeaking(): void {
-    if (this.speakTimer) {
-      clearTimeout(this.speakTimer);
-      this.speakTimer = null;
+  replaceSpeech(
+    text: string,
+    emotion: Emotion = 'neutral',
+    duration?: number,
+    action?: Action,
+    actionDuration?: number,
+    targetId?: string,
+  ): void {
+    const request: SpeechRequest = {
+      text,
+      emotion,
+      duration: duration || estimateSpeechDuration(text),
+      action,
+      actionDuration,
+      targetId: targetId ?? this.activeSpeakerId ?? undefined,
+    };
+
+    this.stopSpeaking({ playQueued: false });
+    this.startSpeech(request);
+  }
+
+  getActiveSpeakerId(): string | null {
+    return this.activeSpeakerId;
+  }
+
+  setActiveSpeakerId(speakerId: string | null): void {
+    if (this.activeSpeakerId === speakerId) return;
+    this.activeSpeakerId = speakerId;
+    // 切换/离开活动 speaker 时立即清掉当前语音，防止跳转页面后语音继续播放
+    this.stopSpeaking({ playQueued: false });
+  }
+
+  stopSpeaking(options: { playQueued?: boolean } = {}): void {
+    const { playQueued = true } = options;
+    const nextSpeech = playQueued ? this.pendingSpeech : null;
+    this.pendingSpeech = null;
+
+    if (nextSpeech) {
+      this.state.mouthOpen = 0;
+      this.startSpeech(nextSpeech);
+      return;
     }
+
     this.state.isSpeaking = false;
     this.state.subtitle = '';
     this.state.mouthOpen = 0;
@@ -96,6 +167,12 @@ class VRMManagerClass {
     this.state.currentEmotion = emotion;
     this.setEmotionByName(emotion);
     this.emit('emotionChange', emotion);
+  }
+
+  /** 用实际音频时长重新同步表情/动作时间轴（tts 模式音频就绪后调用） */
+  resyncTimeline(durationMs: number): void {
+    if (!this.state.isSpeaking) return;
+    this.emit('resync', { durationMs });
   }
 
   setPageContext(context: PageContext, data?: Record<string, any>): void {
@@ -120,6 +197,7 @@ class VRMManagerClass {
       map: '查看景区地图，探索各个景点',
       routes: '为您精选了几条游览路线',
       'route-detail': '这条路线包含多个精彩景点',
+      profile: '这里是你的小灵导览档案，也可以把游览反馈告诉我',
     };
     return map[this.state.pageContext] || '有什么可以帮您？';
   }
@@ -136,11 +214,15 @@ class VRMManagerClass {
       map: ['附近有什么景点？', '怎么去灵山大佛？'],
       routes: ['推荐一条短途路线', '哪条路线最经典？'],
       'route-detail': ['这条路线要多久？', '有哪些景点？'],
+      profile: ['我的导览进度怎么样？', '我想反馈讲解体验'],
     };
     return map[this.state.pageContext] || ['有什么可以帮您？'];
   }
 
   on(event: string, callback: Listener): void {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set());
+    }
     this.listeners.get(event)?.add(callback);
   }
 
@@ -152,6 +234,26 @@ class VRMManagerClass {
     this.listeners.get(event)?.forEach((cb) => {
       try { cb(data); } catch {}
     });
+  }
+
+  requestManualReload(modelFile?: string, routePath?: string): void {
+    this.emit('manualReload', {
+      modelFile: modelFile || null,
+      routePath: routePath || null,
+      requestedAt: Date.now(),
+    });
+  }
+
+  private startSpeech(request: SpeechRequest): void {
+    this.state.subtitle = request.text;
+    this.state.isSpeaking = true;
+    this.state.currentEmotion = request.emotion;
+
+    // 同步设置 VRM 表情
+    this.setEmotionByName(request.emotion);
+
+    this.emit('speak', request);
+    this.emit('stateChange', this.getState());
   }
 
   // ========== VRM 3D Model Methods ==========
@@ -166,14 +268,14 @@ class VRMManagerClass {
     if (this.loadingPromise && this.currentModelFile === modelFile) return this.loadingPromise;
 
     this.preloadedModelFile = modelFile;
-    this.currentModelFile = modelFile;
-    this.loadingPromise = this.loadVRMWithCache(modelFile);
+    const request = this.beginModelLoad(modelFile);
 
     try {
-      this.vrm = await this.loadingPromise;
-      return this.vrm;
+      return await this.commitModelLoad(request);
     } catch (e) {
-      this.loadingPromise = null;
+      if (this.isActiveModelLoad(request)) {
+        this.loadingPromise = null;
+      }
       throw e;
     }
   }
@@ -181,21 +283,59 @@ class VRMManagerClass {
   async getOrLoad(modelFile?: string): Promise<VRM> {
     const file = modelFile || 'avatar.vrm';
     if (this.vrm && this.currentModelFile === file) return this.vrm;
-    if (modelFile && this.currentModelFile !== file) {
+    if (this.currentModelFile !== file) {
       this.dispose();
     }
     // 如果之前已经 preload 过，复用 preload 结果
     if (this.vrm && this.currentModelFile === file) return this.vrm;
     if (this.loadingPromise && this.currentModelFile === file) return this.loadingPromise;
-    this.currentModelFile = file;
-    this.loadingPromise = this.loadVRMWithCache(file);
+    const request = this.beginModelLoad(file);
     try {
-      this.vrm = await this.loadingPromise;
-      return this.vrm;
+      return await this.commitModelLoad(request);
     } catch (e) {
-      this.loadingPromise = null;
+      if (this.isActiveModelLoad(request)) {
+        this.loadingPromise = null;
+      }
       throw e;
     }
+  }
+
+  private beginModelLoad(modelFile: string): {
+    id: number;
+    modelFile: string;
+    promise: Promise<VRM>;
+  } {
+    const id = ++this.loadRequestId;
+    this.currentModelFile = modelFile;
+    const promise = this.loadVRMWithCache(modelFile);
+    this.loadingPromise = promise;
+    return { id, modelFile, promise };
+  }
+
+  private isActiveModelLoad(request: {
+    id: number;
+    modelFile: string;
+    promise: Promise<VRM>;
+  }): boolean {
+    return this.loadRequestId === request.id
+      && this.currentModelFile === request.modelFile
+      && this.loadingPromise === request.promise;
+  }
+
+  private async commitModelLoad(request: {
+    id: number;
+    modelFile: string;
+    promise: Promise<VRM>;
+  }): Promise<VRM> {
+    const vrm = await request.promise;
+    if (!this.isActiveModelLoad(request)) {
+      this.disposeVRM(vrm);
+      throw new StaleVRMLoadError(request.modelFile);
+    }
+
+    this.vrm = vrm;
+    this.loadingPromise = null;
+    return vrm;
   }
 
   private async ensureCacheDir(): Promise<void> {
@@ -408,41 +548,47 @@ class VRMManagerClass {
     this.vrm?.update(dt);
   }
 
+  private disposeVRM(vrm: VRM): void {
+    if (vrm.scene.parent) {
+      vrm.scene.parent.remove(vrm.scene);
+    }
+    vrm.scene.traverse((obj: any) => {
+      if (obj.geometry) {
+        obj.geometry.dispose();
+      }
+      if (obj.material) {
+        const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+        materials.forEach((m: any) => {
+          // 清理材质引用的纹理，防止显存泄漏
+          if (m.map) m.map.dispose();
+          if (m.normalMap) m.normalMap.dispose();
+          if (m.roughnessMap) m.roughnessMap.dispose();
+          if (m.metalnessMap) m.metalnessMap.dispose();
+          if (m.emissiveMap) m.emissiveMap.dispose();
+          if (m.aoMap) m.aoMap.dispose();
+          m.dispose();
+        });
+      }
+      if (obj.skeleton) {
+        obj.skeleton.dispose?.();
+      }
+    });
+  }
+
   dispose(): void {
+    this.loadRequestId += 1;
+    this.loadingPromise = null;
     if (this.vrm) {
       // 从父场景移除，避免残留引用
-      if (this.vrm.scene.parent) {
-        this.vrm.scene.parent.remove(this.vrm.scene);
-      }
-      this.vrm.scene.traverse((obj: any) => {
-        if (obj.geometry) {
-          obj.geometry.dispose();
-        }
-        if (obj.material) {
-          const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
-          materials.forEach((m: any) => {
-            // 清理材质引用的纹理，防止显存泄漏
-            if (m.map) m.map.dispose();
-            if (m.normalMap) m.normalMap.dispose();
-            if (m.roughnessMap) m.roughnessMap.dispose();
-            if (m.metalnessMap) m.metalnessMap.dispose();
-            if (m.emissiveMap) m.emissiveMap.dispose();
-            if (m.aoMap) m.aoMap.dispose();
-            m.dispose();
-          });
-        }
-        if (obj.skeleton) {
-          obj.skeleton.dispose?.();
-        }
-      });
+      this.disposeVRM(this.vrm);
       this.vrm = null;
     }
-    this.loadingPromise = null;
     // 注意：不重置 transformCache；GL 上下文重建和模型切回时仍需按 model+mode 恢复。
   }
 
   reset(): void {
-    this.stopSpeaking();
+    this.pendingSpeech = null;
+    this.stopSpeaking({ playQueued: false });
     this.state.currentEmotion = 'neutral';
     this.state.contextData = {};
     this.emit('stateChange', this.getState());

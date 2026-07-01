@@ -1,33 +1,44 @@
 import React, {
-  forwardRef, useImperativeHandle, useCallback, useEffect, useMemo, useRef, useState,
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
-import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, Pressable, StyleSheet, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { usePathname } from 'expo-router';
 import Animated, {
-  useSharedValue, useAnimatedStyle, withSpring, withTiming,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import * as THREE from 'three';
 import { Colors } from '@/constants/colors';
-import { VRMView, type VRMViewHandles } from './VRMView';
-import type { Emotion } from './VRMTypes';
-import type { Action } from './VRMIdleAnim';
-import type { VoiceMode } from '@/hooks/useVRMSync';
 import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import type { VoiceMode } from '@/hooks/useVRMSync';
+import { VRMView, type VRMViewHandles } from './VRMView';
+import type { Action } from './VRMIdleAnim';
+import type { Emotion } from './VRMTypes';
+import { getVRMFloatingMetrics, type VRMFloatingMetrics } from './vrmLayout';
+import { getCostume } from '@/constants/costumeMap';
+import { preloadDigitalHuman } from '@/services/digitalHuman';
+import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-// 高度占屏幕 2/5，宽度 = 高度 × 0.618
-const FLOAT_H = Math.min(Math.round(SCREEN_H * 0.4), 320);
-const FLOAT_W = Math.round(FLOAT_H * 0.618);
-const BTN_SIZE = FLOAT_H;
+const BUBBLE_W = 220;
 
-// 情绪表情映射
 const EMOTION_ICONS: Record<Emotion, string> = {
-  neutral: '😊',
-  happy: '😄',
-  sad: '😢',
-  angry: '😠',
-  relaxed: '😌',
-  surprised: '😲',
+  neutral: '',
+  happy: '',
+  sad: '',
+  angry: '',
+  relaxed: '',
+  surprised: '',
   thinking: '',
   grateful: '',
 };
@@ -42,14 +53,22 @@ export interface VRMFloatingRef {
 interface Props {
   position?: 'bottom-right' | 'bottom-left';
   onPress?: () => void;
-  /** 服装ID，统一所有页面的VRM外观 */
   costumeId?: string;
-  /** 语音模式：silent=静音, browser=浏览器TTS, tts=完整TTS */
   voiceMode?: VoiceMode;
+  metrics?: VRMFloatingMetrics;
 }
 
 export const VRMFloating = forwardRef<VRMFloatingRef, Props>(
-  ({ onPress, costumeId = 'festival-spring', voiceMode = 'tts' }, ref) => {
+  (
+    {
+      position = 'bottom-right',
+      onPress,
+      costumeId = 'festival-spring',
+      voiceMode = DEFAULT_DIGITAL_HUMAN_VOICE_MODE,
+      metrics: metricsProp,
+    },
+    ref,
+  ) => {
     const driver = useDigitalHumanDriver(voiceMode);
     const {
       expression,
@@ -61,25 +80,69 @@ export const VRMFloating = forwardRef<VRMFloatingRef, Props>(
       headRotation,
     } = driver;
 
-    // 流式输出状态
+    const dimensions = useWindowDimensions();
+    const insets = useSafeAreaInsets();
+    const pathname = usePathname();
+    const computedMetrics = useMemo(() => getVRMFloatingMetrics({
+      pathname,
+      safeAreaBottom: insets.bottom,
+      screenWidth: dimensions.width,
+      screenHeight: dimensions.height,
+    }), [dimensions.height, dimensions.width, insets.bottom, pathname]);
+    const metrics = metricsProp ?? computedMetrics;
+
+    const wrapperDockStyle = useMemo(() => (
+      position === 'bottom-left'
+        ? { bottom: metrics.bottom, left: metrics.right }
+        : { bottom: metrics.bottom, right: metrics.right }
+    ), [metrics.bottom, metrics.right, position]);
+    const bubbleDockStyle = useMemo(() => ({
+      bottom: metrics.height + 8,
+      left: Math.max(-24, (metrics.width - BUBBLE_W) / 2),
+    }), [metrics.height, metrics.width]);
+    const stageStyle = useMemo(() => ({
+      width: metrics.width,
+      height: metrics.height,
+    }), [metrics.height, metrics.width]);
+    const hotZoneStyle = useMemo(() => ({
+      left: metrics.hotZone.left,
+      top: metrics.hotZone.top,
+      width: metrics.hotZone.width,
+      height: metrics.hotZone.height,
+    }), [metrics.hotZone.height, metrics.hotZone.left, metrics.hotZone.top, metrics.hotZone.width]);
+
     const [displayText, setDisplayText] = useState('');
     const [currentEmotion, setCurrentEmotion] = useState<Emotion>('neutral');
     const [bubbleVisible, setBubbleVisible] = useState(false);
     const streamIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const fullTextRef = useRef('');
+    const expressionRef = useRef<Emotion>('neutral');
     const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
     const threeRefs = useRef<VRMViewHandles>({ scene: null, camera: null });
-    const avatarSizeRef = useRef({ width: 0, height: 0 });
+    const avatarSizeRef = useRef({ width: metrics.width, height: metrics.height });
 
-    // 流式输出文字
-    const startStreaming = useCallback((text: string, emotion: Emotion = 'neutral') => {
-      fullTextRef.current = text;
-      setCurrentEmotion(emotion);
-      setDisplayText('');
-      setBubbleVisible(true);
-      
-      // 清除之前的隐藏定时器和流式定时器
+    useEffect(() => {
+      void preloadDigitalHuman(getCostume(costumeId)?.modelFile || 'avatar.vrm').catch((err) => {
+        console.warn('[VRMFloating] model preload failed:', err);
+      });
+    }, [costumeId]);
+
+    const expandScale = useSharedValue(1);
+    const offsetX = useSharedValue(0);
+    const offsetY = useSharedValue(0);
+    const startX = useSharedValue(0);
+    const startY = useSharedValue(0);
+    const isDragging = useSharedValue(false);
+    const enterY = useSharedValue(0);
+    const enterOpacity = useSharedValue(1);
+    const touchStartRef = useRef({ x: 0, y: 0 });
+    const hasAnimatedRef = useRef(false);
+
+    useEffect(() => {
+      avatarSizeRef.current = { width: metrics.width, height: metrics.height };
+    }, [metrics.height, metrics.width]);
+
+    const clearBubbleTimers = useCallback(() => {
       if (hideTimerRef.current) {
         clearTimeout(hideTimerRef.current);
         hideTimerRef.current = null;
@@ -88,72 +151,96 @@ export const VRMFloating = forwardRef<VRMFloatingRef, Props>(
         clearInterval(streamIntervalRef.current);
         streamIntervalRef.current = null;
       }
-
-      let index = 0;
-      const charsPerFrame = 2;
-      const interval = 50;
-
-      streamIntervalRef.current = setInterval(() => {
-        if (index < text.length) {
-          index += charsPerFrame;
-          setDisplayText(text.substring(0, Math.min(index, text.length)));
-        } else {
-          if (streamIntervalRef.current) {
-            clearInterval(streamIntervalRef.current);
-            streamIntervalRef.current = null;
-          }
-          // 流式完成后，显示完整文字并保持气泡可见
-          setDisplayText(text);
-        }
-      }, interval);
     }, []);
 
-    // 停止流式输出 - 讲完话后延迟隐藏气泡
+    const hideBubbleImmediately = useCallback(() => {
+      clearBubbleTimers();
+      fullTextRef.current = '';
+      setDisplayText('');
+      setBubbleVisible(false);
+    }, [clearBubbleTimers]);
+
+    useLayoutEffect(() => {
+      hideBubbleImmediately();
+    }, [hideBubbleImmediately, pathname]);
+
+    const startStreaming = useCallback((text: string, emotion: Emotion = 'neutral') => {
+      fullTextRef.current = text;
+      setCurrentEmotion(emotion);
+      setDisplayText('');
+      setBubbleVisible(true);
+      clearBubbleTimers();
+
+      let index = 0;
+      streamIntervalRef.current = setInterval(() => {
+        if (index < text.length) {
+          index += 2;
+          setDisplayText(text.substring(0, Math.min(index, text.length)));
+          return;
+        }
+        if (streamIntervalRef.current) {
+          clearInterval(streamIntervalRef.current);
+          streamIntervalRef.current = null;
+        }
+        setDisplayText(text);
+      }, 50);
+    }, [clearBubbleTimers]);
+
     const stopStreaming = useCallback(() => {
       if (streamIntervalRef.current) {
         clearInterval(streamIntervalRef.current);
         streamIntervalRef.current = null;
       }
-      // 显示完整文字
+      if (!fullTextRef.current) {
+        setBubbleVisible(false);
+        return;
+      }
       setDisplayText(fullTextRef.current);
       setBubbleVisible(true);
-      // 2秒后自动隐藏气泡
       hideTimerRef.current = setTimeout(() => {
         setBubbleVisible(false);
       }, 2000);
     }, []);
 
-    // 监听speaking状态变化
     useEffect(() => {
       if (isSpeaking && subtitle) {
-        // 清除隐藏定时器
         if (hideTimerRef.current) {
           clearTimeout(hideTimerRef.current);
           hideTimerRef.current = null;
         }
-        setBubbleVisible(true);
-        startStreaming(subtitle, expression);
+        startStreaming(subtitle, expressionRef.current);
       } else if (!isSpeaking) {
-        // speaking结束，停止流式
         stopStreaming();
       }
-    }, [isSpeaking, subtitle, expression]);
+    }, [isSpeaking, startStreaming, stopStreaming, subtitle]);
 
-    // 同步表情
     useEffect(() => {
+      expressionRef.current = expression;
       setCurrentEmotion(expression);
     }, [expression]);
 
-    const expandScale = useSharedValue(1);
-    const offsetX = useSharedValue(0);
-    const offsetY = useSharedValue(0);
-    const startX = useSharedValue(0);
-    const startY = useSharedValue(0);
-    const isDragging = useSharedValue(false);
-    const touchStartRef = useRef({ x: 0, y: 0 });
-    const enterY = useSharedValue(0);
-    const enterOpacity = useSharedValue(1);
-    const hasAnimatedRef = useRef(false);
+    useEffect(() => {
+      if (hasAnimatedRef.current) return;
+      hasAnimatedRef.current = true;
+      // Use withTiming(0) wrappers so shared values always hold valid animation objects.
+      // Direct assignment (e.g. expandScale.value = 0) causes "previousAnimation.onFrame is not a function"
+      // when the subsequent withSpring/withTiming animation interrupts.
+      expandScale.value = withTiming(0, { duration: 0 });
+      enterY.value = withTiming(80, { duration: 0 });
+      enterOpacity.value = withTiming(0, { duration: 0 });
+      const timer = setTimeout(() => {
+        expandScale.value = withSpring(1, { damping: 12 });
+        enterY.value = withSpring(0, { damping: 14, stiffness: 120 });
+        enterOpacity.value = withTiming(1, { duration: 500 });
+      }, 100);
+      return () => clearTimeout(timer);
+    }, [enterOpacity, enterY, expandScale]);
+
+    useEffect(() => {
+      return () => {
+        clearBubbleTimers();
+      };
+    }, [clearBubbleTimers]);
 
     const containerStyle = useAnimatedStyle(() => ({
       transform: [
@@ -164,22 +251,6 @@ export const VRMFloating = forwardRef<VRMFloatingRef, Props>(
       opacity: enterOpacity.value,
     }));
 
-    // 仅在首次挂载时播放入场动画
-    useEffect(() => {
-      if (hasAnimatedRef.current) return;
-      hasAnimatedRef.current = true;
-      expandScale.value = 0;
-      enterY.value = 80;
-      enterOpacity.value = 0;
-      const t = setTimeout(() => {
-        expandScale.value = withSpring(1, { damping: 12 });
-        enterY.value = withSpring(0, { damping: 14, stiffness: 120 });
-        enterOpacity.value = withTiming(1, { duration: 500 });
-      }, 100);
-      return () => clearTimeout(t);
-    }, []);
-
-    // 点击检测 — 射线检测是否命中 3D 模型
     const hitTest = useCallback((px: number, py: number): boolean => {
       const { scene, camera } = threeRefs.current;
       if (!scene || !camera) return true;
@@ -189,16 +260,14 @@ export const VRMFloating = forwardRef<VRMFloatingRef, Props>(
       const ndcY = -(py / height) * 2 + 1;
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-      const hits = raycaster.intersectObjects(scene.children, true);
-      return hits.length > 0;
+      return raycaster.intersectObjects(scene.children, true).length > 0;
     }, []);
 
-    // 组合手势：拖动 + 点击
     const composedGesture = useMemo(() => {
       const pan = Gesture.Pan()
         .manualActivation(true)
-        .onTouchesDown((e) => {
-          const touch = e.changedTouches[0];
+        .onTouchesDown((event) => {
+          const touch = event.changedTouches[0];
           if (touch) touchStartRef.current = { x: touch.x, y: touch.y };
         })
         .onStart(() => {
@@ -206,37 +275,51 @@ export const VRMFloating = forwardRef<VRMFloatingRef, Props>(
           startY.value = offsetY.value;
           isDragging.value = false;
         })
-        .onTouchesMove((e, mgr) => {
-          const touch = e.changedTouches[0];
+        .onTouchesMove((event, manager) => {
+          const touch = event.changedTouches[0];
           if (!touch) return;
           const dx = touch.x - touchStartRef.current.x;
           const dy = touch.y - touchStartRef.current.y;
           if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
             isDragging.value = true;
-            mgr.activate();
+            manager.activate();
           }
         })
-        .onUpdate((e) => {
-          const nextX = startX.value + e.translationX;
-          const nextY = startY.value + e.translationY;
-          offsetX.value = Math.max(-SCREEN_W + BTN_SIZE + 16, Math.min(SCREEN_W - BTN_SIZE - 16, nextX));
-          offsetY.value = Math.max(-(SCREEN_H - 200), Math.min(SCREEN_H - BTN_SIZE - 120, nextY));
-        })
-        .onEnd(() => {});
+        .onUpdate((event) => {
+          const nextX = startX.value + event.translationX;
+          const nextY = startY.value + event.translationY;
+          offsetX.value = Math.max(
+            -dimensions.width + metrics.height + 16,
+            Math.min(dimensions.width - metrics.height - 16, nextX),
+          );
+          offsetY.value = Math.max(
+            -(dimensions.height - 200),
+            Math.min(dimensions.height - metrics.height - 120, nextY),
+          );
+        });
 
       const tap = Gesture.Tap()
-        .onEnd((e) => {
-          if (!isDragging.value) {
-            const hit = hitTest(e.x, e.y);
-            if (hit) {
-              onPress?.();
-            }
-            // 未命中模型 → 不响应，触摸自然穿透
-          }
+        .onEnd((event) => {
+          if (isDragging.value) return;
+          const hit = hitTest(event.x + metrics.hotZone.left, event.y + metrics.hotZone.top);
+          if (hit) onPress?.();
         });
 
       return Gesture.Race(pan, tap);
-    }, [onPress, hitTest]);
+    }, [
+      dimensions.height,
+      dimensions.width,
+      hitTest,
+      isDragging,
+      metrics.height,
+      metrics.hotZone.left,
+      metrics.hotZone.top,
+      offsetX,
+      offsetY,
+      onPress,
+      startX,
+      startY,
+    ]);
 
     const speakWithTimeline = useCallback((text: string, emotion: Emotion = 'neutral') => {
       driver.speak(text, { emotion });
@@ -257,39 +340,25 @@ export const VRMFloating = forwardRef<VRMFloatingRef, Props>(
       setAction,
     }));
 
-    // 清理定时器
-    useEffect(() => {
-      return () => {
-        if (streamIntervalRef.current) {
-          clearInterval(streamIntervalRef.current);
-        }
-        if (hideTimerRef.current) {
-          clearTimeout(hideTimerRef.current);
-        }
-      };
-    }, []);
-
     return (
-      <View style={styles.wrapper} pointerEvents="box-none">
+      <View style={[styles.wrapper, wrapperDockStyle]} pointerEvents="box-none">
         <Animated.View style={[styles.container, containerStyle]} pointerEvents="box-none">
-          {/* 字幕气泡 - 修复闪烁问题，流式输出 */}
           {bubbleVisible && (
-            <View style={styles.bubble} pointerEvents="none">
-              {/* 情绪表情 */}
+            <View style={[styles.bubble, bubbleDockStyle]} pointerEvents="none">
               <View style={styles.bubbleHeader}>
                 <Text style={styles.emotionIcon}>{EMOTION_ICONS[currentEmotion]}</Text>
-                <Text style={styles.bubbleLabel}>小灵</Text>
+                <Text style={styles.bubbleLabel}>XIAOLING</Text>
               </View>
               <Text style={styles.bubbleText} numberOfLines={3}>
                 {displayText}
-                {isSpeaking && <Text style={styles.cursor}>▊</Text>}
+                {isSpeaking && <Text style={styles.cursor}>|</Text>}
               </Text>
               <View style={styles.bubbleArrow} />
             </View>
           )}
 
-          <GestureDetector gesture={composedGesture}>
-            <View style={styles.avatar}>
+          <View style={[styles.stage, stageStyle]} pointerEvents="box-none">
+            <View style={styles.avatar} pointerEvents="none">
               <View style={StyleSheet.absoluteFill}>
                 <VRMView
                   mode="float"
@@ -304,7 +373,10 @@ export const VRMFloating = forwardRef<VRMFloatingRef, Props>(
                 />
               </View>
             </View>
-          </GestureDetector>
+            <GestureDetector gesture={composedGesture}>
+              <View style={[styles.avatarHotZone, hotZoneStyle]} />
+            </GestureDetector>
+          </View>
 
           <Pressable style={styles.nameTag} onPress={onPress}>
             <Text style={styles.nameText}>小灵</Text>
@@ -318,19 +390,13 @@ export const VRMFloating = forwardRef<VRMFloatingRef, Props>(
 const styles = StyleSheet.create({
   wrapper: {
     position: 'absolute',
-    bottom: 10,
-    right: -5,
-    zIndex: 100,
   },
   container: {},
-
   bubble: {
     position: 'absolute',
-    bottom: FLOAT_H + 8,
-    left: (FLOAT_W - 220) / 2,
-    width: 220,
+    width: BUBBLE_W,
     backgroundColor: 'rgba(255,255,255,0.97)',
-    borderRadius: 16,
+    borderRadius: 14,
     padding: 10,
     shadowColor: Colors.ink,
     shadowOffset: { width: 0, height: 4 },
@@ -350,8 +416,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   bubbleLabel: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '700',
     color: Colors.primary,
     letterSpacing: 1,
   },
@@ -362,7 +428,7 @@ const styles = StyleSheet.create({
   },
   cursor: {
     color: Colors.primary,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   bubbleArrow: {
     position: 'absolute',
@@ -378,17 +444,22 @@ const styles = StyleSheet.create({
     borderLeftWidth: 0,
     transform: [{ rotate: '45deg' }],
   },
+  stage: {
+    position: 'relative',
+  },
   avatar: {
-    width: FLOAT_W,
-    height: FLOAT_H,
-    borderRadius: 20,
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 18,
     overflow: 'hidden',
   },
-
+  avatarHotZone: {
+    position: 'absolute',
+    backgroundColor: 'transparent',
+  },
   nameTag: {
     marginTop: 4,
     alignSelf: 'center',
-    backgroundColor: 'rgba(106,156,137,0.9)',
+    backgroundColor: 'rgba(106,156,137,0.92)',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 3,
@@ -396,6 +467,8 @@ const styles = StyleSheet.create({
   nameText: {
     fontSize: 11,
     color: '#fff',
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
+
+export default VRMFloating;

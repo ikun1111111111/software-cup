@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.routing import WebSocketRoute
 from app.core.config import get_settings
 from app.core.database import init_db
+from app.core.rate_limiter import RateLimitMiddleware
+from app.core.metrics import MetricsMiddleware, metrics_endpoint
 # Import all models so they register with Base.metadata before init_db()
 import app.models  # noqa: F401
 # from app.core.rag import init_collection  # replaced by vector_store
@@ -36,6 +38,14 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass  # PG may not be ready during dev
 
+    # 4. ASR is large; load it lazily in dev unless explicitly requested.
+    if settings.preload_asr_on_startup:
+        try:
+            from app.core.asr import init_asr_model
+            await init_asr_model()
+        except Exception:
+            pass  # ASR model may not be available
+
     yield
     # Shutdown: nothing to clean up
 
@@ -47,12 +57,21 @@ app = FastAPI(
 )
 
 # CORS — 显式列出所有允许的源（移动端局域网部署）
+import re
 import socket
 try:
     _hostname = socket.gethostname()
     _local_ip = socket.gethostbyname(_hostname)
 except Exception:
     _local_ip = "localhost"
+
+_dev_origin_regex = (
+    rf"^http://("
+    rf"localhost|127\.0\.0\.1|{re.escape(_local_ip)}|"
+    rf"10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|"
+    rf"172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+|26\.115\.133\.11"
+    rf"):\d+$"
+)
 
 _cors_origins = [
     "http://localhost:5173",
@@ -89,16 +108,22 @@ _cors_origins = [
     "http://10.0.197.69:8086",
     "http://10.0.197.69:8001",
 ]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+_cors_options = {
+    "allow_origins": _cors_origins,
+    "allow_origin_regex": _dev_origin_regex,
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+
+# Global rate limiting (Redis sliding window)
+app.add_middleware(RateLimitMiddleware)
+
+# Prometheus-style metrics collection
+app.add_middleware(MetricsMiddleware)
 
 # Include API routers
-from app.api import chat, ws, knowledge, upload, recommend, analytics, avatar, tts, offline, vision, story, room, push, spots, routes_api, vision_room, chat_role, history, zen, puzzle, memory, guide  # noqa: E402
+from app.api import chat, ws, knowledge, upload, recommend, analytics, avatar, tts, offline, vision, story, room, push, spots, routes_api, vision_room, chat_role, history, zen, puzzle, memory, guide, tour, auth, asr  # noqa: E402
 
 app.include_router(chat.router)
 app.include_router(ws.router)
@@ -122,6 +147,9 @@ app.include_router(zen.router)
 app.include_router(puzzle.router)
 app.include_router(memory.router)
 app.include_router(guide.router)
+app.include_router(tour.router)
+app.include_router(auth.router)
+app.include_router(asr.router)
 
 # Register room WebSocket via Starlette native WebSocketRoute
 # to avoid FastAPI APIWebSocketRoute + Starlette 1.2.1 incompatibility
@@ -137,9 +165,46 @@ async def health_check():
 
 @app.get("/api/health")
 async def api_health():
-    """API health check with version info."""
-    return {
-        "status": "ok",
-        "app": settings.app_name,
-        "version": "1.0.0",
-    }
+    """API health check with dependency status."""
+    status = {"status": "ok", "app": settings.app_name, "version": "1.0.0"}
+    deps = {}
+
+    # DB check
+    try:
+        from app.core.database import check_database_health
+        deps["database"] = await check_database_health()
+        if deps["database"]["status"] != "ok":
+            status["status"] = "degraded"
+    except Exception as e:
+        deps["database"] = {"status": "error", "message": str(e)[:80]}
+        status["status"] = "degraded"
+
+    # Redis check
+    try:
+        from app.core.redis_client import get_redis
+        redis = await get_redis()
+        await redis.ping()
+        deps["redis"] = {"status": "ok"}
+    except Exception as e:
+        deps["redis"] = {"status": "error", "message": str(e)[:80]}
+        status["status"] = "degraded"
+
+    # ASR model check
+    try:
+        from app.core.asr import _whisper_model
+        deps["asr_model"] = {"status": "ok" if _whisper_model else "not_loaded"}
+    except Exception:
+        deps["asr_model"] = {"status": "unknown"}
+
+    status["dependencies"] = deps
+    return status
+
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    """Prometheus metrics endpoint."""
+    return await metrics_endpoint()
+
+
+fastapi_app = app
+app = CORSMiddleware(fastapi_app, **_cors_options)

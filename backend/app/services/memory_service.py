@@ -276,7 +276,10 @@ async def create_memory_from_input(
     session_id: str,
     user_input: str,
     spot_name: str | None = None,
+    spot_id: str | None = None,
+    source_type: str | None = None,
     mood_tag: str | None = None,
+    metadata_json: dict | None = None,
     db: AsyncSession | None = None,
 ) -> TravelMemory:
     """Create a travel memory from user input, polished by LLM."""
@@ -323,9 +326,14 @@ async def create_memory_from_input(
         title=title,
         original_content=content,
         spot_name=spot_name,
-        source_type="user_input",
+        spot_id=spot_id,
+        source_type=source_type or "user_input",
         mood_tag=detected_mood,
-        metadata_json={"source": "digital_human", "user_raw": user_input[:500]},
+        metadata_json={
+            "source": "digital_human",
+            "user_raw": user_input[:500],
+            **(metadata_json or {}),
+        },
     )
 
     if db:

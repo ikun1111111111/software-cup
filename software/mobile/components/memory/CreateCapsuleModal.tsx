@@ -6,6 +6,7 @@ import {
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
 import InlineModal from '@/components/ui/InlineModal';
+import { MemoryImage, MEMORY_IMAGES } from './MemoryVisual';
 
 export default function CreateCapsuleModal({ visible, onClose, onSubmit, loading }: {
   visible: boolean;
@@ -41,7 +42,10 @@ export default function CreateCapsuleModal({ visible, onClose, onSubmit, loading
           <Pressable onPress={handleClose} hitSlop={8}>
             <Text style={styles.modalCancel}>取消</Text>
           </Pressable>
-          <Text style={styles.modalTitle}>🔮 记忆胶囊</Text>
+          <View style={styles.modalTitleRow}>
+            <MemoryImage source={MEMORY_IMAGES.capsule} size={28} radius={9} fit="contain" />
+            <Text style={styles.modalTitle}>记忆胶囊</Text>
+          </View>
           <View style={{ width: 40 }} />
         </View>
 
@@ -89,9 +93,12 @@ export default function CreateCapsuleModal({ visible, onClose, onSubmit, loading
             ))}
           </View>
 
-          <Text style={styles.capsuleHintText}>
-            💡 胶囊将在 {unlockDays} 天后解锁，届时你会收到提醒
-          </Text>
+          <View style={styles.capsuleHintBox}>
+            <MemoryImage source={MEMORY_IMAGES.capsule} size={26} radius={9} fit="contain" />
+            <Text style={styles.capsuleHintText}>
+              胶囊将在 {unlockDays} 天后解锁，届时你会收到提醒
+            </Text>
+          </View>
         </ScrollView>
 
         <View style={styles.modalFooter}>
@@ -107,7 +114,7 @@ export default function CreateCapsuleModal({ visible, onClose, onSubmit, loading
             {loading ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={styles.modalSubmitText}>🔮 封存胶囊</Text>
+              <Text style={styles.modalSubmitText}>封存胶囊</Text>
             )}
           </Pressable>
         </View>
@@ -124,6 +131,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: Colors.borderLight,
   },
   modalCancel: { fontSize: 14, color: Colors.gray500 },
+  modalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   modalTitle: { fontSize: 16, fontWeight: '600', color: Colors.ink },
   modalBody: { flex: 1, padding: 16 },
   modalLabel: {
@@ -172,10 +184,19 @@ const styles = StyleSheet.create({
     color: Colors.accent,
     fontWeight: '700',
   },
+  capsuleHintBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    padding: 10,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.accentBg,
+  },
   capsuleHintText: {
+    flex: 1,
     fontSize: 12,
     color: Colors.gray500,
     lineHeight: 18,
-    marginTop: 8,
   },
 });

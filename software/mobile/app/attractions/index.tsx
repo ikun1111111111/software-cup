@@ -23,13 +23,17 @@ import Animated, {
 
 import { type Spot, type SpotDetail } from '@/api/spots';
 import { type TourRoute } from '@/api/routes';
-import { VRMView } from '@/components/vrm/VRMView';
+import { getScenicSpotRecommendations, type ScenicRecommendItem } from '@/api/recommend';
+import { VRMStageSlot } from '@/components/vrm/VRMStageSlot';
+import VRMSettings, { type VoiceMode } from '@/components/vrm/VRMSettings';
 import { AttractionListSkeleton } from '@/components/ui/SkeletonLoader';
 import { setDigitalHumanPageContext } from '@/services/digitalHuman';
 import { spotCacheService } from '@/services/spotCache';
 import { memoryCache, CACHE_KEYS } from '@/services/memoryCache';
+import { SESSION_ID } from '@/services/dataSync';
 import * as localDb from '@/services/localDatabase';
 import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
 import { getDemoRoutes, getDemoSpotById, getDemoSpots } from '@/utils/localDemoData';
 import { Colors } from '@/constants/colors';
 import { CATEGORIES, CAT_COLORS, SPOT_IMAGES } from '@/constants/scenic';
@@ -54,6 +58,24 @@ const ConsoleColors = {
   line: 'rgba(200,169,81,0.24)',
 };
 
+const ROUTE_VISUALS: Record<string, { image: any; accent: string; label: string }> = {
+  history: {
+    image: require('../../assets/images/dazhaobi.jpg'),
+    accent: '#C8A951',
+    label: '古迹轴线',
+  },
+  nature: {
+    image: require('../../assets/images/putidadao.jpg'),
+    accent: '#6A9C89',
+    label: '林荫慢行',
+  },
+  family: {
+    image: require('../../assets/images/baizi.png'),
+    accent: '#C84B31',
+    label: '互动打卡',
+  },
+};
+
 type Insets = {
   top: number;
   right: number;
@@ -65,6 +87,14 @@ type SpotStoryMeta = {
   reason: string;
   duration: string;
   bestTime: string;
+};
+
+type SpotRecommendation = {
+  spot: Spot | null;
+  meta: SpotStoryMeta;
+  basis: string;
+  source: 'remote' | 'local';
+  remoteItem?: ScenicRecommendItem;
 };
 
 type HeroGuideProps = {
@@ -80,9 +110,11 @@ type HeroGuideProps = {
   action: Action;
   actionDurationMs: number;
   headRotation: HeadRotation;
+  costumeId: string;
+  recommendationBasis: string;
   onBack: () => void;
+  onOpenSettings: () => void;
   onHearRecommendation: () => void;
-  onOpenExplore: () => void;
   onStartRoute: () => void;
 };
 
@@ -183,6 +215,135 @@ function sortByVisualPriority(spots: Spot[]): Spot[] {
   });
 }
 
+function getRouteSpotKeys(routes: TourRoute[]): Set<string> {
+  const keys = new Set<string>();
+  routes.forEach((route) => {
+    const routeAny = route as any;
+    const ids = Array.isArray(routeAny.spot_order) ? routeAny.spot_order : [];
+    const names = Array.isArray(routeAny.spot_names) ? routeAny.spot_names : [];
+    ids.forEach((id: string) => keys.add(id));
+    names.forEach((item: { id?: string; name?: string } | string) => {
+      if (typeof item === 'string') keys.add(item);
+      else {
+        if (item.id) keys.add(item.id);
+        if (item.name) keys.add(item.name);
+      }
+    });
+  });
+  return keys;
+}
+
+function buildSpotRecommendation(
+  spots: Spot[],
+  routes: TourRoute[],
+  searchText: string,
+  activeCategory: string,
+): SpotRecommendation {
+  const fallbackMeta = getSpotMeta(null);
+  if (spots.length === 0) {
+    return {
+      spot: null,
+      meta: fallbackMeta,
+      basis: '我会先根据当前筛选结果挑一站。',
+      source: 'local',
+    };
+  }
+
+  const routeSpotKeys = getRouteSpotKeys(routes);
+  const query = searchText.trim().toLowerCase();
+  const scored = spots.map((spot) => {
+    let score = 0;
+    const reasons: string[] = [];
+    const priorityIndex = HERO_SPOT_PRIORITY.indexOf(spot.id);
+
+    if (priorityIndex >= 0) {
+      score += 80 - priorityIndex * 10;
+      reasons.push('经典优先');
+    }
+    if (SPOT_IMAGES[spot.id]) {
+      score += 18;
+      reasons.push('图文信息完整');
+    }
+    if (routeSpotKeys.has(spot.id) || routeSpotKeys.has(spot.name)) {
+      score += 28;
+      reasons.push('路线覆盖');
+    }
+    if (activeCategory && spot.category === activeCategory) {
+      score += 36;
+      reasons.push('符合当前分类');
+    }
+    if (spot.category.includes('核心')) {
+      score += 24;
+      reasons.push('核心景点');
+    } else if (spot.category.includes('文化')) {
+      score += 16;
+      reasons.push('文化讲解价值高');
+    }
+    if (query) {
+      const text = `${spot.name} ${spot.overview} ${(spot.tags ?? []).join(' ')}`.toLowerCase();
+      if (text.includes(query)) {
+        score += 48;
+        reasons.push('匹配你的搜索');
+      }
+    }
+
+    return {
+      spot,
+      score,
+      basis: reasons.slice(0, 2).join('、') || '适合作为第一站',
+    };
+  });
+
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return sortByVisualPriority([a.spot, b.spot])[0].id === a.spot.id ? -1 : 1;
+  });
+
+  const best = scored[0];
+  return {
+    spot: best.spot,
+    meta: getSpotMeta(best.spot),
+    basis: best.basis,
+    source: 'local',
+  };
+}
+
+function matchRemoteRecommendation(
+  responseItems: ScenicRecommendItem[],
+  spots: Spot[],
+): SpotRecommendation | null {
+  for (const item of responseItems) {
+    const normalizedName = item.spot_name.trim();
+    const spot = spots.find((candidate) =>
+      candidate.name === normalizedName
+      || normalizedName.includes(candidate.name)
+      || candidate.name.includes(normalizedName),
+    );
+    if (!spot) continue;
+
+    return {
+      spot,
+      meta: {
+        reason: item.reason || getSpotMeta(spot).reason,
+        duration: item.suggested_duration || getSpotMeta(spot).duration,
+        bestTime: getSpotMeta(spot).bestTime,
+      },
+      basis: item.source === 'llm' || item.source === 'llm_enhanced'
+        ? 'AI个性化推荐'
+        : item.source === 'content' || item.source === 'content_match'
+          ? '兴趣画像推荐'
+          : item.source === 'keyword_match'
+            ? '兴趣关键词匹配'
+          : item.source === 'popular'
+            ? '热门兜底推荐'
+            : '后端推荐',
+      source: 'remote',
+      remoteItem: item,
+    };
+  }
+  return null;
+}
+
 function DigitalHumanHero({
   scrollY,
   insets,
@@ -196,9 +357,11 @@ function DigitalHumanHero({
   action,
   actionDurationMs,
   headRotation,
+  costumeId,
+  recommendationBasis,
   onBack,
+  onOpenSettings,
   onHearRecommendation,
-  onOpenExplore,
   onStartRoute,
 }: HeroGuideProps) {
   const meta = getSpotMeta(featuredSpot);
@@ -221,6 +384,15 @@ function DigitalHumanHero({
       <Pressable style={heroStyles.backBtn} onPress={onBack} hitSlop={8}>
         <Text style={heroStyles.backGlyph}>‹</Text>
         <Text style={heroStyles.backText}>返回</Text>
+      </Pressable>
+      <Pressable
+        style={heroStyles.voiceBtn}
+        onPress={onOpenSettings}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="打开语音设置"
+      >
+        <Text style={heroStyles.voiceBtnText}>声</Text>
       </Pressable>
 
       <Animated.View style={[heroStyles.content, heroStyle]}>
@@ -249,7 +421,8 @@ function DigitalHumanHero({
           <View style={heroStyles.avatarStage}>
             <View style={heroStyles.stageStripeTall} />
             <View style={heroStyles.stageStripeShort} />
-            <VRMView
+            <VRMStageSlot
+              id="attractions-hero-avatar"
               mode="float"
               expression={expression}
               mouthOpen={mouthOpen}
@@ -257,7 +430,10 @@ function DigitalHumanHero({
               action={action}
               actionDuration={actionDurationMs}
               headRotation={headRotation}
-              costumeId="festival-spring"
+              costumeId={costumeId}
+              borderRadius={0}
+              trackMotion
+              style={StyleSheet.absoluteFill}
             />
           </View>
           <View style={heroStyles.namePlate}>
@@ -289,6 +465,7 @@ function DigitalHumanHero({
           </Text>
           <Text style={heroStyles.recommendBody} numberOfLines={2}>{meta.reason}</Text>
           <View style={heroStyles.metaRow}>
+            <Text style={heroStyles.metaPill}>{recommendationBasis}</Text>
             <Text style={heroStyles.metaPill}>{meta.duration}</Text>
             <Text style={heroStyles.metaPill}>{meta.bestTime}</Text>
           </View>
@@ -298,9 +475,6 @@ function DigitalHumanHero({
       <View style={heroStyles.actionRow}>
         <Pressable style={({ pressed }) => [heroStyles.primaryAction, pressed && styles.pressed]} onPress={onHearRecommendation}>
           <Text style={heroStyles.primaryActionText}>听小灵推荐</Text>
-        </Pressable>
-        <Pressable style={({ pressed }) => [heroStyles.secondaryAction, pressed && styles.pressed]} onPress={onOpenExplore}>
-          <Text style={heroStyles.secondaryActionText}>拍照识景</Text>
         </Pressable>
         <Pressable style={({ pressed }) => [heroStyles.secondaryAction, pressed && styles.pressed]} onPress={onStartRoute}>
           <Text style={heroStyles.secondaryActionText}>开始路线</Text>
@@ -515,20 +689,41 @@ function RouteSection({
         <Text style={styles.sectionTitle}>顺路走，不绕路</Text>
       </View>
       <View style={styles.routesList}>
-        {routes.map((route, idx) => (
-          <Animated.View key={route.id} entering={FadeInUp.delay(idx * 50).duration(320)}>
-            <Pressable style={({ pressed }) => [styles.routeCard, pressed && styles.pressed]} onPress={() => onPress(route)}>
-              <View style={styles.routeTop}>
-                <Text style={styles.routeBadge}>
-                  {route.route_type === 'history' ? '历史' : route.route_type === 'nature' ? '自然' : '亲子'}
-                </Text>
-                <Text style={styles.routeDuration}>{route.duration}</Text>
-              </View>
-              <Text style={styles.routeName}>{route.name}</Text>
-              <Text style={styles.routeDesc} numberOfLines={2}>{route.description}</Text>
-            </Pressable>
-          </Animated.View>
-        ))}
+        {routes.map((route, idx) => {
+          const visual = ROUTE_VISUALS[route.route_type] || ROUTE_VISUALS.history;
+          const stopCount = ((route as any).spot_order || (route as any).spot_names || []).length;
+          return (
+            <Animated.View key={route.id} entering={FadeInUp.delay(idx * 50).duration(320)}>
+              <Pressable style={({ pressed }) => [styles.routeCard, pressed && styles.pressed]} onPress={() => onPress(route)}>
+                <View style={styles.routeCopy}>
+                  <View style={styles.routeTop}>
+                    <Text style={[styles.routeBadge, { backgroundColor: visual.accent }]}>
+                      {route.route_type === 'history' ? '历史' : route.route_type === 'nature' ? '自然' : '亲子'}
+                    </Text>
+                    <Text style={styles.routeDuration}>{route.duration}</Text>
+                  </View>
+                  <Text style={styles.routeName}>{route.name}</Text>
+                  <Text style={styles.routeDesc} numberOfLines={2}>{route.description}</Text>
+                </View>
+                <View style={styles.routeVisual}>
+                  <Image
+                    source={visual.image}
+                    style={styles.routeImage}
+                    contentFit="cover"
+                    transition={180}
+                    cachePolicy="memory-disk"
+                  />
+                  <View style={styles.routeImageShade} />
+                  <View style={[styles.routeImageRule, { backgroundColor: visual.accent }]} />
+                  <View style={styles.routeImageMeta}>
+                    <Text style={styles.routeImageLabel}>{visual.label}</Text>
+                    <Text style={styles.routeImageStops}>{stopCount ? `${stopCount}站` : '精选'}</Text>
+                  </View>
+                </View>
+              </Pressable>
+            </Animated.View>
+          );
+        })}
       </View>
     </View>
   );
@@ -538,6 +733,10 @@ export default function AttractionListPage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scrollY = useSharedValue(0);
+  const scrollRef = useRef<ScrollView | null>(null);
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>(DEFAULT_DIGITAL_HUMAN_VOICE_MODE);
+  const [selectedCostume, setSelectedCostume] = useState('festival-spring');
+  const [settingsVisible, setSettingsVisible] = useState(false);
   const {
     expression,
     mouthOpen,
@@ -548,7 +747,7 @@ export default function AttractionListPage() {
     headRotation,
     speak,
     playAction,
-  } = useDigitalHumanDriver('tts');
+  } = useDigitalHumanDriver(voiceMode);
 
   const [allSpots, setAllSpots] = useState<Spot[]>([]);
   const [routes, setRoutes] = useState<TourRoute[]>([]);
@@ -557,6 +756,7 @@ export default function AttractionListPage() {
   const [searchText, setSearchText] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [page, setPage] = useState(1);
+  const [remoteRecommendation, setRemoteRecommendation] = useState<SpotRecommendation | null>(null);
 
   const preloadedDetailIds = useRef(new Set<string>());
   const routesRequestedRef = useRef(false);
@@ -653,8 +853,26 @@ export default function AttractionListPage() {
   }, [activeCategory, allSpots, searchText]);
 
   const sortedSpots = useMemo(() => sortByVisualPriority(filteredSpots), [filteredSpots]);
-  const featuredSpots = useMemo(() => sortByVisualPriority(allSpots).slice(0, FEATURED_LIMIT), [allSpots]);
-  const heroSpot = featuredSpots[0] ?? sortedSpots[0] ?? null;
+  const localRecommendation = useMemo(
+    () => buildSpotRecommendation(sortedSpots, routes, searchText, activeCategory),
+    [activeCategory, routes, searchText, sortedSpots],
+  );
+  const canUseRemoteRecommendation = Boolean(
+    remoteRecommendation?.spot
+    && sortedSpots.some((spot) => spot.id === remoteRecommendation.spot?.id),
+  );
+  const recommendation = canUseRemoteRecommendation && remoteRecommendation
+    ? remoteRecommendation
+    : localRecommendation;
+  const featuredSpots = useMemo(() => {
+    const spots = sortByVisualPriority(allSpots).slice(0, FEATURED_LIMIT);
+    if (!recommendation.spot) return spots;
+    return [
+      recommendation.spot,
+      ...spots.filter((spot) => spot.id !== recommendation.spot?.id),
+    ].slice(0, FEATURED_LIMIT);
+  }, [allSpots, recommendation.spot]);
+  const heroSpot = recommendation.spot ?? featuredSpots[0] ?? sortedSpots[0] ?? null;
   const totalPages = Math.max(1, Math.ceil(sortedSpots.length / PAGE_SIZE));
   const visibleSpots = sortedSpots.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -663,18 +881,37 @@ export default function AttractionListPage() {
   }, [activeCategory, searchText]);
 
   useEffect(() => {
+    if (allSpots.length === 0) return;
+    let cancelled = false;
+
+    getScenicSpotRecommendations(SESSION_ID, 5)
+      .then((response) => {
+        if (cancelled || !response?.recommendations?.length) return;
+        const matched = matchRemoteRecommendation(response.recommendations, allSpots);
+        if (matched) setRemoteRecommendation(matched);
+      })
+      .catch(() => {
+        if (!cancelled) setRemoteRecommendation(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [allSpots]);
+
+  useEffect(() => {
     if (welcomedRef.current || loading) return;
     welcomedRef.current = true;
 
     const t = setTimeout(() => {
       const spotName = heroSpot?.name || '灵山大佛';
-      const meta = getSpotMeta(heroSpot);
+      const meta = recommendation.spot?.id === heroSpot?.id ? recommendation.meta : getSpotMeta(heroSpot);
       playAction('wave', 1200);
-      speak(`欢迎来到小灵导览台。今天先推荐${spotName}，${meta.reason}`, { emotion: 'happy' });
+      speak(`欢迎来到小灵导览台。今天先推荐${spotName}，依据是${recommendation.basis}。${meta.reason}`, { emotion: 'happy' });
     }, 700);
 
     return () => clearTimeout(t);
-  }, [heroSpot, loading, playAction, speak]);
+  }, [heroSpot, loading, playAction, recommendation, speak]);
 
   useEffect(() => {
     if (searchText.trim().length < 2 || loading) return;
@@ -724,30 +961,27 @@ export default function AttractionListPage() {
 
   const handleHearRecommendation = useCallback(() => {
     const spot = heroSpot;
-    const meta = getSpotMeta(spot);
+    const meta = recommendation.spot?.id === spot?.id ? recommendation.meta : getSpotMeta(spot);
     playAction('point', 1100);
     speak(
       spot
-        ? `${spot.name}适合作为第一站。${meta.reason}建议停留${meta.duration}，最佳时段是${meta.bestTime}。`
+        ? `我推荐${spot.name}，这是${recommendation.source === 'remote' ? '后端个性化推荐' : '本地规则推荐'}，依据是${recommendation.basis}。${meta.reason}建议停留${meta.duration}，最佳时段是${meta.bestTime}。`
         : '我会先帮你挑出最值得停留的一站。',
       { emotion: 'happy' },
     );
-  }, [heroSpot, playAction, speak]);
-
-  const handleOpenExplore = useCallback(() => {
-    speak('打开拍照识景后，把镜头对准景点，我会帮你识别并讲解。', { emotion: 'neutral' });
-    router.push('/explore');
-  }, [router, speak]);
+  }, [heroSpot, playAction, recommendation, speak]);
 
   const handleStartRoute = useCallback(() => {
-    if (routes[0]) {
-      speak(`我们从${routes[0].name}出发，全程约${routes[0].duration}。`, { emotion: 'happy' });
-      router.push(`/routes/${routes[0].id}`);
-      return;
-    }
-    speak('我先带你去路线页挑一条合适的游览方案。', { emotion: 'neutral' });
-    router.push('/routes');
-  }, [router, routes, speak]);
+    speak(
+      routes[0]
+        ? `我把路线放在页面下方了，先看${routes[0].name}这条。`
+        : '路线正在整理，先往下看完整景点列表。',
+      { emotion: routes[0] ? 'happy' : 'neutral' },
+    );
+    requestAnimationFrame(() => {
+      (scrollRef.current as any)?.scrollToEnd?.({ animated: true });
+    });
+  }, [routes, speak]);
 
   const handleCategoryChange = useCallback((key: string) => {
     setActiveCategory(key);
@@ -782,6 +1016,7 @@ export default function AttractionListPage() {
   return (
     <View style={styles.root}>
       <Animated.ScrollView
+        ref={scrollRef as any}
         showsVerticalScrollIndicator={false}
         onScroll={handleScroll}
         scrollEventThrottle={16}
@@ -799,9 +1034,11 @@ export default function AttractionListPage() {
           action={action}
           actionDurationMs={actionDurationMs}
           headRotation={headRotation}
+          costumeId={selectedCostume}
+          recommendationBasis={recommendation.basis}
           onBack={handleBack}
+          onOpenSettings={() => setSettingsVisible(true)}
           onHearRecommendation={handleHearRecommendation}
-          onOpenExplore={handleOpenExplore}
           onStartRoute={handleStartRoute}
         />
 
@@ -887,6 +1124,14 @@ export default function AttractionListPage() {
 
         <View style={{ height: insets.bottom + 88 }} />
       </Animated.ScrollView>
+      <VRMSettings
+        visible={settingsVisible}
+        onClose={() => setSettingsVisible(false)}
+        selectedCostume={selectedCostume}
+        onCostumeChange={setSelectedCostume}
+        voiceMode={voiceMode}
+        onVoiceModeChange={setVoiceMode}
+      />
     </View>
   );
 }
@@ -1183,11 +1428,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   routeCard: {
-    padding: 14,
+    minHeight: 148,
+    flexDirection: 'row',
+    overflow: 'hidden',
     borderRadius: 8,
     backgroundColor: ConsoleColors.obsidian,
     borderWidth: 1,
     borderColor: ConsoleColors.line,
+  },
+  routeCopy: {
+    flex: 1,
+    padding: 14,
+    paddingRight: 12,
   },
   routeTop: {
     flexDirection: 'row',
@@ -1220,6 +1472,44 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.72)',
     fontSize: 12,
     lineHeight: 19,
+  },
+  routeVisual: {
+    width: 118,
+    alignSelf: 'stretch',
+    position: 'relative',
+    backgroundColor: ConsoleColors.obsidian2,
+    overflow: 'hidden',
+  },
+  routeImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  routeImageShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(23,20,17,0.22)',
+  },
+  routeImageRule: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+  },
+  routeImageMeta: {
+    position: 'absolute',
+    left: 12,
+    right: 10,
+    bottom: 10,
+  },
+  routeImageLabel: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  routeImageStops: {
+    marginTop: 3,
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '900',
   },
 });
 
@@ -1294,6 +1584,25 @@ const heroStyles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
+  voiceBtn: {
+    position: 'absolute',
+    right: 16,
+    top: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(200,169,81,0.32)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 6,
+  },
+  voiceBtnText: {
+    color: ConsoleColors.gold,
+    fontSize: 15,
+    fontWeight: '900',
+  },
   content: {
     marginTop: 4,
     minHeight: 270,
@@ -1350,13 +1659,13 @@ const heroStyles = StyleSheet.create({
     fontSize: 10,
   },
   stageCol: {
-    width: 150,
+    width: 170,
     alignItems: 'center',
     justifyContent: 'flex-end',
   },
   avatarStage: {
-    width: 146,
-    height: 250,
+    width: 166,
+    height: 276,
     overflow: 'hidden',
     borderRadius: 8,
     borderWidth: 1,
@@ -1368,7 +1677,7 @@ const heroStyles = StyleSheet.create({
     left: 18,
     top: -20,
     width: 26,
-    height: 310,
+    height: 336,
     backgroundColor: 'rgba(200,169,81,0.08)',
     transform: [{ rotate: '12deg' }],
   },
@@ -1540,12 +1849,13 @@ const cardStyles = StyleSheet.create({
   },
   media: {
     width: 104,
+    alignSelf: 'stretch',
     position: 'relative',
     backgroundColor: '#E9E2D4',
+    overflow: 'hidden',
   },
   image: {
-    width: '100%',
-    height: '100%',
+    ...StyleSheet.absoluteFillObject,
   },
   fallback: {
     flex: 1,

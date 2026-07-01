@@ -36,10 +36,15 @@ describe('mobileAnalytics', () => {
       createMobileAnalyticsEvent('tour_started', 's'),
       createMobileAnalyticsEvent('spot_arrived', 's'),
       createMobileAnalyticsEvent('spot_arrived', 's'),
+      createMobileAnalyticsEvent('feedback_submitted', 's', {
+        source_page: 'profile',
+        feedback_label: '讲解清楚',
+      }),
     ];
 
-    expect(trimAnalyticsQueue(events, 2)).toHaveLength(2);
+    expect(trimAnalyticsQueue(events, 3)).toHaveLength(3);
     expect(summarizeAnalyticsQueue(events).tour_started).toBe(1);
     expect(summarizeAnalyticsQueue(events).spot_arrived).toBe(2);
+    expect(summarizeAnalyticsQueue(events).feedback_submitted).toBe(1);
   });
 });

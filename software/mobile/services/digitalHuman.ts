@@ -1,6 +1,14 @@
 import type { Emotion, PageContext } from '@/components/vrm/VRMTypes';
+import type { Action } from '@/components/vrm/VRMIdleAnim';
 
 let managerPromise: Promise<any> | null = null;
+
+export interface DigitalHumanSpeakOptions {
+  duration?: number;
+  action?: Action;
+  actionDuration?: number;
+  replaceCurrent?: boolean;
+}
 
 function loadVRMManager() {
   if (!managerPromise) {
@@ -15,14 +23,38 @@ function loadVRMManager() {
 export function speakWithDigitalHuman(
   text: string,
   emotion: Emotion | string = 'neutral',
-  duration?: number,
+  durationOrOptions?: number | DigitalHumanSpeakOptions,
 ): void {
+  const duration = typeof durationOrOptions === 'number'
+    ? durationOrOptions
+    : durationOrOptions?.duration;
+  const action = typeof durationOrOptions === 'number'
+    ? undefined
+    : durationOrOptions?.action;
+  const actionDuration = typeof durationOrOptions === 'number'
+    ? undefined
+    : durationOrOptions?.actionDuration;
+  const replaceCurrent = typeof durationOrOptions === 'number'
+    ? false
+    : durationOrOptions?.replaceCurrent;
+
   void loadVRMManager()
     .then(({ VRMManager }) => {
-      VRMManager.speak(text, emotion as Emotion, duration);
+      const method = replaceCurrent ? VRMManager.replaceSpeech : VRMManager.speak;
+      method.call(VRMManager, text, emotion as Emotion, duration, action, actionDuration);
     })
     .catch((error) => {
       console.warn('[DigitalHuman] speak failed:', error);
+    });
+}
+
+export function stopDigitalHumanSpeech(playQueued = false): void {
+  void loadVRMManager()
+    .then(({ VRMManager }) => {
+      VRMManager.stopSpeaking({ playQueued });
+    })
+    .catch((error) => {
+      console.warn('[DigitalHuman] stop speech failed:', error);
     });
 }
 

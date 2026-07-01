@@ -130,16 +130,8 @@ export const TourProgressIndicator: React.FC<Props> = ({
           {!simplified && (
             <View style={styles.guidePanel}>
               <View style={styles.guideAvatarWrap}>
-                <View style={styles.guideAvatarGlow} />
-                <View style={styles.guideAvatar}>
-                  <View style={styles.guideHair} />
-                  <View style={styles.guideFace}>
-                    <View style={styles.guideEyeRow}>
-                      <View style={styles.guideEye} />
-                      <View style={styles.guideEye} />
-                    </View>
-                    <View style={styles.guideMouth} />
-                  </View>
+                <View style={styles.guideSeal}>
+                  <Text style={styles.guideSealText}>灵</Text>
                 </View>
                 <Text style={styles.guideName}>小灵</Text>
               </View>
@@ -174,7 +166,7 @@ export const TourProgressIndicator: React.FC<Props> = ({
               contentContainerStyle={styles.spotsScrollContent}
               ref={spotsScrollRef}
               bounces={false}
-              style={{ height: 50, width: availableWidth }}
+              style={styles.spotsScrollView}
             >
                 {currentRoute.spots.map((spot, index) => {
                   const isCompleted = index < progress.completed;
@@ -255,16 +247,16 @@ export const TourProgressIndicator: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'rgba(253, 251, 247, 0.98)',
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: 'rgba(253, 251, 247, 0.94)',
+    borderRadius: 18,
+    padding: 14,
     shadowColor: Colors.ink,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    elevation: 8,
     borderWidth: 1,
-    borderColor: 'rgba(106, 156, 137, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.74)',
   },
   containerCheckIn: {
     borderColor: Colors.primary,
@@ -274,19 +266,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    minHeight: 38,
   },
   headerLeft: {
     flex: 1,
+    paddingRight: 12,
   },
   routeName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.primary,
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.primaryDark,
+    letterSpacing: 0,
   },
   statusText: {
     fontSize: 11,
-    color: Colors.gray500,
-    marginTop: 2,
+    color: Colors.gray600,
+    marginTop: 4,
+    fontWeight: '700',
   },
   headerRight: {
     flexDirection: 'row',
@@ -294,16 +290,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   progressBadge: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '800',
     color: Colors.accent,
-    backgroundColor: 'rgba(192, 136, 46, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
+    backgroundColor: 'rgba(200, 75, 49, 0.1)',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    overflow: 'hidden',
   },
   collapseIcon: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.gray400,
     transitionProperty: 'transform',
   },
@@ -313,21 +310,21 @@ const styles = StyleSheet.create({
 
   // 展开内容
   expandedContent: {
-    marginTop: 12,
+    marginTop: 10,
   },
   progressContainer: {
-    marginBottom: 10,
+    marginBottom: 12,
   },
   progressBar: {
-    height: 6,
-    backgroundColor: 'rgba(106, 156, 137, 0.15)',
-    borderRadius: 3,
+    height: 4,
+    backgroundColor: 'rgba(106, 156, 137, 0.14)',
+    borderRadius: 999,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: Colors.primary,
-    borderRadius: 3,
+    backgroundColor: Colors.primaryDark,
+    borderRadius: 999,
   },
 
   guidePanel: {
@@ -342,60 +339,30 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(106, 156, 137, 0.16)',
   },
   guideAvatarWrap: {
-    width: 62,
+    width: 56,
     alignItems: 'center',
   },
-  guideAvatarGlow: {
-    position: 'absolute',
-    top: 3,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(106, 156, 137, 0.18)',
-  },
-  guideAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    overflow: 'hidden',
-    backgroundColor: Colors.primaryBg,
-    borderWidth: 2,
-    borderColor: '#fff',
-    shadowColor: Colors.ink,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  guideHair: {
-    height: 16,
-    backgroundColor: Colors.ink,
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 18,
-  },
-  guideFace: {
-    flex: 1,
+  guideSeal: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F7D8C5',
+    backgroundColor: '#FFF8EA',
+    borderWidth: 1.5,
+    borderColor: 'rgba(106, 156, 137, 0.36)',
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 3,
   },
-  guideEyeRow: {
-    flexDirection: 'row',
-    gap: 9,
-    marginBottom: 6,
-  },
-  guideEye: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Colors.ink,
-  },
-  guideMouth: {
-    width: 14,
-    height: 5,
-    borderBottomWidth: 2,
-    borderBottomColor: Colors.accent,
-    borderRadius: 8,
+  guideSealText: {
+    fontSize: 23,
+    lineHeight: 28,
+    fontWeight: '900',
+    color: Colors.primaryDark,
+    fontFamily: 'MaShanZheng',
   },
   guideName: {
     marginTop: 4,
@@ -438,20 +405,31 @@ const styles = StyleSheet.create({
   },
 
   currentSpot: {
-    marginBottom: 12,
-    padding: 8,
-    backgroundColor: 'rgba(106, 156, 137, 0.08)',
-    borderRadius: 8,
+    marginBottom: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    backgroundColor: 'rgba(255, 255, 255, 0.78)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(106, 156, 137, 0.14)',
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   currentSpotLabel: {
     fontSize: 10,
-    color: Colors.gray500,
-    marginBottom: 2,
+    color: Colors.primaryDark,
+    marginBottom: 4,
+    fontWeight: '800',
+    letterSpacing: 0,
   },
   currentSpotName: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '800',
     color: Colors.ink,
+    letterSpacing: 0,
   },
   distanceText: {
     fontSize: 11,
@@ -462,41 +440,50 @@ const styles = StyleSheet.create({
   spotsScrollWrapper: {
     width: '100%',
     marginBottom: 14,
+    paddingVertical: 3,
   },
   spotsScrollView: {
-    height: 50,
-    marginBottom: 14,
+    height: 72,
   },
   spotsScrollContent: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
+    alignItems: 'flex-start',
+    paddingHorizontal: 6,
+    paddingTop: 4,
+    paddingBottom: 8,
   },
   spotScrollItem: {
-    flexDirection: 'row',
+    position: 'relative',
     alignItems: 'center',
-    width: 90,
+    width: 92,
+    paddingTop: 2,
     flexShrink: 0,
   },
   spotDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: Colors.gray300,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: 7,
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: 'rgba(255, 255, 255, 0.92)',
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
+    zIndex: 2,
   },
   spotDotCompleted: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.primaryDark,
   },
   spotDotCurrent: {
     backgroundColor: Colors.accent,
-    borderWidth: 3,
-    borderColor: 'rgba(106, 156, 137, 0.3)',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.96)',
+    transform: [{ scale: 1.06 }],
   },
   spotDotPulse: {
     // 打卡成功时的脉冲效果（可选动画增强）
@@ -504,31 +491,35 @@ const styles = StyleSheet.create({
   spotDotText: {
     fontSize: 12,
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: '800',
   },
   spotName: {
+    width: 80,
     fontSize: 10,
-    color: Colors.gray500,
+    color: Colors.gray600,
     textAlign: 'center',
-    maxWidth: 55,
-    marginLeft: 4,
+    lineHeight: 14,
+    fontWeight: '700',
   },
   spotNameCompleted: {
-    color: Colors.primary,
-    fontWeight: '600',
+    color: Colors.primaryDark,
+    fontWeight: '800',
   },
   spotNameCurrent: {
     color: Colors.accent,
-    fontWeight: '700',
+    fontWeight: '900',
   },
   spotLineH: {
-    width: 16,
+    position: 'absolute',
+    top: 17,
+    left: 61,
+    width: 62,
     height: 2,
-    backgroundColor: Colors.gray300,
-    marginLeft: 2,
+    backgroundColor: 'rgba(196, 191, 182, 0.72)',
+    zIndex: 0,
   },
   spotLineCompleted: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.primaryDark,
   },
 
   controls: {

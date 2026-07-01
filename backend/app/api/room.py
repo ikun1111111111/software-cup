@@ -5,7 +5,9 @@ import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from app.core.database import async_session
+from app.models.tourist import ScenicSpot, TourRoute
 
 from app.services.room_service import (
     create_room,
@@ -13,6 +15,7 @@ from app.services.room_service import (
     get_room,
     get_members,
     update_itinerary,
+    update_active_route,
     delete_room,
     refresh_room_ttl,
     add_spot_to_itinerary,
@@ -36,6 +39,10 @@ class ItineraryUpdateRequest(BaseModel):
     itinerary: list[dict]
 
 
+class RouteUpdateRequest(BaseModel):
+    route_id: str
+
+
 class AddSpotRequest(BaseModel):
     spot_name: str
     source: str = "manual"
@@ -55,6 +62,7 @@ class RoomResponse(BaseModel):
     creator: str
     created_at: int
     itinerary: list[dict]
+    active_route: dict | None = None
     members: list[dict] = []
 
 
@@ -103,6 +111,7 @@ async def room_websocket(websocket: WebSocket):
             "room_id": room_id,
             "members": room.get("members", []),
             "itinerary": room.get("itinerary", []),
+            "active_route": room.get("active_route"),
         })
 
         await refresh_room_ttl(room_id)
@@ -246,6 +255,54 @@ async def sync_itinerary(room_id: str, request: ItineraryUpdateRequest):
     except Exception as e:
         logger.error("Itinerary update failed: %s", e)
         raise HTTPException(status_code=500, detail="行程更新失败")
+
+
+@router.put("/{room_id}/route", response_model=RoomResponse)
+async def sync_room_route(room_id: str, request: RouteUpdateRequest):
+    """Set the room's shared route from the canonical TourRoute table."""
+    async with async_session() as db:
+        stmt = select(TourRoute).where(TourRoute.id == request.route_id, TourRoute.is_active == True)
+        result = await db.execute(stmt)
+        route = result.scalar_one_or_none()
+        if not route:
+            raise HTTPException(status_code=404, detail="路线未找到")
+
+        spot_names = []
+        if route.spot_order:
+            spot_stmt = select(ScenicSpot.id, ScenicSpot.name).where(
+                ScenicSpot.id.in_(route.spot_order),
+                ScenicSpot.is_active == True,
+            )
+            spot_result = await db.execute(spot_stmt)
+            spot_map = {row.id: row.name for row in spot_result.all()}
+            spot_names = [
+                {"id": spot_id, "name": spot_map.get(spot_id, spot_id)}
+                for spot_id in route.spot_order
+            ]
+
+    active_route = {
+        "route_id": route.id,
+        "name": route.name,
+        "spot_order": route.spot_order or [],
+        "spot_names": spot_names,
+        "duration": route.duration,
+        "route_type": route.route_type,
+    }
+
+    try:
+        room = await update_active_route(room_id, active_route)
+        room["members"] = await get_members(room_id)
+        await _broadcast_to_room(room_id, {
+            "type": "route_updated",
+            "active_route": active_route,
+            "timestamp": int(time.time()),
+        })
+        return RoomResponse(**room)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error("Room route update failed: %s", e)
+        raise HTTPException(status_code=500, detail="房间路线更新失败")
 
 
 @router.post("/{room_id}/itinerary/add-spot", response_model=AddSpotResponse)

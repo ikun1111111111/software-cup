@@ -6,7 +6,7 @@ import { startTourSession } from '@/api/tour';
 import { recordMobileTourEvent, type MobileTourEventName } from '@/api/analytics';
 import type { UserLocation, DistanceInfo } from './useTourGeolocation';
 import { checkInSpot, type CheckinResult } from './useTourCheckin';
-import { getTourCompletionTransition } from '../utils/tourProgress';
+import { getTourArrivalTransition, getTourCompletionTransition } from '../utils/tourProgress';
 import {
   DEFAULT_USER_GUIDE_PROFILE,
   getGuideStopById,
@@ -23,6 +23,17 @@ import {
   type SoloRouteRecommendation,
   type SoloTourSummary,
 } from '@/utils/soloTour';
+import { buildMemorySourceMetadata } from '@/utils/memorySource';
+import {
+  createFreeRoamGuideRuntime,
+  createInitialGuideRuntime,
+  createStartedGuideRuntime,
+  setGuideRuntimeMode,
+  type CompanionLevel,
+  type GuideMode,
+  type GuideRuntime,
+} from '@/utils/guideRuntime';
+import { restoreIdleTourState } from '@/utils/tourStateRestore';
 import type {
   GuideIntent,
   GuideMemoryEvent,
@@ -116,6 +127,7 @@ export interface SoloTourState {
 export interface TourState {
   sessionId: string;
   status: TourStatus;
+  guideRuntime: GuideRuntime;
   currentRoute: Route | null;
   currentSpot: Spot | null;
   nextSpot: Spot | null;
@@ -165,7 +177,7 @@ async function loadTourState(): Promise<Partial<TourState> | null> {
   try {
     const state = await AsyncStorage.getItem(TOUR_STORAGE_KEY);
     if (!state) return null;
-    return JSON.parse(state);
+    return restoreIdleTourState(JSON.parse(state));
   } catch {
     return null;
   }
@@ -204,6 +216,21 @@ function createGuideMemoryEvent(sessionId: string, input: GuideMemoryEventInput)
   };
 }
 
+function legacyStatusFromGuideRuntime(runtime: GuideRuntime): TourStatus {
+  if (runtime.status === 'navigating') return 'navigate';
+  if (runtime.status === 'free_roam') return 'free';
+  if (runtime.status === 'suggesting') return 'suggest';
+  if (runtime.status === 'arrived') return 'attraction';
+  if (runtime.status === 'summary') return 'completed';
+  if (runtime.status === 'conversing') return 'conversing';
+  if (runtime.status === 'narrating') return 'narrating';
+  return 'idle';
+}
+
+function legacyModeFromGuideMode(mode: GuideMode): TourPreferences['mode'] {
+  return mode === 'proactive' ? 'tour' : 'free';
+}
+
 // ============ Hook ============
 
 export function useTourOrchestrator() {
@@ -214,6 +241,7 @@ export function useTourOrchestrator() {
   const [state, setState] = useState<TourState>({
     sessionId: sessionIdRef.current,
     status: 'idle',
+    guideRuntime: createInitialGuideRuntime(),
     currentRoute: null,
     currentSpot: null,
     nextSpot: null,
@@ -286,6 +314,7 @@ export function useTourOrchestrator() {
   useEffect(() => {
     saveTourState({
       currentRoute: state.currentRoute,
+      guideRuntime: state.guideRuntime,
       currentSpot: state.currentSpot,
       nextSpot: state.nextSpot,
       progress: state.progress,
@@ -298,6 +327,7 @@ export function useTourOrchestrator() {
     });
   }, [
     state.currentRoute,
+    state.guideRuntime,
     state.currentSpot,
     state.nextSpot,
     state.progress,
@@ -339,17 +369,26 @@ export function useTourOrchestrator() {
         break;
 
       case 'start_narrate':
-        setState((prev) => ({
-          ...prev,
-          status: 'narrating',
-          currentSpot: data.spot,
-          narration: {
-            spot: data.spot,
-            text: data.content?.text || '',
-            audioUrl: data.content?.audioUrl,
-            duration: data.content?.duration,
-          },
-        }));
+        setState((prev) => {
+          const incomingText = typeof data.content?.text === 'string'
+            ? data.content.text.trim()
+            : '';
+          const priorNarration = prev.narration;
+          const priorText = priorNarration && priorNarration.spot.id === data.spot?.id
+            ? priorNarration.text
+            : '';
+          return {
+            ...prev,
+            status: 'narrating',
+            currentSpot: data.spot,
+            narration: {
+              spot: data.spot,
+              text: incomingText || priorText || data.spot?.description || '',
+              audioUrl: data.content?.audioUrl,
+              duration: data.content?.duration,
+            },
+          };
+        });
         break;
 
       case 'end_narrate':
@@ -432,6 +471,52 @@ export function useTourOrchestrator() {
   // ============ 动作 ============
 
   /** 开始导览 */
+  const startGuide = useCallback(
+    (input: {
+      route?: Route | GuideRoute | null;
+      intent?: GuideIntent;
+      mode: GuideMode;
+      companionLevel?: CompanionLevel;
+      sourcePage: string;
+    }) => {
+      const route = input.route
+        ? ('stops' in input.route ? toTourRoute(input.route) : input.route)
+        : null;
+      const runtime = createStartedGuideRuntime({
+        route,
+        mode: input.mode,
+        companionLevel: input.companionLevel,
+        activeIntent: input.intent ?? null,
+        sourcePage: input.sourcePage,
+      });
+
+      setState((prev) => ({
+        ...prev,
+        status: legacyStatusFromGuideRuntime(runtime),
+        guideRuntime: runtime,
+        currentRoute: runtime.currentRoute,
+        currentSpot: runtime.currentSpot,
+        nextSpot: runtime.nextSpot,
+        activeIntent: input.intent ?? prev.activeIntent,
+        preferences: {
+          ...prev.preferences,
+          mode: legacyModeFromGuideMode(input.mode),
+        },
+        soloTour: {
+          ...prev.soloTour,
+          enabled: input.mode === 'companion',
+          intent: input.intent ?? prev.soloTour.intent,
+          companionLevel: runtime.companionLevel,
+          pendingDeviation: null,
+          summary: null,
+        },
+      }));
+
+      return runtime;
+    },
+    [],
+  );
+
   const startTour = useCallback(
     (route: Route) => {
       const firstSpot = route.spots[0] || null;
@@ -443,6 +528,12 @@ export function useTourOrchestrator() {
         title: `开始${route.name}`,
         content: route.description || '小灵已进入导览模式。',
       });
+      const runtime = createStartedGuideRuntime({
+        route,
+        mode: 'proactive',
+        companionLevel: 'active',
+        sourcePage: 'route',
+      });
       trackTourEvent('tour_started', {
         route,
         spot: firstSpot,
@@ -453,6 +544,7 @@ export function useTourOrchestrator() {
       setState((prev) => ({
         ...prev,
         status: 'navigate',
+        guideRuntime: runtime,
         currentRoute: route,
         currentSpot: firstSpot,
         nextSpot,
@@ -482,28 +574,45 @@ export function useTourOrchestrator() {
           const serverRoute = res.route || route;
           const serverFirstSpot = res.first_spot || serverRoute.spots[0] || null;
           const serverNextSpot = res.next_spots?.[0] || serverRoute.spots[1] || null;
-          setState((prev) => ({
-            ...prev,
-            isLoading: false,
-            error: null,
-            status: 'navigate',
-            currentRoute: serverRoute,
-            currentSpot: serverFirstSpot,
-            nextSpot: serverNextSpot,
-            guideSession: {
-              ...prev.guideSession,
-              status: 'navigating',
-              currentStopId: serverFirstSpot?.id,
-              nextStopId: serverNextSpot?.id,
-              completedStopIds: [],
-              profile: prev.guideProfile,
-            },
-            progress: {
-              total: serverRoute.spots.length,
-              completed: 0,
-              current: serverRoute.spots.length > 0 ? 1 : 0,
-            },
-          }));
+          const serverRuntime = createStartedGuideRuntime({
+            route: serverRoute,
+            mode: 'proactive',
+            companionLevel: 'active',
+            sourcePage: 'route',
+          });
+          setState((prev) => {
+            if (prev.currentRoute?.id !== route.id || prev.progress.completed > 0) {
+              return {
+                ...prev,
+                isLoading: false,
+                error: null,
+              };
+            }
+
+            return {
+              ...prev,
+              isLoading: false,
+              error: null,
+              status: 'navigate',
+              guideRuntime: serverRuntime,
+              currentRoute: serverRoute,
+              currentSpot: serverFirstSpot,
+              nextSpot: serverNextSpot,
+              guideSession: {
+                ...prev.guideSession,
+                status: 'navigating',
+                currentStopId: serverFirstSpot?.id,
+                nextStopId: serverNextSpot?.id,
+                completedStopIds: [],
+                profile: prev.guideProfile,
+              },
+              progress: {
+                total: serverRoute.spots.length,
+                completed: 0,
+                current: serverRoute.spots.length > 0 ? 1 : 0,
+              },
+            };
+          });
         })
         .catch((error) => {
           setState((prev) => ({
@@ -529,6 +638,13 @@ export function useTourOrchestrator() {
         title: `小灵开启${route.name}`,
         content: route.openingLine,
       });
+      const runtime = createStartedGuideRuntime({
+        route: tourRoute,
+        mode: 'proactive',
+        companionLevel: 'active',
+        activeIntent: intent ?? (route.theme === 'free' ? 'free_walk' : route.theme),
+        sourcePage: 'explore',
+      });
 
       trackTourEvent('tour_started', {
         route: tourRoute,
@@ -545,6 +661,7 @@ export function useTourOrchestrator() {
       setState((prev) => ({
         ...prev,
         status: 'navigate',
+        guideRuntime: runtime,
         currentRoute: tourRoute,
         currentSpot: firstSpot,
         nextSpot,
@@ -620,15 +737,31 @@ export function useTourOrchestrator() {
         groupType: 'solo',
       };
       const recommendation = getSoloRouteRecommendation(profile);
-      const activeIntent = intent ?? recommendation.route.suitableFor[0] ?? 'free_walk';
+      const activeIntent = intent ?? 'free_walk';
+      const runtime = createFreeRoamGuideRuntime({
+        companionLevel: profile.companionLevel ?? 'quiet',
+        activeIntent,
+        sourcePage: 'explore',
+      });
 
-      startGuideRoute(recommendation.route, activeIntent);
       setState((prev) => ({
         ...prev,
+        status: 'free',
+        guideRuntime: runtime,
+        currentRoute: null,
+        currentSpot: null,
+        nextSpot: null,
         activeIntent,
+        preferences: { ...prev.preferences, mode: 'free' },
         guideProfile: profile,
+        progress: { total: 0, completed: 0, current: 0 },
         guideSession: {
           ...prev.guideSession,
+          status: 'idle',
+          currentRoute: undefined,
+          currentStopId: undefined,
+          nextStopId: undefined,
+          completedStopIds: [],
           profile,
         },
         soloTour: {
@@ -642,11 +775,13 @@ export function useTourOrchestrator() {
       }));
 
       trackTourEvent('tour_started', {
-        route: toTourRoute(recommendation.route),
+        route: null,
         source_page: 'solo_tour',
         preferences: { ...profile, solo: true },
         metadata: {
           solo_event: 'solo_tour_started',
+          recommended_route_id: recommendation.route.id,
+          recommended_route_name: recommendation.route.name,
           reason: recommendation.reason,
           confidence: recommendation.confidence,
           energy: recommendation.estimatedEnergy,
@@ -655,7 +790,7 @@ export function useTourOrchestrator() {
 
       return recommendation;
     },
-    [startGuideRoute, trackTourEvent],
+    [trackTourEvent],
   );
 
   const handleSoloDeviation = useCallback(
@@ -757,20 +892,42 @@ export function useTourOrchestrator() {
         routeId: stateRef.current?.currentRoute?.id,
         stopId: spot.id,
         title: `抵达${spot.name}`,
-        content: spot.description || '小灵已切换到现场讲解上下文。',
+        content: spot.description || `已到达${spot.name}，小灵会从这里开始现场讲解。`,
+        metadata: buildMemorySourceMetadata({
+          sourcePage: 'attraction',
+          route: stateRef.current?.currentRoute,
+          spot,
+        }),
       });
 
-      setState((prev) => ({
-        ...prev,
-        status: 'attraction',
-        currentSpot: spot,
-        guideSession: {
-          ...prev.guideSession,
-          status: 'narrating',
-          currentStopId: spot.id,
-        },
-        memoryEvents: [...prev.memoryEvents, arriveEvent],
-      }));
+      setState((prev) => {
+        const transition = getTourArrivalTransition(
+          prev.currentRoute?.spots || [],
+          prev.progress,
+          spot,
+        );
+
+        return {
+          ...prev,
+          status: 'attraction',
+          guideRuntime: {
+            ...prev.guideRuntime,
+            status: 'arrived',
+            currentSpot: transition.currentSpot,
+            nextSpot: transition.nextSpot,
+          },
+          currentSpot: transition.currentSpot,
+          nextSpot: transition.nextSpot,
+          progress: transition.progress,
+          guideSession: {
+            ...prev.guideSession,
+            status: 'narrating',
+            currentStopId: transition.currentSpot.id,
+            nextStopId: transition.nextSpot?.id,
+          },
+          memoryEvents: [...prev.memoryEvents, arriveEvent],
+        };
+      });
     },
     [],
   );
@@ -808,6 +965,15 @@ export function useTourOrchestrator() {
       content: snapshot?.currentRoute
         ? `已完成 ${snapshot.progress.completed}/${snapshot.progress.total} 个导览节点。`
         : '本次导览已结束。',
+      metadata: buildMemorySourceMetadata({
+        sourcePage: 'tour_control',
+        route: snapshot?.currentRoute,
+        spot: snapshot?.currentSpot,
+        extra: {
+          completed_spots: snapshot?.progress.completed ?? 0,
+          total_spots: snapshot?.progress.total ?? 0,
+        },
+      }),
     });
     sendAction('end_tour');
     trackTourEvent('tour_ended', {
@@ -855,18 +1021,28 @@ export function useTourOrchestrator() {
   /** 开始讲解 */
   const startNarration = useCallback(
     (spot: Spot) => {
+      const narrationText = spot.description || `${spot.name}到了，我先讲这一站的重点。`;
       const narrationEvent = createGuideMemoryEvent(sessionIdRef.current, {
         type: 'narration',
         routeId: stateRef.current?.currentRoute?.id,
         stopId: spot.id,
         title: `听${spot.name}讲解`,
-        content: spot.description || '小灵已开始讲解这一站。',
+        content: narrationText,
+        metadata: buildMemorySourceMetadata({
+          sourcePage: 'attraction',
+          route: stateRef.current?.currentRoute,
+          spot,
+        }),
       });
       sendAction('start_narrate', { spot_id: spot.id });
       setState((prev) => ({
         ...prev,
         status: 'narrating',
         currentSpot: spot,
+        narration: {
+          spot,
+          text: narrationText,
+        },
         memoryEvents: [...prev.memoryEvents, narrationEvent],
       }));
       trackTourEvent('narration_played', {
@@ -923,6 +1099,12 @@ export function useTourOrchestrator() {
         stopId: stateRef.current?.currentSpot?.id,
         title: '问小灵',
         content: text,
+        metadata: buildMemorySourceMetadata({
+          sourcePage: 'chat',
+          route: stateRef.current?.currentRoute,
+          spot: stateRef.current?.currentSpot,
+          extra: { question: text },
+        }),
       });
       sendAction('ask_question', { question: text });
       setState((prev) => ({
@@ -949,7 +1131,16 @@ export function useTourOrchestrator() {
   const switchToFreeMode = useCallback(() => {
     updatePreferences({ mode: 'free' });
     trackTourEvent('free_explore_started', { source_page: 'home' });
-    setState((prev) => ({ ...prev, status: 'free' }));
+    setState((prev) => ({
+      ...prev,
+      status: 'free',
+      guideRuntime: setGuideRuntimeMode(prev.guideRuntime, 'companion', 'quiet'),
+      soloTour: {
+        ...prev.soloTour,
+        enabled: true,
+        companionLevel: 'quiet',
+      },
+    }));
   }, [trackTourEvent, updatePreferences]);
 
   /** 切换到导览模式 */
@@ -960,9 +1151,14 @@ export function useTourOrchestrator() {
       setState((prev) => ({
         ...prev,
         status: prev.progress.completed >= prev.progress.total ? 'completed' : 'navigate',
+        guideRuntime: setGuideRuntimeMode(prev.guideRuntime, 'proactive', 'active'),
       }));
     } else {
-      setState((prev) => ({ ...prev, status: 'suggest' }));
+      setState((prev) => ({
+        ...prev,
+        status: 'suggest',
+        guideRuntime: setGuideRuntimeMode(prev.guideRuntime, 'proactive', 'active'),
+      }));
     }
   }, [trackTourEvent, updatePreferences, state.currentRoute]);
 
@@ -997,17 +1193,27 @@ export function useTourOrchestrator() {
         return result;
       }
 
+      const snapshot = stateRef.current;
       const transition = getTourCompletionTransition(
-        state.currentRoute?.spots || [],
-        state.progress,
+        snapshot?.currentRoute?.spots || [],
+        snapshot?.progress || state.progress,
         spot,
       );
       const checkinEvent = createGuideMemoryEvent(sessionIdRef.current, {
         type: 'checkin',
-        routeId: state.currentRoute?.id,
+        routeId: snapshot?.currentRoute?.id,
         stopId: spot.id,
         title: `${spot.name}打卡完成`,
         content: result.message || `已记录${spot.name}到访。`,
+        metadata: buildMemorySourceMetadata({
+          sourcePage: 'attraction',
+          route: snapshot?.currentRoute,
+          spot,
+          extra: {
+            distance: result.distance,
+            checkin_message: result.message,
+          },
+        }),
       });
 
       // 打卡成功 → 更新进度
@@ -1021,6 +1227,12 @@ export function useTourOrchestrator() {
         return {
           ...prev,
           progress: nextTransition.progress,
+          guideRuntime: {
+            ...prev.guideRuntime,
+            status: nextTransition.isTourComplete ? 'summary' : 'navigating',
+            currentSpot: nextTransition.currentSpot,
+            nextSpot: nextTransition.nextSpot,
+          },
           currentSpot: nextTransition.currentSpot,
           nextSpot: nextTransition.nextSpot,
           status: nextTransition.isTourComplete ? 'completed' : 'navigate',
@@ -1129,7 +1341,27 @@ export function useTourOrchestrator() {
 
   /** 写入导览记忆事件，供记忆页和成果摘要消费 */
   const createMemoryEvent = useCallback((input: GuideMemoryEventInput) => {
-    const event = createGuideMemoryEvent(sessionIdRef.current, input);
+    const snapshot = stateRef.current;
+    const route = snapshot?.currentRoute ?? null;
+    const spot = (
+      input.stopId && route?.spots
+        ? route.spots.find((routeSpot) => routeSpot.id === input.stopId)
+        : null
+    ) ?? snapshot?.currentSpot ?? null;
+    const sourcePage = typeof input.metadata?.source_page === 'string'
+      ? input.metadata.source_page
+      : 'guide';
+    const event = createGuideMemoryEvent(sessionIdRef.current, {
+      ...input,
+      routeId: input.routeId ?? route?.id,
+      stopId: input.stopId ?? spot?.id,
+      metadata: buildMemorySourceMetadata({
+        sourcePage,
+        route,
+        spot,
+        extra: input.metadata,
+      }),
+    });
     setState((prev) => ({
       ...prev,
       memoryEvents: [...prev.memoryEvents, event],
@@ -1162,6 +1394,7 @@ export function useTourOrchestrator() {
   }, []);
 
   const actions = useMemo(() => ({
+    startGuide,
     startTour,
     startGuideRoute,
     selectSoloIntent,
@@ -1199,7 +1432,7 @@ export function useTourOrchestrator() {
     createMemoryEvent,
     updateGuideProfile,
   }), [
-    startTour, startGuideRoute, selectSoloIntent, recommendSoloRoute, startSoloTour,
+    startGuide, startTour, startGuideRoute, selectSoloIntent, recommendSoloRoute, startSoloTour,
     handleSoloDeviation, completeSoloTour, pauseTour, resumeTour, endTour, arriveAtStop, navigateToSpot,
     startNarration, endNarration, suggestNextSpot, greetUser, suggestRoute,
     startConversation, endConversation, sendMessage, updatePreferences,

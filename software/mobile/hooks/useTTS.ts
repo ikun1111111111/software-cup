@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
-import { API_BASE_URL } from '@/api/config';
+import { fetchTTS } from '@/api/tts';
 
 export interface TTSOptions {
   text: string;
@@ -29,43 +29,10 @@ export const useTTS = () => {
    */
   const generateTTS = useCallback(async (options: TTSOptions): Promise<string | null> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/tts/stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: options.text,
-          voice: options.voice || 'xiaoling',
-          speed: options.speed || 1.0,
-          pitch: options.pitch || 1.0,
-          format: 'mp3',
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`TTS API error: ${response.status}`);
-      }
-
-      // 保存音频到临时文件
-      const fileUri = `${FileSystem.cacheDirectory}tts_${Date.now()}.mp3`;
-      const blob = await response.blob();
-      const reader = new FileReader();
-      
-      return new Promise((resolve, reject) => {
-        reader.onloadend = async () => {
-          try {
-            const base64 = (reader.result as string).split(',')[1];
-            await FileSystem.writeAsStringAsync(fileUri, base64, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
-            setAudioUrl(fileUri);
-            resolve(fileUri);
-          } catch (err) {
-            reject(err);
-          }
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
+      const result = await fetchTTS(options.text, options.voice);
+      setAudioUrl(result.audioUri);
+      setDuration(result.durationMs);
+      return result.audioUri;
     } catch (error) {
       console.error('TTS generation failed:', error);
       return null;

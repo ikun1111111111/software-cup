@@ -1,13 +1,20 @@
 import type { Spot } from '@/api/spots';
 import { CAT_COLORS } from '@/constants/scenic';
 import { Colors } from '@/constants/colors';
+import {
+  SCENIC_COORDINATE_SOURCE,
+  toScenicAmapPoint,
+  type CoordinateSource,
+  type MapPoint,
+} from '@/utils/amapCoordinates';
 
 export const AMAP_KEY = '69ce537355cca1a2ba0bbf3b737c5d35';
 export const LINGSHAN_CENTER = { latitude: 31.4268, longitude: 120.0962 };
+export type { CoordinateSource, MapPoint } from '@/utils/amapCoordinates';
 
 export interface AmapViewRef {
-  setCenter: (lat: number, lng: number, zoom?: number) => void;
-  drawRoute: (points: { latitude: number; longitude: number }[]) => void;
+  setCenter: (lat: number, lng: number, zoom?: number, source?: CoordinateSource) => void;
+  drawRoute: (points: MapPoint[]) => void;
   clearRoute: () => void;
 }
 
@@ -24,6 +31,10 @@ export interface AmapViewProps {
   style?: any;
   onMapReady?: () => void;
   onMapError?: (message: string) => void;
+  showLocationControls?: boolean;
+  calibrationMode?: boolean;
+  calibratedCoordinates?: Record<string, { latitude: number; longitude: number }>;
+  onSpotCoordinateChange?: (spotId: string, point: { latitude: number; longitude: number }) => void;
 }
 
 export function buildHTML(
@@ -48,6 +59,7 @@ export function buildHTML(
       active: activeSpotId === s.id,
     })),
   );
+  const mapCenter = toScenicAmapPoint(center);
 
   return `<!DOCTYPE html>
 <html>
@@ -168,6 +180,45 @@ export function buildHTML(
   </div>
 </div>
 <script>
+function wgs84ToGcj02(lat,lng){
+  var a=6378245.0,ee=0.00669342162296594323;
+  if(lng<72.004||lng>137.8347||lat<0.8293||lat>55.8271) return {latitude:lat,longitude:lng};
+  function transformLat(x,y){
+    var ret=-100.0+2.0*x+3.0*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+    ret+=((20.0*Math.sin(6.0*x*Math.PI)+20.0*Math.sin(2.0*x*Math.PI))*2.0)/3.0;
+    ret+=((20.0*Math.sin(y*Math.PI)+40.0*Math.sin((y/3.0)*Math.PI))*2.0)/3.0;
+    ret+=((160.0*Math.sin((y/12.0)*Math.PI)+320*Math.sin((y*Math.PI)/30.0))*2.0)/3.0;
+    return ret;
+  }
+  function transformLng(x,y){
+    var ret=300.0+x+2.0*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+    ret+=((20.0*Math.sin(6.0*x*Math.PI)+20.0*Math.sin(2.0*x*Math.PI))*2.0)/3.0;
+    ret+=((20.0*Math.sin(x*Math.PI)+40.0*Math.sin((x/3.0)*Math.PI))*2.0)/3.0;
+    ret+=((150.0*Math.sin((x/12.0)*Math.PI)+300.0*Math.sin((x/30.0)*Math.PI))*2.0)/3.0;
+    return ret;
+  }
+  var dLat=transformLat(lng-105.0,lat-35.0);
+  var dLng=transformLng(lng-105.0,lat-35.0);
+  var radLat=(lat/180.0)*Math.PI;
+  var magic=Math.sin(radLat);
+  magic=1-ee*magic*magic;
+  var sqrtMagic=Math.sqrt(magic);
+  dLat=(dLat*180.0)/(((a*(1-ee))/(magic*sqrtMagic))*Math.PI);
+  dLng=(dLng*180.0)/((a/sqrtMagic)*Math.cos(radLat)*Math.PI);
+  return {latitude:lat+dLat,longitude:lng+dLng};
+}
+
+function toAmapPoint(point, source){
+  if(source === 'wgs84' || point.source === 'wgs84'){
+    return wgs84ToGcj02(point.latitude, point.longitude);
+  }
+  return {latitude:point.latitude,longitude:point.longitude};
+}
+
+function toScenicAmapPoint(point, source){
+  return toAmapPoint(point, source || point.source || '${SCENIC_COORDINATE_SOURCE}');
+}
+
 var map, markers=[], userMarker=null, routeLine=null;
 var SPOTS=${spotsJson};
 var _mapInited=false;
@@ -200,7 +251,7 @@ function initMap(){
   _mapInited=true;
   try{
     map=new AMap.Map('map',{
-      center:[${center.longitude},${center.latitude}],
+      center:[${mapCenter.longitude},${mapCenter.latitude}],
       zoom:${zoom},
       zooms:[13,18],
       resizeEnable:true,
@@ -220,6 +271,7 @@ function initMap(){
 
   SPOTS.forEach(function(s){
     if(s.lat == null || s.lng == null) return;
+    var point=toScenicAmapPoint({latitude:s.lat,longitude:s.lng});
     var dotSize=s.active?34:(s.inRoute?30:26);
     var dotRadius=dotSize/2;
     var dotClass='spot-dot'+(s.inRoute?' route':'')+(s.active?' active':'');
@@ -228,7 +280,7 @@ function initMap(){
       +'<div class="spot-label">'+s.name+'</div></div>';
 
     var marker=new AMap.Marker({
-      position:[s.lng,s.lat],
+      position:[point.longitude,point.latitude],
       content:content,
       offset:new AMap.Pixel(-dotRadius,-dotRadius),
       extData:s,
@@ -241,16 +293,18 @@ function initMap(){
     markers.push(marker);
   });
 
-  if(SPOTS.length>0){
-    try{ map.setFitView(null,false,[60,60,60,60]); }catch(e){}
+  if(markers.length>0){
+    try{ map.setFitView(markers,false,[118,48,240,48]); }catch(e){}
   }
+
 }
 
 function setUserLocation(lat,lng){
   if(!map) return;
+  var point=wgs84ToGcj02(lat,lng);
   if(userMarker){ map.remove(userMarker); }
   userMarker=new AMap.Marker({
-    position:[lng,lat],
+    position:[point.longitude,point.latitude],
     content:'<div style="position:relative"><div class="user-ring"></div><div class="user-dot"></div></div>',
     offset:new AMap.Pixel(-7,-7),
     zIndex:100,
@@ -258,16 +312,20 @@ function setUserLocation(lat,lng){
   map.add(userMarker);
 }
 
-function setCenter(lat,lng,z){
+function setCenter(lat,lng,z,source){
   if(!map) return;
-  map.setCenter(new AMap.LngLat(lng,lat));
+  var point=source ? toAmapPoint({latitude:lat,longitude:lng}, source) : toScenicAmapPoint({latitude:lat,longitude:lng});
+  map.setCenter(new AMap.LngLat(point.longitude,point.latitude));
   if(z) map.setZoom(z);
 }
 
 function drawRoute(points){
   if(!map) return;
   if(routeLine){ map.remove(routeLine); }
-  var path=points.map(function(p){ return new AMap.LngLat(p.longitude,p.latitude); });
+  var path=points.map(function(p){
+    var point=p.source ? toAmapPoint(p) : toScenicAmapPoint(p);
+    return new AMap.LngLat(point.longitude,point.latitude);
+  });
   routeLine=new AMap.Polyline({
     path:path,
     strokeColor:'#6A9C89',
@@ -293,7 +351,7 @@ window.clearRoute=clearRoute;
 window.addEventListener('message',function(e){
   try{
     var d=typeof e.data==='string'?JSON.parse(e.data):e.data;
-    if(d.cmd==='setCenter') setCenter(d.lat,d.lng,d.zoom);
+    if(d.cmd==='setCenter') setCenter(d.lat,d.lng,d.zoom,d.source);
     else if(d.cmd==='setUserLocation') setUserLocation(d.lat,d.lng);
     else if(d.cmd==='drawRoute') drawRoute(d.points);
     else if(d.cmd==='clearRoute') clearRoute();

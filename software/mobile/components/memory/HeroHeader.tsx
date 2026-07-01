@@ -10,6 +10,7 @@ import { type Spot } from '@/api/spots';
 import { ROUTE_SPOTS } from './constants';
 import { FloatingCloud } from './FloatingCloud';
 import { InkRouteMap } from './InkRouteMap';
+import { XIAOLING_MEMORY_COPY } from '@/utils/digitalHumanProduct';
 
 export function HeroHeader({ scrollY, insets, memoryCount, spotCount, memories, spots }: {
   scrollY: Animated.SharedValue<number>;
@@ -61,8 +62,8 @@ export function HeroHeader({ scrollY, insets, memoryCount, spotCount, memories, 
       )}
 
       <View style={styles.heroTitleArea}>
-        <Text style={styles.heroSub}>TRAVEL MEMOIR</Text>
-        <Text style={styles.heroTitle}>你的墨卷</Text>
+        <Text style={styles.heroSub}>{XIAOLING_MEMORY_COPY.heroSub}</Text>
+        <Text style={styles.heroTitle}>{XIAOLING_MEMORY_COPY.heroTitle}</Text>
         <View style={styles.heroQuoteWrap}>
           <Text style={styles.heroQuoteMark}>「</Text>
           <Text style={styles.heroQuote}>{heroQuote}</Text>

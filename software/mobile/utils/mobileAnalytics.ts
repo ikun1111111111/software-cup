@@ -9,7 +9,8 @@ export type MobileAnalyticsEventName =
   | 'narration_played'
   | 'question_asked'
   | 'route_completed'
-  | 'memory_created';
+  | 'memory_created'
+  | 'feedback_submitted';
 
 export interface MobileAnalyticsEvent {
   id: string;
@@ -83,6 +84,7 @@ export function summarizeAnalyticsQueue(events: MobileAnalyticsEvent[]): Record<
     question_asked: 0,
     route_completed: 0,
     memory_created: 0,
+    feedback_submitted: 0,
   };
 
   for (const event of events) {

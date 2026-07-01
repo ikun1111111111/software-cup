@@ -43,11 +43,12 @@ class VectorStore:
         schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=dim)
 
         index_params = cli.prepare_index_params()
+        # HNSW索引：在高召回和检索速度之间取得平衡，比IVF_FLAT更稳定
         index_params.add_index(
             "embedding",
-            index_type="IVF_FLAT",
+            index_type="HNSW",
             metric_type="COSINE",
-            params={"nlist": 128},
+            params={"M": 16, "efConstruction": 200},
         )
 
         cli.create_collection(
@@ -110,15 +111,19 @@ class VectorStore:
         top_k: int = 10,
         output_fields: list[str] | None = None,
     ) -> list[dict]:
-        """Vector search."""
+        """Vector search with HNSW ef tuned for better recall."""
         if output_fields is None:
             output_fields = ["id", "doc_id", "chunk_index", "text"]
+
+        # HNSW搜索参数：ef越大召回越高，但速度越慢
+        search_params = {"metric_type": "COSINE", "params": {"ef": max(top_k, 64)}}
 
         results = self.client.search(
             collection_name=self.collection_name,
             data=[query_embedding],
             limit=top_k,
             output_fields=output_fields,
+            search_params=search_params,
         )
         return results[0] if results else []
 

@@ -3,8 +3,23 @@ export interface HeadRotation {
   y: number;
 }
 
-export function estimateSpeechDuration(text: string, minMs = 3000, msPerChar = 150): number {
+export const DEFAULT_SPEECH_MIN_MS = 3000;
+export const DEFAULT_SPEECH_MS_PER_CHAR = 220;
+
+export function estimateSpeechDuration(
+  text: string,
+  minMs = DEFAULT_SPEECH_MIN_MS,
+  msPerChar = DEFAULT_SPEECH_MS_PER_CHAR,
+): number {
   return Math.max(minMs, text.length * msPerChar);
+}
+
+export function estimateNarrationDurationSeconds(text: string, providedSeconds?: number): number {
+  if (typeof providedSeconds === 'number' && Number.isFinite(providedSeconds) && providedSeconds > 0) {
+    return providedSeconds;
+  }
+
+  return estimateSpeechDuration(text) / 1000;
 }
 
 export function computeLookUpHeadRotation(

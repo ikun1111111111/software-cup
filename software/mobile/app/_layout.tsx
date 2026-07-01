@@ -1,8 +1,8 @@
-import { Stack, useRouter } from 'expo-router';
+import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { InteractionManager } from 'react-native';
-import { useFonts } from 'expo-font';
+import { InteractionManager, Platform } from 'react-native';
+import * as Font from 'expo-font';
 import { SplashScreen } from 'expo-router';
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import PhoneFrame from '@/components/ui/PhoneFrame';
@@ -13,53 +13,48 @@ import { VRMProvider } from '@/components/vrm/VRMProvider';
 import { useAuth } from '@/hooks/useAuth';
 import { authEvents } from '@/api/request';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
-import { preloadDigitalHuman } from '@/services/digitalHuman';
 
 const ProactiveStrategyEngine = lazy(() => import('@/components/guide/ProactiveStrategyEngine'));
+const ROOT_DEFERRED_ENGINE_DELAY_MS = 2500;
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutInner() {
   const router = useRouter();
-  const [fontsLoaded] = useFonts({
-    'MaShanZheng': require('../assets/fonts/MaShanZheng-Regular.ttf'),
-    'LongCang': require('../assets/fonts/LongCang-Regular.ttf'),
-  });
+  const pathname = usePathname();
   const [showSplash, setShowSplash] = useState(true);
   const [showDeferred, setShowDeferred] = useState(false);
   const { restoreSession } = useAuth();
+  const isCalibrationTool = Platform.OS === 'web'
+    ? typeof window !== 'undefined' && window.location.pathname.includes('/map-calibration')
+    : pathname.includes('/map-calibration');
+
+  useEffect(() => {
+    SplashScreen.hideAsync();
+    const task = InteractionManager.runAfterInteractions(() => {
+      Font.loadAsync({
+        MaShanZheng: require('../assets/fonts/MaShanZheng-Regular.ttf'),
+        LongCang: require('../assets/fonts/LongCang-Regular.ttf'),
+      }).catch((err) => {
+        console.warn('[RootLayout] font preload failed:', err);
+      });
+    });
+    return () => task.cancel();
+  }, []);
 
   // 延迟挂载非关键组件（SmartGuide / ProactiveStrategyEngine），避免抢占首屏渲染
   useEffect(() => {
+    if (showSplash) return undefined;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const task = InteractionManager.runAfterInteractions(() => {
-      timer = setTimeout(() => setShowDeferred(true), 800);
+      timer = setTimeout(() => setShowDeferred(true), ROOT_DEFERRED_ENGINE_DELAY_MS);
     });
     return () => {
       task.cancel();
       if (timer) clearTimeout(timer);
     };
-  }, []);
-
-  // 字体加载完成后，后台预加载 VRM 模型和常用数据（不阻塞入场动画）
-  useEffect(() => {
-    if (fontsLoaded) {
-      SplashScreen.hideAsync();
-      let timer: ReturnType<typeof setTimeout> | null = null;
-      const task = InteractionManager.runAfterInteractions(() => {
-        timer = setTimeout(() => {
-          preloadDigitalHuman('8024308560058477433.vrm').catch((err) => {
-            console.warn('[RootLayout] VRM preload failed:', err);
-          });
-        }, 1200);
-      });
-      return () => {
-        task.cancel();
-        if (timer) clearTimeout(timer);
-      };
-    }
-  }, [fontsLoaded]);
+  }, [showSplash]);
 
   useEffect(() => {
     restoreSession();
@@ -74,10 +69,6 @@ function RootLayoutInner() {
   const handleSplashFinish = useCallback(() => {
     setShowSplash(false);
   }, []);
-
-  if (!fontsLoaded) {
-    return null;
-  }
 
   return (
     <SafeAreaProvider>
@@ -112,7 +103,15 @@ function RootLayoutInner() {
                 options={{ animation: 'slide_from_bottom' }}
               />
               <Stack.Screen
+                name="map-calibration"
+                options={{ animation: 'fade' }}
+              />
+              <Stack.Screen
                 name="guide-demo"
+                options={{ animation: 'slide_from_right' }}
+              />
+              <Stack.Screen
+                name="vrm-performance-demo"
                 options={{ animation: 'slide_from_right' }}
               />
               <Stack.Screen
@@ -126,7 +125,7 @@ function RootLayoutInner() {
             </Stack>
             <InkOverlay />
             {showSplash && <SplashTransition onFinish={handleSplashFinish} />}
-            {showDeferred && (
+            {showDeferred && !isCalibrationTool && (
               <Suspense fallback={null}>
                 <ProactiveStrategyEngine />
               </Suspense>

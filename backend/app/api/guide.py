@@ -169,7 +169,7 @@ async def _handle_action(
             route_type = prefs.get("preferred_route_type", "经典全景")
             route = await _find_route_by_type(route_type, routes)
             if not route:
-                route = await GuideService.generate_route_suggestion(spots, route_type)
+                route = await GuideService.generate_route_suggestion(spots, route_type, routes)
             await GuideService.update_state(session_id, status="free", current_route=route)
             events.append({
                 "type": "suggest_route",
@@ -181,7 +181,7 @@ async def _handle_action(
             route_type = prefs.get("preferred_route_type", "经典全景")
             route = await _find_route_by_type(route_type, routes)
             if not route:
-                route = await GuideService.generate_route_suggestion(spots, route_type)
+                route = await GuideService.generate_route_suggestion(spots, route_type, routes)
             await GuideService.update_state(session_id, status="free", current_route=route)
             events.append({
                 "type": "suggest_route",
@@ -249,7 +249,7 @@ def _answer_question(question: str, spots: list[dict], role: str = "小灵") -> 
     if "门票" in q or "多少钱" in q or "票价" in q:
         return "灵山胜境门票价格请以官方渠道为准，建议提前在小程序或携程等平台购买。"
     if "路线" in q or "怎么走" in q or "推荐" in q:
-        return "推荐路线：灵山大佛 → 九龙灌浴 → 梵宫 → 五印坛城。您也可以告诉我您的时间安排，我帮您定制。"
+        return "我们有三条精选路线：历史文化爱好者路线、自然风光爱好者路线、亲子家庭路线。您也可以告诉我您的偏好，我帮您定制。"
     if "时间" in q or "几点" in q or "开放" in q:
         return "景区一般早上7:00开放，下午17:00-17:30闭园，具体以季节和官方公告为准。"
     if "演出" in q or "表演" in q or "九龙灌浴" in q:

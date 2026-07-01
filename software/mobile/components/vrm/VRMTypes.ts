@@ -14,7 +14,8 @@ export type PageContext =
   | 'chat'
   | 'map'
   | 'routes'
-  | 'route-detail';
+  | 'route-detail'
+  | 'profile';
 
 export interface VRMState {
   isSpeaking: boolean;
@@ -23,6 +24,14 @@ export interface VRMState {
   subtitle: string;
   pageContext: PageContext;
   contextData: Record<string, any>;
+}
+
+export interface VRMAvoidanceInsets {
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+  visible: boolean;
 }
 
 /** VRMFloating 暴露的 ref 接口 */

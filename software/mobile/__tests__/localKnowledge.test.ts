@@ -14,8 +14,30 @@ describe('localKnowledge', () => {
     const result = getLocalDemoAnswer('灵山大佛有多高？');
 
     expect(result?.answer).toContain('88米');
-    expect(result?.displayAnswer).toContain('来源：');
+    expect(result?.displayAnswer).toBe(result?.answer);
     expect(result?.emotion).toBe('surprised');
+  });
+
+  test('answers attraction best-time questions from current spot context', () => {
+    const result = getLocalDemoAnswer('当前景点是灵山大佛。最佳游览时间是什么时候？', {
+      spotId: 'ling-shan-da-fo',
+      spotName: '灵山大佛',
+    });
+
+    expect(result?.answer).toContain('春秋季节');
+    expect(result?.answer).toContain('建议停留1.5-2小时');
+    expect(result?.answer).not.toContain('88米');
+    expect(result?.sourceLabel).toBe('景点详情游览提示');
+  });
+
+  test('answers attraction duration questions from current spot context', () => {
+    const result = getLocalDemoAnswer('这一站建议游览多久？', {
+      spotId: 'jiu-long-guan-yu',
+      spotName: '九龙灌浴',
+    });
+
+    expect(result?.answer).toContain('九龙灌浴建议游览30-45分钟');
+    expect(result?.answer).toContain('每日4-5场表演');
   });
 
   test('matches Nine Dragons Bathing show questions', () => {
@@ -53,7 +75,7 @@ describe('localKnowledge', () => {
     const result = getOfflineFallbackAnswer('今天无锡股票行情怎么样');
 
     expect(result.answer).toContain('还没有找到可靠答案');
-    expect(result.displayAnswer).toContain('来源：移动端本地演示知识库');
+    expect(result.displayAnswer).toBe(result.answer);
     expect(result.score).toBe(0);
   });
 });

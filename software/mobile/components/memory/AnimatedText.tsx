@@ -17,8 +17,8 @@ export function AnimatedText({ text, trigger }: {
       opacity.value = withTiming(1, { duration: 400 });
       translateY.value = withTiming(0, { duration: 400 });
     } else {
-      opacity.value = 0;
-      translateY.value = 10;
+      opacity.value = withTiming(0, { duration: 0 });
+      translateY.value = withTiming(10, { duration: 0 });
     }
   }, [trigger]);
 

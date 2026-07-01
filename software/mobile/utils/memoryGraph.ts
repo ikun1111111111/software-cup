@@ -12,6 +12,7 @@ export interface MemoryGraphCandidate {
   routeName?: string;
   sourceType: string;
   sourcePage: string;
+  metadata?: Record<string, any>;
   createdAt: string;
 }
 
@@ -49,6 +50,7 @@ function toCandidate(event: GuideMemoryEvent): MemoryGraphCandidate | null {
     sourcePage: typeof event.metadata?.source_page === 'string'
       ? event.metadata.source_page
       : sourceType,
+    metadata: event.metadata,
     createdAt: event.createdAt,
   };
 }

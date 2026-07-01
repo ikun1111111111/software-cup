@@ -1,10 +1,25 @@
 import {
   splitSentences,
+  getTimedTextSlice,
+  getSubtitleCueForCharIndex,
+  textToSubtitleCues,
   analyzeSentence,
   textToTimeline,
   ExpressionPlayer,
   type TimelineEvent,
 } from '../utils/textTimeline';
+
+describe('getTimedTextSlice', () => {
+  test('reveals text in proportion to elapsed speech time', () => {
+    expect(getTimedTextSlice('abcdefghij', 0, 10000)).toBe('');
+    expect(getTimedTextSlice('abcdefghij', 5000, 10000)).toBe('abcde');
+    expect(getTimedTextSlice('abcdefghij', 10000, 10000)).toBe('abcdefghij');
+  });
+
+  test('does not reveal beyond the text when elapsed time exceeds duration', () => {
+    expect(getTimedTextSlice('abc', 15000, 10000)).toBe('abc');
+  });
+});
 
 // ── splitSentences ──
 
@@ -39,6 +54,34 @@ describe('splitSentences', () => {
   test('无标点的单句', () => {
     const result = splitSentences('你好世界');
     expect(result).toEqual(['你好世界']);
+  });
+});
+
+// ── textToSubtitleCues ──
+
+describe('textToSubtitleCues', () => {
+  test('builds timed subtitle cues from spoken sentences', () => {
+    const cues = textToSubtitleCues('灵山大照壁。景区入口的仪式性节点，通过照壁开启游线。继续往前看。', 9000);
+
+    expect(cues[0]).toEqual({ timeMs: 0, text: '灵山大照壁。', startChar: 0, endChar: 6 });
+    expect(cues[1].timeMs).toBeGreaterThan(0);
+    expect(cues[1].text).toContain('景区入口');
+    expect(cues[cues.length - 1].text).toBe('继续往前看。');
+  });
+
+  test('splits long subtitle chunks so the avatar bubble can refresh', () => {
+    const cues = textToSubtitleCues('这是一段没有标点但是非常长的导览文字需要在小气泡里分段显示给用户看', 6000, 16);
+
+    expect(cues.length).toBeGreaterThan(1);
+    expect(cues.every((cue) => cue.text.length <= 16)).toBe(true);
+  });
+
+  test('finds the current subtitle from speech boundary char index', () => {
+    const cues = textToSubtitleCues('第一句。第二句，第三句。', 6000);
+
+    expect(getSubtitleCueForCharIndex(cues, 0)?.text).toBe('第一句。');
+    expect(getSubtitleCueForCharIndex(cues, 5)?.text).toBe('第二句，');
+    expect(getSubtitleCueForCharIndex(cues, 9)?.text).toBe('第三句。');
   });
 });
 
@@ -93,6 +136,12 @@ describe('analyzeSentence', () => {
     expect(expression).toBe('neutral');
     expect(action).toBe('none');
   });
+
+  test('导览常用话术会触发可见指引动作', () => {
+    expect(analyzeSentence('好的，我们继续前往灵山大佛').action).toBe('point');
+    expect(analyzeSentence('这里是梵宫，我来为你讲解').action).toBe('point');
+    expect(analyzeSentence('打开地图自由逛').action).toBe('point');
+  });
 });
 
 // ── textToTimeline ──
@@ -134,6 +183,13 @@ describe('textToTimeline', () => {
     const tl = textToTimeline(text, 10000);
     // 第一句"短。"（1字）应该比第二句（9字）分配更少时间
     expect(tl[1].timeMs).toBeGreaterThan(tl[0].timeMs);
+  });
+
+  test('导览动作默认时长足够被用户看见', () => {
+    const tl = textToTimeline('这里是灵山大佛。好的，我们继续前往下一站。', 6000);
+
+    expect(tl[0]).toMatchObject({ action: 'point', durationMs: 1600 });
+    expect(tl[1]).toMatchObject({ action: 'point', durationMs: 1600 });
   });
 });
 

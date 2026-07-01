@@ -14,6 +14,10 @@ export default function PhoneFrame({ children }: Props) {
     return <>{children}</>;
   }
 
+  if (typeof window !== 'undefined' && window.location.pathname.includes('/map-calibration')) {
+    return <>{children}</>;
+  }
+
   return (
     <View style={styles.outerBg}>
       <View style={styles.sidePanel}>

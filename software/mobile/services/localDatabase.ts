@@ -3,19 +3,46 @@
  * 用于缓存景点、路线、记忆等数据，减少网络请求
  */
 
-import * as SQLite from 'expo-sqlite';
-
 const DB_NAME = 'lingshan_local.db';
 
+interface LocalDatabase {
+  execAsync: (source: string) => Promise<void>;
+  runAsync: (source: string, params?: any[]) => Promise<unknown>;
+  getFirstAsync: <T>(source: string, params?: any[]) => Promise<T | null>;
+  getAllAsync: <T>(source: string, params?: any[]) => Promise<T[]>;
+  withTransactionAsync: (task: () => Promise<void>) => Promise<void>;
+}
+
 // 数据库单例
-let dbInstance: SQLite.SQLiteDatabase | null = null;
+let dbInstance: LocalDatabase | null = null;
+
+function createMemoryDatabase(): LocalDatabase {
+  return {
+    execAsync: async () => undefined,
+    runAsync: async () => undefined,
+    getFirstAsync: async () => null,
+    getAllAsync: async () => [],
+    withTransactionAsync: async (task) => task(),
+  };
+}
+
+async function openLocalDatabase(): Promise<LocalDatabase> {
+  try {
+    const SQLite = await import('expo-sqlite');
+    const sqliteDb = await SQLite.openDatabaseAsync(DB_NAME);
+    return sqliteDb as unknown as LocalDatabase;
+  } catch (error) {
+    console.warn('[LocalDatabase] SQLite unavailable, using memory fallback:', error);
+    return createMemoryDatabase();
+  }
+}
 
 /**
  * 获取数据库实例
  */
-export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
+export async function getDatabase(): Promise<LocalDatabase> {
   if (!dbInstance) {
-    dbInstance = await SQLite.openDatabaseAsync(DB_NAME);
+    dbInstance = await openLocalDatabase();
     await initDatabase(dbInstance);
   }
   return dbInstance;
@@ -24,7 +51,7 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
 /**
  * 初始化数据库表结构
  */
-async function initDatabase(db: SQLite.SQLiteDatabase) {
+async function initDatabase(db: LocalDatabase) {
   // 景点表
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS spots (

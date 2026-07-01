@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import Animated, { FadeInUp, FadeIn, FadeOut } from 'react-native-reanimated';
 import { VRMManager } from '@/components/vrm/VRMManager';
+import { useVRM } from '@/components/vrm/VRMProvider';
 import { getTimeline, type TimelineEvent } from '@/api/history';
 import { Colors } from '@/constants/colors';
 import { TimelineEventCard } from '@/components/history/TimelineEventCard';
@@ -174,6 +175,8 @@ const FALLBACK_ERAS = Array.from(new Set(FALLBACK_EVENTS.map((event) => event.er
 export default function HistoryPage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { avoidance } = useVRM();
+  const contentBottomPadding = Math.max(120, avoidance.bottom + 40);
 
   const [events, setEvents] = useState<TimelineEvent[]>(FALLBACK_EVENTS);
   const [eras, setEras] = useState<string[]>(FALLBACK_ERAS);
@@ -280,7 +283,7 @@ export default function HistoryPage() {
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >

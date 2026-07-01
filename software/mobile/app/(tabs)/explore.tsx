@@ -14,11 +14,14 @@ import { listRoutes, type TourRoute } from '@/api/routes';
 import { identifySpot, type VisionResult } from '@/api/vision';
 import { createRoom, joinRoom, type Room, type RoomActiveRoute } from '@/api/room';
 import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import { preloadDigitalHuman } from '@/services/digitalHuman';
+import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
 import { useRoomSync } from '@/hooks/useRoomSync';
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
 import { SPOT_IMAGES } from '@/constants/scenic';
 import { enrichSpotsWithLocations } from '@/constants/spot-locations';
+import { getCostume } from '@/constants/costumeMap';
 import { GUIDE_DATA_SOURCE_SUMMARY, getSoloRouteRecommendation } from '@/data/lingshanGuideData';
 import { getMockApiRoutes, getMockApiSpots } from '@/mocks/guide';
 
@@ -31,6 +34,19 @@ const ROUTE_CARD_W = 260;
 const STORY_CARD_W = 252;
 
 const HERO_SPOT_PRIORITY = ['ling-shan-da-fo', 'fan-gong', 'jiu-long-guan-yu'];
+
+const EXPLORE_VISUALS = {
+  hero: require('../../assets/images/explore/hero-courtyard.png'),
+  heroEcho: require('../../assets/images/explore/hero-overview.png'),
+  spotRecognition: require('../../assets/images/explore/spot-temple-cliff.png'),
+  checkinSeal: require('../../assets/images/explore/seal-tang-simple.png'),
+  lingshanSeal: require('../../assets/images/explore/seal-lingshan.png'),
+  routeMap: require('../../assets/images/explore/route-map.png'),
+  lantern: require('../../assets/images/explore/lantern.png'),
+  templePlan: require('../../assets/images/explore/temple-plan.png'),
+  templeGate: require('../../assets/images/explore/temple-gate.png'),
+  scrollPaper: require('../../assets/images/explore/scroll-paper.png'),
+};
 
 const SPOT_STORY_COPY: Record<string, { highlight: string; duration: string; bestTime: string }> = {
   'ling-shan-da-fo': { highlight: '登高望湖，听一段大佛落成的愿力故事', duration: '45 分钟', bestTime: '夕照前' },
@@ -595,8 +611,8 @@ function ExploreHero({
   onPhoto,
   onScan,
   onStartGuide,
-  onFreeExplore,
   onAskGuide,
+  onFreeAsk,
   activeRouteName,
   progressLabel,
   nextSpotName,
@@ -607,35 +623,40 @@ function ExploreHero({
   onPhoto: () => void;
   onScan: () => void;
   onStartGuide: () => void;
-  onFreeExplore: () => void;
   onAskGuide: () => void;
+  onFreeAsk: (question: string) => void;
   activeRouteName?: string;
   progressLabel?: string;
   nextSpotName?: string;
 }) {
-  const guide = useDigitalHumanDriver('tts');
+  const guide = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE);
+  const [freeQuestion, setFreeQuestion] = useState('');
+  const [vrmKey] = useState(0);
+
+  useEffect(() => {
+    preloadDigitalHuman(getCostume('festival-spring')?.modelFile || 'avatar.vrm').catch((err) => {
+      console.warn('[ExploreHero] preload VRM failed:', err);
+    });
+  }, []);
+
   const heroSpot = HERO_SPOT_PRIORITY
     .map((id) => spots.find((spot) => spot.id === id))
     .find(Boolean) ?? spots.find((spot) => SPOT_IMAGES[spot.id]) ?? spots[0];
   const heroStory = getSpotStory(heroSpot);
-  const heroImage = heroSpot && SPOT_IMAGES[heroSpot.id]
-    ? SPOT_IMAGES[heroSpot.id]
-    : require('../../assets/images/hero-bg.png');
   const guideLine = activeRouteName
     ? `${activeRouteName}进行中，我会继续带你去${nextSpotName || '下一站'}`
-    : heroSpot
-      ? `我建议先从${heroSpot.name}开始，${heroStory.highlight}`
-      : '我会根据时间、位置和兴趣，为你安排一段灵山巡礼';
+    : '我建议先从山门庭院开始，沿香道进入寺院，再用小灵识景确认眼前故事';
 
   return (
     <View style={[styles.heroStage, { paddingTop: insets.top + 18 }]}>
-      <Image source={heroImage} style={StyleSheet.absoluteFill} contentFit="cover" />
+      <Image source={EXPLORE_VISUALS.hero} style={StyleSheet.absoluteFill} contentFit="cover" />
+      <Image source={EXPLORE_VISUALS.heroEcho} style={[StyleSheet.absoluteFill, styles.heroEchoImage]} contentFit="cover" />
       <View style={styles.heroScrim} />
       <View style={styles.heroWarmth} />
 
       <View style={styles.heroTopBar}>
         <View style={styles.heroSeal}>
-          <Text style={styles.heroSealText}>灵</Text>
+          <Image source={EXPLORE_VISUALS.lingshanSeal} style={styles.heroSealImage} contentFit="contain" />
         </View>
         <View style={styles.heroCounter}>
           <Text style={styles.heroCounterNum}>{spots.length}</Text>
@@ -648,6 +669,7 @@ function ExploreHero({
           <View style={styles.guideAura} />
           <View style={styles.guideVrmViewport}>
             <VRMView
+              key={vrmKey}
               mode="full"
               expression={guide.expression}
               mouthOpen={guide.mouthOpen}
@@ -657,6 +679,16 @@ function ExploreHero({
               headRotation={guide.headRotation}
               costumeId="festival-spring"
             />
+            {/*
+            <Pressable
+              style={({ pressed }) => [styles.vrmReloadBtn, pressed && styles.pressedSoft]}
+              onPress={() => setVrmKey((k) => k + 1)}
+              accessibilityRole="button"
+              accessibilityLabel="重新加载数字人"
+            >
+              <Text style={styles.vrmReloadText}>↻</Text>
+            </Pressable>
+            */}
           </View>
           <View style={styles.guideNamePlate}>
             <Text style={styles.guideNameText}>小灵 · 数字导览员</Text>
@@ -673,6 +705,42 @@ function ExploreHero({
             <Text style={styles.guideSpeechText} numberOfLines={3}>
               {guide.isSpeaking && guide.subtitle ? guide.subtitle : guideLine}
             </Text>
+          </View>
+
+          {/* 自由提问 */}
+          <View style={styles.freeAskRow}>
+            <TextInput
+              style={styles.freeAskInput}
+              placeholder="想问什么？直接输入提问"
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              value={freeQuestion}
+              onChangeText={setFreeQuestion}
+              returnKeyType="send"
+              onSubmitEditing={() => {
+                const q = freeQuestion.trim();
+                if (q) {
+                  onFreeAsk(q);
+                  setFreeQuestion('');
+                }
+              }}
+            />
+            <Pressable
+              style={({ pressed }) => [
+                styles.freeAskBtn,
+                pressed && styles.pressedSoft,
+                !freeQuestion.trim() && { opacity: 0.5 },
+              ]}
+              onPress={() => {
+                const q = freeQuestion.trim();
+                if (q) {
+                  onFreeAsk(q);
+                  setFreeQuestion('');
+                }
+              }}
+              disabled={!freeQuestion.trim()}
+            >
+              <Text style={styles.freeAskBtnText}>发送</Text>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -705,12 +773,6 @@ function ExploreHero({
         </Pressable>
         <Pressable
           style={({ pressed }) => [styles.heroGhostAction, pressed && styles.pressedSoft]}
-          onPress={onFreeExplore}
-        >
-          <Text style={styles.heroGhostActionText}>自由看看</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.heroGhostAction, pressed && styles.pressedSoft]}
           onPress={onAskGuide}
         >
           <Text style={styles.heroGhostActionText}>问小灵</Text>
@@ -719,11 +781,15 @@ function ExploreHero({
 
       <View style={styles.heroMiniActions}>
         <Pressable style={({ pressed }) => [styles.heroMiniButton, pressed && styles.pressedSoft]} onPress={onPhoto}>
-          <Text style={styles.heroMiniMark}>相</Text>
+          <View style={styles.heroMiniImageWrap}>
+            <Image source={EXPLORE_VISUALS.spotRecognition} style={styles.heroMiniImage} contentFit="cover" />
+          </View>
           <Text style={styles.heroMiniText}>识别眼前景点</Text>
         </Pressable>
         <Pressable style={({ pressed }) => [styles.heroMiniButton, pressed && styles.pressedSoft]} onPress={onScan}>
-          <Text style={styles.heroMiniMark}>签</Text>
+          <View style={[styles.heroMiniImageWrap, styles.heroMiniSealWrap]}>
+            <Image source={EXPLORE_VISUALS.checkinSeal} style={styles.heroMiniImage} contentFit="contain" />
+          </View>
           <Text style={styles.heroMiniText}>扫码到点打卡</Text>
         </Pressable>
       </View>
@@ -743,10 +809,10 @@ function DiscoveryCommandDock({
   onAsk: () => void;
 }) {
   const commands = [
-    { key: 'photo', title: '小灵识景', desc: '对准眼前景点', mark: '相', tone: Colors.accent, onPress: onPhoto },
-    { key: 'scan', title: '小灵打卡', desc: '确认已经到达', mark: '签', tone: Colors.gold, onPress: onScan },
-    { key: 'route', title: '路线安排', desc: '让小灵排路线', mark: '路', tone: Colors.primary, onPress: onRoutes },
-    { key: 'ask', title: '随时问询', desc: '和小灵聊一聊', mark: '问', tone: Colors.auxiliary, onPress: onAsk },
+    { key: 'photo', title: '小灵识景', desc: '对准眼前景点', image: EXPLORE_VISUALS.spotRecognition, imageFit: 'cover' as const, tone: Colors.accent, onPress: onPhoto },
+    { key: 'scan', title: '小灵打卡', desc: '确认已经到达', image: EXPLORE_VISUALS.checkinSeal, imageFit: 'contain' as const, tone: Colors.gold, onPress: onScan },
+    { key: 'route', title: '路线安排', desc: '让小灵排路线', image: EXPLORE_VISUALS.routeMap, imageFit: 'cover' as const, tone: Colors.primary, onPress: onRoutes },
+    { key: 'ask', title: '随时问询', desc: '和小灵聊一聊', image: EXPLORE_VISUALS.lantern, imageFit: 'contain' as const, tone: Colors.auxiliary, onPress: onAsk },
   ];
 
   return (
@@ -767,7 +833,7 @@ function DiscoveryCommandDock({
             onPress={command.onPress}
           >
             <View style={[styles.commandMark, { backgroundColor: command.tone + '18' }]}>
-              <Text style={[styles.commandMarkText, { color: command.tone }]}>{command.mark}</Text>
+              <Image source={command.image} style={styles.commandMarkImage} contentFit={command.imageFit} />
             </View>
             <View style={styles.commandTextWrap}>
               <Text style={styles.commandTitle}>{command.title}</Text>
@@ -794,9 +860,9 @@ function GuideSupportPanel({
   onMemory: () => void;
 }) {
   const supports = [
-    { key: 'routes', mark: '路', title: '调整路线', desc: `${routeCount} 条小灵路线脚本`, tone: Colors.primary, onPress: onRoutes },
-    { key: 'library', mark: '景', title: '查景点资料', desc: `${spotCount} 处核心导览点`, tone: Colors.auxiliary, onPress: onLibrary },
-    { key: 'memory', mark: '忆', title: '生成旅程记忆', desc: '把打卡和问答沉淀下来', tone: Colors.accent, onPress: onMemory },
+    { key: 'routes', title: '调整路线', desc: `${routeCount} 条小灵路线脚本`, image: EXPLORE_VISUALS.templePlan, imageFit: 'cover' as const, tone: Colors.primary, onPress: onRoutes },
+    { key: 'library', title: '查景点资料', desc: `${spotCount} 处核心导览点`, image: EXPLORE_VISUALS.templeGate, imageFit: 'cover' as const, tone: Colors.auxiliary, onPress: onLibrary },
+    { key: 'memory', title: '生成旅程记忆', desc: '把打卡和问答沉淀下来', image: EXPLORE_VISUALS.scrollPaper, imageFit: 'contain' as const, tone: Colors.accent, onPress: onMemory },
   ];
 
   return (
@@ -832,7 +898,7 @@ function GuideSupportPanel({
             accessibilityLabel={`${item.title}，${item.desc}`}
           >
             <View style={[styles.guideSupportMark, { backgroundColor: item.tone + '16' }]}>
-              <Text style={[styles.guideSupportMarkText, { color: item.tone }]}>{item.mark}</Text>
+              <Image source={item.image} style={styles.guideSupportMarkImage} contentFit={item.imageFit} />
             </View>
             <View style={styles.guideSupportCopy}>
               <Text style={styles.guideSupportTitle}>{item.title}</Text>
@@ -864,7 +930,6 @@ export default function ExplorePage() {
     () => getSoloRouteRecommendation(tourState.guideProfile),
     [tourState.guideProfile],
   );
-  const recommendedGuideRoute = soloRecommendation.route;
 
   // Load data
   useEffect(() => {
@@ -889,8 +954,13 @@ export default function ExplorePage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const hasGreetedRef = useRef(false);
+
   useEffect(() => {
     VRMManager.setPageContext('explore');
+    if (hasGreetedRef.current) return;
+    hasGreetedRef.current = true;
+
     const t = setTimeout(() => {
       if (tourState.currentRoute) {
         VRMManager.speak(`${tourState.currentRoute.name}，导览进行中。让我为您导航到下一个景点`, 'happy');
@@ -937,7 +1007,25 @@ export default function ExplorePage() {
 
   const handleAskGuide = useCallback(() => {
     VRMManager.speak('我在，想问景点故事、路线安排还是打卡方式？', 'happy');
-    setTimeout(() => router.push('/chat'), 650);
+    setTimeout(() => {
+      router.push({
+        pathname: '/chat',
+        params: { returnTo: '/explore', returnLabel: '返回探索', fresh: '1' },
+      });
+    }, 650);
+  }, [router]);
+
+  const handleFreeAsk = useCallback((question: string) => {
+    VRMManager.speak(`我来帮你问问：${question}`, 'thinking');
+    router.push({
+      pathname: '/chat',
+      params: {
+        initialQuestion: question,
+        sourcePage: 'explore',
+        returnTo: '/explore',
+        returnLabel: '返回探索',
+      },
+    });
   }, [router]);
 
   const handleStartGuide = useCallback(() => {
@@ -956,36 +1044,31 @@ export default function ExplorePage() {
       }, 600);
       return;
     }
-    tourActions.startGuideRoute(
-      recommendedGuideRoute,
-      recommendedGuideRoute.theme === 'free' ? 'free_walk' : recommendedGuideRoute.theme,
-    );
-    const firstStopName = recommendedGuideRoute.stops[0]?.name || '第一站';
+    tourActions.startSoloTour('free_walk');
     VRMManager.speak(
-      `${soloRecommendation.companionLine}${soloRecommendation.reason} 我们先从${firstStopName}开始。`,
+      `${soloRecommendation.companionLine}我先不安排完整路线，你可以自由看看。想让我推荐下一站时，随时点路线安排。`,
       'happy',
     );
-    setTimeout(() => router.push('/map'), 650);
   }, [
-    recommendedGuideRoute,
     soloRecommendation.companionLine,
-    soloRecommendation.reason,
-    tourActions.startGuideRoute,
+    tourActions.startSoloTour,
     tourState.currentRoute,
     tourState.currentSpot,
     router,
   ]);
 
-  const handleFreeExplore = useCallback(() => {
-    VRMManager.speak('好的，你可以先自由看看。地图上点一下景点，我来讲给你听。', 'neutral');
-    setTimeout(() => router.push('/map'), 520);
+  const handleOpenMemory = useCallback(() => {
+    router.push({
+      pathname: '/memory',
+      params: { returnTo: '/explore', returnLabel: '返回探索' },
+    });
   }, [router]);
 
   const handleEndTour = useCallback(() => {
     VRMManager.speak('本次导览我先帮你收束成旅程记忆，稍后可以继续补充照片和问答。', 'happy');
     tourActions.endTour();
-    setTimeout(() => router.push('/memory'), 520);
-  }, [router, tourActions.endTour]);
+    setTimeout(handleOpenMemory, 520);
+  }, [handleOpenMemory, tourActions.endTour]);
 
   return (
     <View style={styles.root}>
@@ -1009,8 +1092,8 @@ export default function ExplorePage() {
                 onPhoto={handleOpenPhoto}
                 onScan={handleOpenScan}
                 onStartGuide={handleStartGuide}
-                onFreeExplore={handleFreeExplore}
                 onAskGuide={handleAskGuide}
+                onFreeAsk={handleFreeAsk}
                 activeRouteName={tourState.currentRoute?.name}
                 progressLabel={
                   tourState.progress.total > 0
@@ -1050,7 +1133,7 @@ export default function ExplorePage() {
                   )}
                   <View style={exploreTourStyles.tourActions}>
                     {tourState.status === 'completed' ? (
-                      <Pressable style={exploreTourStyles.tourResumeBtn} onPress={() => router.push('/memory')}>
+                      <Pressable style={exploreTourStyles.tourResumeBtn} onPress={handleOpenMemory}>
                         <Text style={exploreTourStyles.tourResumeBtnText}>查看手帐</Text>
                       </Pressable>
                     ) : (tourState.status === 'narrating' || tourState.status === 'navigate') ? (
@@ -1097,7 +1180,7 @@ export default function ExplorePage() {
                 spotCount={spots.length}
                 onRoutes={() => router.push('/routes')}
                 onLibrary={() => router.push('/attractions')}
-                onMemory={() => router.push('/memory')}
+                onMemory={handleOpenMemory}
               />
             </Animated.View>
           </>
@@ -1137,6 +1220,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: Colors.ink,
   },
+  heroEchoImage: {
+    opacity: 0.18,
+  },
   heroScrim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(12,10,8,0.64)',
@@ -1154,13 +1240,18 @@ const styles = StyleSheet.create({
   heroSeal: {
     width: 52,
     height: 52,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: 'rgba(255,228,203,0.68)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,228,203,0.72)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(200,75,49,0.22)',
+    backgroundColor: 'rgba(255,250,241,0.92)',
     transform: [{ rotate: '-7deg' }],
+    overflow: 'hidden',
+  },
+  heroSealImage: {
+    width: 44,
+    height: 44,
   },
   heroSealText: {
     fontSize: 27,
@@ -1212,6 +1303,25 @@ const styles = StyleSheet.create({
     width: 194,
     height: 252,
     position: 'relative',
+  },
+  vrmReloadBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.24)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vrmReloadText: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '700',
   },
   guideNamePlate: {
     position: 'absolute',
@@ -1275,6 +1385,36 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     color: 'rgba(255,255,255,0.92)',
     fontWeight: '500',
+  },
+  freeAskRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 6,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.13)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  freeAskInput: {
+    flex: 1,
+    minHeight: 38,
+    paddingHorizontal: 12,
+    fontSize: 13,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  freeAskBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#FFE4CB',
+  },
+  freeAskBtnText: {
+    fontSize: 12,
+    color: Colors.ink,
+    fontWeight: '800',
   },
   heroMetaRail: {
     zIndex: 2,
@@ -1349,7 +1489,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 44,
     borderRadius: Radius.md,
-    paddingHorizontal: 12,
+    paddingHorizontal: 9,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -1366,6 +1506,22 @@ const styles = StyleSheet.create({
     color: Colors.gold,
     fontWeight: '900',
     backgroundColor: 'rgba(200,169,81,0.16)',
+  },
+  heroMiniImageWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,228,203,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  heroMiniSealWrap: {
+    backgroundColor: 'rgba(255,250,241,0.92)',
+  },
+  heroMiniImage: {
+    width: '100%',
+    height: '100%',
   },
   heroMiniText: {
     flex: 1,
@@ -1527,6 +1683,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(42,37,32,0.06)',
+  },
+  commandMarkImage: {
+    width: '100%',
+    height: '100%',
   },
   commandMarkText: {
     fontSize: 18,
@@ -1616,6 +1779,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  guideSupportMarkImage: {
+    width: '100%',
+    height: '100%',
   },
   guideSupportMarkText: {
     fontSize: 18,

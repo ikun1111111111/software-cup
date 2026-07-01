@@ -16,6 +16,12 @@ export interface TourCompletionTransition<TSpot extends TourProgressSpot> {
   isTourComplete: boolean;
 }
 
+export interface TourArrivalTransition<TSpot extends TourProgressSpot> {
+  progress: TourProgressSnapshot;
+  currentSpot: TSpot;
+  nextSpot: TSpot | null;
+}
+
 export function getTourCompletionTransition<TSpot extends TourProgressSpot>(
   routeSpots: TSpot[],
   progress: Pick<TourProgressSnapshot, 'total' | 'completed'>,
@@ -36,5 +42,36 @@ export function getTourCompletionTransition<TSpot extends TourProgressSpot>(
     currentSpot: routeSpots[completed] || null,
     nextSpot: routeSpots[completed + 1] || null,
     isTourComplete,
+  };
+}
+
+export function getTourArrivalTransition<TSpot extends TourProgressSpot>(
+  routeSpots: TSpot[],
+  progress: TourProgressSnapshot,
+  arrivedSpot: TSpot,
+): TourArrivalTransition<TSpot> {
+  const total = progress.total || routeSpots.length;
+  const routeIndex = routeSpots.findIndex((routeSpot) => routeSpot.id === arrivedSpot.id);
+
+  if (routeIndex < 0) {
+    return {
+      progress: {
+        total,
+        completed: progress.completed,
+        current: progress.current,
+      },
+      currentSpot: arrivedSpot,
+      nextSpot: null,
+    };
+  }
+
+  return {
+    progress: {
+      total,
+      completed: Math.max(progress.completed, routeIndex),
+      current: Math.min(routeIndex + 1, total),
+    },
+    currentSpot: routeSpots[routeIndex],
+    nextSpot: routeSpots[routeIndex + 1] || null,
   };
 }

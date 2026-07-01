@@ -11,8 +11,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/colors';
-import { useVRM } from '@/components/vrm/VRMProvider';
+import { VRMView } from '@/components/vrm/VRMView';
+import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
 import { SPOT_IMAGES } from '@/constants/scenic';
+import { estimateNarrationDurationSeconds } from '@/utils/digitalHumanDriver';
+import { getTimedTextSlice } from '@/utils/textTimeline';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CARD_RADIUS = 24;
@@ -48,9 +52,19 @@ export const NarrationSheet: React.FC<Props> = ({
   onQuestion,
 }) => {
   const insets = useSafeAreaInsets();
-  const { vrmRef } = useVRM();
+  const {
+    expression,
+    mouthOpen,
+    isSpeaking,
+    subtitle,
+    action,
+    actionDurationMs,
+    headRotation,
+    speak: speakWithDigitalHuman,
+    stop: stopDigitalHuman,
+  } = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE, { speakerId: 'narration-sheet' });
   const [isPlaying, setIsPlaying] = useState(true);
-  const [progress, setProgress] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [currentText, setCurrentText] = useState('');
   const [displayedText, setDisplayedText] = useState('');
   const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
@@ -60,9 +74,18 @@ export const NarrationSheet: React.FC<Props> = ({
   const cursorAnim = useRef(new Animated.Value(1)).current;
   const fadeInAnim = useRef(new Animated.Value(0)).current;
   const scrollY = useRef(new Animated.Value(0)).current;
+  const lastProgressTickRef = useRef<number | null>(null);
 
-  const duration = content.duration || Math.max(30, content.text.length / 5);
+  const duration = estimateNarrationDurationSeconds(content.text, content.duration);
+  const progress = duration > 0 ? Math.min(elapsedSeconds / duration, 1) : 0;
+  const displayDurationSeconds = Math.ceil(duration);
+  const displayElapsedSeconds = progress >= 1
+    ? displayDurationSeconds
+    : Math.min(elapsedSeconds, displayDurationSeconds);
   const spotImage = SPOT_IMAGES[content.spot.id];
+  const digitalHumanLine = isPlaying
+    ? subtitle || '我在为你讲这一站的重点。'
+    : '小灵已暂停，继续后接着讲。';
 
   // 入场动画
   useEffect(() => {
@@ -160,45 +183,69 @@ export const NarrationSheet: React.FC<Props> = ({
   // 进度更新
   useEffect(() => {
     if (!isPlaying) return;
+    lastProgressTickRef.current = Date.now();
+
     const interval = setInterval(() => {
-      setProgress((prev) => {
-        const next = prev + 1 / duration;
-        if (next >= 1) {
+      const now = Date.now();
+      const lastTick = lastProgressTickRef.current ?? now;
+      lastProgressTickRef.current = now;
+
+      setElapsedSeconds((prev) => {
+        const next = Math.min(duration, prev + (now - lastTick) / 1000);
+        if (next >= duration) {
           clearInterval(interval);
-          return 1;
         }
         return next;
       });
-    }, 1000);
-    return () => clearInterval(interval);
+    }, 250);
+
+    return () => {
+      lastProgressTickRef.current = null;
+      clearInterval(interval);
+    };
   }, [isPlaying, duration]);
 
-  // 流式文字输出 - 一次性从头到尾逐字显示
+  // 流式文字输出 - 按讲解进度同步显示
   useEffect(() => {
     const fullText = content.text;
     setCurrentText(fullText);
-
-    let idx = 0;
+    setElapsedSeconds(0);
     setDisplayedText('');
-    const timer = setInterval(() => {
-      if (idx <= fullText.length) {
-        setDisplayedText(fullText.slice(0, idx));
-        idx++;
-      } else {
-        clearInterval(timer);
-      }
-    }, 30);
-    return () => clearInterval(timer);
   }, [content.text]);
+
+  useEffect(() => {
+    setDisplayedText(getTimedTextSlice(currentText, elapsedSeconds * 1000, duration * 1000));
+  }, [currentText, duration, elapsedSeconds]);
 
   // 同步 VRM 说话
   useEffect(() => {
-    if (isPlaying && vrmRef.current && currentText) {
-      vrmRef.current.speak(currentText.slice(-50), 'neutral');
+    if (!currentText) return undefined;
+
+    if (!isPlaying) {
+      stopDigitalHuman();
+      return undefined;
     }
-  }, [currentText, isPlaying]);
+
+    const spokenText = currentText.length > 140
+      ? `${currentText.slice(0, 140)}...`
+      : currentText;
+
+    speakWithDigitalHuman(spokenText, {
+      emotion: 'neutral',
+      durationMs: duration * 1000,
+      action: 'point',
+      actionDurationMs: 1200,
+    });
+
+    return () => {
+      stopDigitalHuman();
+    };
+  }, [currentText, duration, isPlaying, speakWithDigitalHuman, stopDigitalHuman]);
 
   const handlePauseResume = () => {
+    if (!isPlaying) {
+      setElapsedSeconds(0);
+    }
     setIsPlaying(!isPlaying);
   };
 
@@ -300,11 +347,11 @@ export const NarrationSheet: React.FC<Props> = ({
             <Text style={styles.progressLabel}>讲解进度</Text>
             <View style={styles.progressTime}>
               <Text style={styles.progressTimeText}>
-                {formatTime(progress * duration)}
+                {formatTime(displayElapsedSeconds)}
               </Text>
               <Text style={styles.progressTimeDivider}> / </Text>
               <Text style={styles.progressTimeTotal}>
-                {formatTime(duration)}
+                {formatTime(displayDurationSeconds)}
               </Text>
             </View>
           </View>
@@ -322,6 +369,35 @@ export const NarrationSheet: React.FC<Props> = ({
             <View style={[styles.milestone, { opacity: progress > 0.5 ? 1 : 0.3 }]} />
             <View style={[styles.milestone, { opacity: progress > 0.75 ? 1 : 0.3 }]} />
             <View style={[styles.milestone, { opacity: progress >= 1 ? 1 : 0.3 }]} />
+          </View>
+        </View>
+
+        {/* 数字人讲解员 */}
+        <View style={styles.digitalHumanCard} pointerEvents="none">
+          <View style={styles.digitalHumanCopy}>
+            <View style={styles.digitalHumanStatus}>
+              <View style={[styles.digitalHumanDot, !isPlaying && styles.digitalHumanDotPaused]} />
+              <Text style={styles.digitalHumanStatusText}>
+                {isPlaying ? '小灵正在讲' : '小灵已暂停'}
+              </Text>
+            </View>
+            <Text style={styles.digitalHumanTitle}>数字人讲解员</Text>
+            <Text style={styles.digitalHumanText} numberOfLines={2}>
+              {digitalHumanLine}
+            </Text>
+          </View>
+          <View style={styles.digitalHumanStage}>
+            <View style={styles.digitalHumanGroundShadow} />
+            <VRMView
+              mode="float"
+              expression={expression}
+              mouthOpen={mouthOpen}
+              speaking={isPlaying && isSpeaking}
+              action={action}
+              actionDuration={actionDurationMs}
+              headRotation={headRotation}
+              costumeId="festival-spring"
+            />
           </View>
         </View>
 
@@ -612,6 +688,81 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
 
+  // Digital Human
+  digitalHumanCard: {
+    position: 'relative',
+    flexDirection: 'row',
+    minHeight: 168,
+    backgroundColor: '#FAFCF8',
+    borderRadius: 20,
+    marginBottom: 20,
+    paddingLeft: 18,
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(106, 156, 137, 0.12)',
+    shadowColor: '#2A2520',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 16,
+    overflow: 'hidden',
+  },
+  digitalHumanCopy: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingRight: 8,
+    zIndex: 2,
+  },
+  digitalHumanStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginBottom: 10,
+  },
+  digitalHumanDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.primary,
+  },
+  digitalHumanDotPaused: {
+    backgroundColor: Colors.gray400,
+  },
+  digitalHumanStatusText: {
+    fontSize: 12,
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  digitalHumanTitle: {
+    fontSize: 18,
+    color: Colors.ink,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  digitalHumanText: {
+    fontSize: 13,
+    lineHeight: 20,
+    color: Colors.gray500,
+    fontWeight: '500',
+  },
+  digitalHumanStage: {
+    width: 146,
+    height: 204,
+    marginTop: -18,
+    marginRight: -4,
+    marginBottom: -18,
+    overflow: 'hidden',
+    zIndex: 2,
+  },
+  digitalHumanGroundShadow: {
+    position: 'absolute',
+    right: 24,
+    bottom: 10,
+    width: 86,
+    height: 16,
+    borderRadius: 999,
+    backgroundColor: 'rgba(42, 37, 32, 0.08)',
+  },
+
   // Subtitle Card
   subtitleCard: {
     backgroundColor: '#F9F7F4',
@@ -739,10 +890,10 @@ const styles = StyleSheet.create({
   // VRM Container
   vrmContainer: {
     position: 'absolute',
-    right: -10,
+    right: -18,
     bottom: 100,
-    width: 160,
-    height: 260,
+    width: 184,
+    height: 296,
     zIndex: 10,
   },
 

@@ -26,6 +26,7 @@ export default function CreateMemoryModal({ visible, onClose, onSubmit, spots, l
     if (visible) {
       setSelectedSpot(initialSpotName);
       setInput(initialInput || '');
+      setSelectedMood(undefined);
     }
   }, [visible, initialSpotName, initialInput]);
 
@@ -108,7 +109,9 @@ export default function CreateMemoryModal({ visible, onClose, onSubmit, spots, l
                   ]}
                   onPress={() => setSelectedMood(selectedMood === mood ? undefined : mood)}
                 >
-                  <Text style={styles.moodOptionEmoji}>{meta.emoji}</Text>
+                  <View style={[styles.moodEmojiBubble, { borderColor: meta.color }]}>
+                    <Text style={styles.moodEmojiText}>{meta.emoji}</Text>
+                  </View>
                   <Text style={[
                     styles.moodOptionLabel,
                     selectedMood === mood && styles.moodOptionLabelActive,
@@ -134,7 +137,7 @@ export default function CreateMemoryModal({ visible, onClose, onSubmit, spots, l
             {loading ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
-              <Text style={styles.modalSubmitText}>✨ 数字人为你书写</Text>
+              <Text style={styles.modalSubmitText}>数字人为你书写</Text>
             )}
           </Pressable>
         </View>
@@ -178,7 +181,19 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.borderLight,
   },
   moodOptionActive: { borderColor: Colors.primary, backgroundColor: Colors.primaryBg },
-  moodOptionEmoji: { fontSize: 22 },
+  moodEmojiBubble: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1.5,
+    backgroundColor: 'rgba(255,255,255,0.86)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  moodEmojiText: {
+    fontSize: 17,
+    lineHeight: 20,
+  },
   moodOptionLabel: { fontSize: 10, color: Colors.gray500 },
   moodOptionLabelActive: { color: Colors.primary, fontWeight: '600' },
   modalFooter: {

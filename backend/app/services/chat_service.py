@@ -7,14 +7,25 @@ from app.core.faq_matcher import search_faq
 from app.core.llm import analyze_sentiment
 from app.core.semantic_cache import get_similar
 from app.core.context_manager import get_history
+from app.core.emotion_mapper import detect_emotion, detect_emotion_from_answer
 
 logger = logging.getLogger(__name__)
 
 
-def build_prompt(question: str, context_chunks: list[dict], history: list[dict] | None = None) -> list[dict]:
+def build_prompt(
+    question: str,
+    context_chunks: list[dict],
+    history: list[dict] | None = None,
+    spot_context: dict | None = None,
+) -> list[dict]:
     """Build LLM prompt with retrieved context and optional history."""
     from app.core.prompts import build_chat_prompt
-    return build_chat_prompt(question, context_chunks, history=history)
+    return build_chat_prompt(
+        question,
+        context_chunks,
+        history=history,
+        spot_context=spot_context,
+    )
 
 
 async def process_chat(
@@ -25,6 +36,10 @@ async def process_chat(
     use_context: bool = True,
     use_semantic_cache: bool = True,
     history: list[dict] | None = None,
+    spot_id: str | None = None,
+    spot_name: str | None = None,
+    route_id: str | None = None,
+    source_page: str | None = None,
 ) -> dict:
     """Full chat pipeline with context and semantic cache.
 
@@ -51,6 +66,7 @@ async def process_chat(
         "from_cache": False,
         "sentiment_score": 0.5,
         "sentiment_label": "neutral",
+        "emotion": "neutral",
         "latency_ms": 0,
     }
 
@@ -60,6 +76,7 @@ async def process_chat(
         result["answer"] = faq_result["answer"]
         result["source"] = "faq"
         result["is_faq"] = True
+        result["emotion"] = detect_emotion_from_answer(faq_result["answer"])
         result["latency_ms"] = int((time.time() - start_time) * 1000)
         return result
 
@@ -71,6 +88,7 @@ async def process_chat(
                 result["answer"] = cached_answer
                 result["source"] = "cache"
                 result["from_cache"] = True
+                result["emotion"] = detect_emotion_from_answer(cached_answer)
                 result["latency_ms"] = int((time.time() - start_time) * 1000)
                 return result
         except Exception as e:
@@ -95,10 +113,10 @@ async def process_chat(
             except Exception as e:
                 logger.warning("Failed to load context history: %s", e)
 
-    # Step 4: RAG retrieval
+    # Step 4: RAG retrieval (boost current-spot chunks when spot_name provided)
     use_fallback = False
     try:
-        chunks = await retrieve(question)
+        chunks = await retrieve(question, spot_name=spot_name)
     except Exception as e:
         logger.error("RAG retrieval failed: %s", e)
         chunks = []
@@ -126,7 +144,12 @@ async def process_chat(
     # Step 5: LLM generation with history
     # When using fallback, pass empty chunks so the LLM relies solely on system prompt knowledge
     prompt_chunks = [] if use_fallback else chunks
-    messages = build_prompt(question, prompt_chunks, history=history_messages if history_messages else None)
+    messages = build_prompt(
+        question,
+        prompt_chunks,
+        history=history_messages if history_messages else None,
+        spot_context={"spot_id": spot_id, "spot_name": spot_name, "route_id": route_id, "source_page": source_page},
+    )
 
     # Run sentiment analysis in parallel with LLM (no dependency between them)
     import asyncio
@@ -155,6 +178,7 @@ async def process_chat(
     score, label = await sentiment_task
     result["sentiment_score"] = score
     result["sentiment_label"] = label
+    result["emotion"] = detect_emotion(question, label)
 
     result["latency_ms"] = int((time.time() - start_time) * 1000)
     return result
