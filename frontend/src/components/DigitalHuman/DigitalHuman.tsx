@@ -46,12 +46,12 @@ const COSTUME_TO_MODEL: Record<string, string> = {
 };
 
 const COSTUME_STAGE_CONFIG: Record<string, { cameraDistance?: number; modelOffsetY?: number }> = {
-  'festival-spring':    { cameraDistance: 2.2, modelOffsetY: -0.04 },
-  'festival-lantern':   { cameraDistance: 2.0 },
-  'festival-qingming':  { cameraDistance: 2.2, modelOffsetY: -0.06 },
-  'festival-dragon':    { cameraDistance: 2.0 },
-  'festival-midautumn': { cameraDistance: 2.2, modelOffsetY: -0.06 },
-  'festival-national':  { cameraDistance: 2.0, modelOffsetY: 0.05 },
+  'festival-spring':    { cameraDistance: 2.5, modelOffsetY: -0.04 },
+  'festival-lantern':   { cameraDistance: 2.35 },
+  'festival-qingming':  { cameraDistance: 2.5, modelOffsetY: -0.06 },
+  'festival-dragon':    { cameraDistance: 2.35 },
+  'festival-midautumn': { cameraDistance: 2.5, modelOffsetY: -0.06 },
+  'festival-national':  { cameraDistance: 2.35, modelOffsetY: 0.05 },
 };
 
 const EXPRESSION_TO_VRM: Record<string, DemoExpression> = {
@@ -145,14 +145,16 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
   const activeExpression = isSpeaking ? speakingExpression : (expression || emotion);
   const vrmExpression: DemoExpression = EXPRESSION_TO_VRM[activeExpression] || 'neutral';
   const stageConfig = COSTUME_STAGE_CONFIG[costumeId] || {};
+  const frameWidth = Math.round(width * 1.12);
+  const frameHeight = Math.round(height * 1.1);
 
   return (
     <div
       data-testid="digital-human"
       style={{
         position: 'relative',
-        width,
-        height,
+        width: frameWidth,
+        height: frameHeight,
         borderRadius: '16px',
         background: 'transparent',
         overflow: 'hidden',

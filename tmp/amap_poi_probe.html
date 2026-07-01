@@ -1,0 +1,63 @@
+<!doctype html>
+<meta charset="utf-8" />
+<pre id="out">loading</pre>
+<script>
+  const KEY = '69ce537355cca1a2ba0bbf3b737c5d35';
+  const keywords = [
+    '灵山大照壁',
+    '灵山大佛',
+    '九龙灌浴',
+    '五印坛城',
+    '灵山梵宫',
+  ];
+
+  function write(value) {
+    document.getElementById('out').textContent = JSON.stringify(value, null, 2);
+  }
+
+  window.onAmapReady = function () {
+    AMap.plugin('AMap.PlaceSearch', function () {
+      const searcher = new AMap.PlaceSearch({ city: '无锡', pageSize: 5, pageIndex: 1 });
+      const results = [];
+      let index = 0;
+
+      function next() {
+        if (index >= keywords.length) {
+          write({ status: 'done', results });
+          return;
+        }
+        const keyword = keywords[index++];
+        searcher.search(keyword, function (status, result) {
+          const pois = result && result.poiList && result.poiList.pois
+            ? result.poiList.pois.map(function (poi) {
+                return {
+                  name: poi.name,
+                  address: poi.address,
+                  location: poi.location ? {
+                    lng: poi.location.lng,
+                    lat: poi.location.lat,
+                  } : null,
+                };
+              })
+            : [];
+          results.push({
+            keyword,
+            status,
+            info: result && result.info,
+            raw: result && result.toString ? result.toString() : result,
+            pois,
+          });
+          next();
+        });
+      }
+
+      next();
+    });
+  };
+
+  setTimeout(function () {
+    const pre = document.getElementById('out');
+    if (pre.textContent === 'loading') write({ status: 'timeout' });
+  }, 12000);
+</script>
+<script src="https://webapi.amap.com/maps?v=2.0&key=69ce537355cca1a2ba0bbf3b737c5d35&plugin=AMap.PlaceSearch&callback=onAmapReady"></script>

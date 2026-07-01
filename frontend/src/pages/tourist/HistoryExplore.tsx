@@ -6,6 +6,7 @@ import StampWall from '../../components/tourist/StampWall';
 import { FloatingGuide, FloatingGuideRef } from '../../components/vrm/FloatingGuide';
 import { VRMManager } from '../../components/vrm/VRMManager';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import type { Emotion } from '../../components/DigitalHuman/EmotionController';
 
 const HistoryExplore: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'timeline' | 'puzzle' | 'stamps'>('timeline');
@@ -24,12 +25,18 @@ const HistoryExplore: React.FC = () => {
   const handleEraChange = (era: string) => {
     setActiveEra(era);
 
-    const eraTexts: Record<string, { text: string; emotion: 'happy' | 'surprised' | 'neutral' }> = {
+    const eraTexts: Record<string, { text: string; emotion: Emotion }> = {
       tang: { text: '盛唐时期，灵山开始建寺，佛教文化逐渐兴盛。玄奘法师曾在此驻足...', emotion: 'neutral' },
+      唐代: { text: '盛唐时期，灵山开始建寺，佛教文化逐渐兴盛。玄奘法师曾在此驻足...', emotion: 'neutral' },
       song: { text: '宋代，灵山佛教达到鼎盛，香火旺盛，文人墨客纷纷前来朝拜...', emotion: 'neutral' },
+      北宋: { text: '北宋时期，宋真宗赐额祥符禅寺，灵山香火渐盛，寺院名望远播...', emotion: 'neutral' },
+      南宋: { text: '南宋时期，兵燹让祥符禅寺受损，也让灵山的传承留下沧桑痕迹...', emotion: 'neutral' },
       ming: { text: '明代，灵山进行了大规模修缮，留下了许多珍贵的历史遗迹...', emotion: 'neutral' },
+      明代: { text: '明代，灵山进行了大规模修缮，留下了许多珍贵的历史遗迹...', emotion: 'neutral' },
       qing: { text: '清代，灵山经历了战火洗礼，但依然保留着深厚的佛教文化底蕴...', emotion: 'neutral' },
-      modern: { text: '1997年，灵山大佛落成开光，高88米，成为世界上最高的青铜立佛...', emotion: 'surprised' },
+      清末: { text: '清末民初，寺院再遭战火，仅存古井、银杏与残垣，成为今天追溯历史的线索...', emotion: 'neutral' },
+      modern: { text: '1997年，灵山大佛落成开光，高88米，成为世界上最高的青铜立佛...', emotion: 'surprise' },
+      现代: { text: '现代灵山以大佛、梵宫与拈花湾连接古今，让佛教文化以新的方式被看见...', emotion: 'surprise' },
     };
 
     const eraData = eraTexts[era];
