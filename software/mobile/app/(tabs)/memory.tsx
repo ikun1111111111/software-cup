@@ -808,6 +808,7 @@ export default function MemoryPage() {
                 onGenerate={handleGenerate}
                 generating={generating}
                 onCreatePress={() => setShowCreateModal(true)}
+                candidateCount={memoryGraphCandidates.length}
               />
             ) : (
               <>
@@ -825,6 +826,7 @@ export default function MemoryPage() {
                   onCreatePress={() => setShowCreateModal(true)}
                   onSharePress={() => setShowShareModal(true)}
                   onCapsulePress={() => setShowCapsuleModal(true)}
+                  candidateCount={memoryGraphCandidates.length}
                 />
 
                 <View style={styles.mapViewToggle}>
