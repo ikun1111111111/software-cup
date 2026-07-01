@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text, ActivityIndicator, StyleSheet, View } from 'react-native';
+import { Pressable, Text, ActivityIndicator, StyleSheet, View, Image } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
@@ -33,8 +33,10 @@ export function ActionBar({
         accessibilityRole="button"
         accessibilityLabel="写一条记忆"
       >
+        <Image source={MEMORY_IMAGES.route} style={styles.primaryBackdrop} resizeMode="cover" />
+        <View style={styles.primaryBackdropWash} />
         <View style={styles.primaryImageWrap}>
-          <MemoryImage source={MEMORY_IMAGES.write} size={56} radius={14} fit="contain" />
+          <MemoryImage source={MEMORY_IMAGES.write} size={38} radius={12} fit="contain" />
         </View>
         <View style={styles.primaryCopy}>
           <Text style={styles.primaryEyebrow}>NEW MEMORY</Text>
@@ -129,23 +131,37 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: Radius.lg,
     backgroundColor: Colors.ink,
+    overflow: 'hidden',
+    position: 'relative',
     shadowColor: Colors.ink,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.16,
     shadowRadius: 18,
     elevation: 6,
   },
+  primaryBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+    opacity: 0.52,
+  },
+  primaryBackdropWash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(28,24,20,0.58)',
+  },
   primaryImageWrap: {
-    width: 62,
-    height: 62,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    width: 48,
+    height: 48,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.82)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1,
   },
   primaryCopy: {
     flex: 1,
     minWidth: 0,
+    zIndex: 1,
   },
   primaryEyebrow: {
     fontSize: 10,
@@ -171,6 +187,7 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     color: 'rgba(255,255,255,0.7)',
     fontWeight: '300',
+    zIndex: 1,
   },
   toolGrid: {
     flexDirection: 'row',
