@@ -1,7 +1,7 @@
 """Analytics Dashboard API endpoints."""
 import logging
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,15 @@ from app.core.analytics import (
 from app.models.mobile_event import MobileTourEvent
 from app.tasks.report_task import generate_report_task, get_report_status
 from app.services.crowd_predict import get_crowd_prediction, get_best_time, get_crowd_alerts
+from app.services.report_archive_service import (
+    REPORT_TYPE_SENTIMENT,
+    create_report_archive,
+    get_latest_report_archive,
+    get_report_archive as get_report_archive_record,
+    list_report_archives,
+    run_report_generation,
+    serialize_report_archive,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -167,16 +176,32 @@ class MobileTourSummaryResponse(BaseModel):
 
 class ReportTriggerResponse(BaseModel):
     task_id: str
+    report_id: int | None = None
     status: str
     message: str
 
 
 class ReportStatusResponse(BaseModel):
     task_id: str
+    report_id: int | None = None
     status: str
     content: str | None = None
     period: str | None = None
     generated_at: str | None = None
+
+
+class ReportArchiveListResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[dict]
+
+
+class ReportArchiveGenerateResponse(BaseModel):
+    report_id: int
+    task_id: str
+    status: str
+    message: str
 
 
 # ── Crowd Prediction endpoints (M12) ─────────────────────────────────────────
@@ -339,20 +364,118 @@ async def get_realtime(
 
 @router.post("/report", response_model=ReportTriggerResponse)
 async def trigger_report(
-    start_date: str | None = Query(None, description="开始日期 YYYY-MM-DD"),
-    end_date: str | None = Query(None, description="结束日期 YYYY-MM-DD"),
-    days: int = Query(7, ge=1, le=90, description="默认回溯天数"),
+    start_date: str | None = Query(None, description="Start date YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="End date YYYY-MM-DD"),
+    days: int = Query(7, ge=1, le=90, description="Look-back days"),
+    report_type: str = Query(REPORT_TYPE_SENTIMENT, description="sentiment or marketing"),
 ):
     """Trigger an async analytics report generation via Celery.
 
     Use `/api/analytics/report/status/{task_id}` to poll for results.
+    New DB-backed clients should use `/api/analytics/reports/generate`.
     """
-    task = generate_report_task.delay(start_date=start_date, end_date=end_date, days=days)
+    task = generate_report_task.delay(
+        start_date=start_date,
+        end_date=end_date,
+        days=days,
+        report_type=report_type,
+    )
     return ReportTriggerResponse(
         task_id=task.id,
         status="queued",
-        message="报告生成任务已提交，请通过 status 接口查询结果",
+        message="Report generation task queued; poll the status endpoint for results.",
     )
+
+
+@router.post("/reports/generate", response_model=ReportArchiveGenerateResponse)
+async def generate_report_archive(
+    background_tasks: BackgroundTasks,
+    report_type: str = Query(REPORT_TYPE_SENTIMENT, description="sentiment or marketing"),
+    start_date: str | None = Query(None, description="YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="YYYY-MM-DD"),
+    days: int = Query(7, ge=1, le=90),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a DB-backed report archive and generate it in the background."""
+    try:
+        archive = await create_report_archive(
+            db,
+            report_type=report_type,
+            trigger_source="manual",
+            start_date=start_date,
+            end_date=end_date,
+            days=days,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    background_tasks.add_task(run_report_generation, archive.id)
+    return ReportArchiveGenerateResponse(
+        report_id=archive.id,
+        task_id=archive.task_id or str(archive.id),
+        status=archive.status,
+        message="report generation queued",
+    )
+
+
+@router.get("/reports/latest")
+async def get_latest_report(
+    report_type: str = Query(REPORT_TYPE_SENTIMENT, description="sentiment or marketing"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the latest completed DB-backed report archive."""
+    archive = await get_latest_report_archive(db, report_type=report_type)
+    if not archive:
+        return {"report": None}
+    return {"report": serialize_report_archive(archive)}
+
+
+@router.get("/reports", response_model=ReportArchiveListResponse)
+async def list_reports(
+    report_type: str | None = Query(None, description="sentiment or marketing"),
+    status: str | None = Query(None, description="queued, running, done or failed"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """List DB-backed report archives."""
+    rows, total = await list_report_archives(
+        db,
+        report_type=report_type,
+        status=status,
+        limit=page_size,
+        offset=(page - 1) * page_size,
+    )
+    return ReportArchiveListResponse(
+        total=total,
+        page=page,
+        page_size=page_size,
+        items=[serialize_report_archive(row, include_content=False) for row in rows],
+    )
+
+
+@router.get("/reports/{report_id}")
+async def get_report_archive(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return a single DB-backed report archive."""
+    archive = await get_report_archive_record(db, report_id)
+    if not archive:
+        raise HTTPException(status_code=404, detail="report not found")
+    return {"report": serialize_report_archive(archive)}
+
+
+@router.get("/reports/{report_id}/status")
+async def get_report_archive_status(
+    report_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Return DB-backed report generation status."""
+    archive = await get_report_archive_record(db, report_id)
+    if not archive:
+        raise HTTPException(status_code=404, detail="report not found")
+    return {"report": serialize_report_archive(archive)}
 
 
 @router.get("/report/status/{task_id}", response_model=ReportStatusResponse)
@@ -365,6 +488,7 @@ async def get_report(
         return ReportStatusResponse(task_id=task_id, status="pending")
     return ReportStatusResponse(
         task_id=task_id,
+        report_id=report.get("report_id"),
         status=report.get("status", "unknown"),
         content=report.get("content"),
         period=report.get("period"),

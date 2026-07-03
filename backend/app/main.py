@@ -17,6 +17,8 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
+    report_scheduler_task = None
+    report_scheduler_stop = None
     # 1. Database tables (skip if PG not available in dev)
     try:
         await init_db()
@@ -46,8 +48,19 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass  # ASR model may not be available
 
+    # 5. Daily DB-backed report archive generation at 18:00 Asia/Shanghai.
+    try:
+        from app.services.report_scheduler import start_report_scheduler
+        report_scheduler_task, report_scheduler_stop = start_report_scheduler()
+    except Exception:
+        pass
+
     yield
-    # Shutdown: nothing to clean up
+    try:
+        from app.services.report_scheduler import stop_report_scheduler
+        await stop_report_scheduler(report_scheduler_task, report_scheduler_stop)
+    except Exception:
+        pass
 
 
 app = FastAPI(
