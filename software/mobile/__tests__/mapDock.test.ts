@@ -9,10 +9,10 @@ describe('map dock drag helpers', () => {
     const offsets = getMapDockOffsets(812);
 
     expect(offsets.expanded).toBe(0);
-    expect(offsets.half).toBeGreaterThanOrEqual(190);
+    expect(offsets.half).toBeGreaterThanOrEqual(230);
     expect(offsets.half).toBeLessThan(offsets.collapsed);
-    expect(offsets.collapsed).toBeGreaterThanOrEqual(360);
-    expect(offsets.collapsed).toBeLessThanOrEqual(480);
+    expect(offsets.collapsed).toBeGreaterThanOrEqual(380);
+    expect(offsets.collapsed).toBeLessThanOrEqual(430);
   });
 
   test('clamps drag offset inside the dock travel range', () => {

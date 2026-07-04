@@ -64,7 +64,7 @@ export function VRMProvider({ children }: { children: ReactNode }) {
   const previousRoutePathRef = useRef<string | null>(null);
   const insets = useSafeAreaInsets();
   const dimensions = useWindowDimensions();
-  const hideFloating = shouldHideFloatingVRM(pathname);
+  const hideFloating = Platform.OS === 'web' || shouldHideFloatingVRM(pathname);
   // const showManualLoadButton = shouldShowManualVRMLoadButton(pathname);
   const showManualLoadButton = false;
   const routePath = normalizeVRMRoutePath(pathname);

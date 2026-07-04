@@ -99,6 +99,10 @@ function RootLayoutInner() {
                 options={{ animation: 'fade' }}
               />
               <Stack.Screen
+                name="profile/edit"
+                options={{ animation: 'slide_from_right' }}
+              />
+              <Stack.Screen
                 name="map"
                 options={{ animation: 'slide_from_bottom' }}
               />

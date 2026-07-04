@@ -118,8 +118,7 @@ function MapGuideAvatar({
   return (
     <View style={styles.avatarModule} pointerEvents="none">
       <View style={styles.avatarSpeech}>
-        <Text style={styles.avatarSpeechLabel}>{XIAOLING_MAP_COPY.avatarLabel}</Text>
-        <Text style={styles.avatarSpeechText} numberOfLines={2}>
+        <Text style={styles.avatarSpeechText} numberOfLines={1}>
           {guideText}
         </Text>
       </View>
@@ -254,15 +253,16 @@ export default function MapGuidePage() {
   const primaryListenLabel = mapAction?.action === 'narrating' && mapAction.status === 'success'
     ? '重播讲解'
     : XIAOLING_MAP_COPY.primaryCta;
-  const demoListenLabel = mapAction?.action === 'narrating' && mapAction.status === 'success'
-    ? '重播讲解'
-    : XIAOLING_MAP_COPY.demoNarrationCta;
   const demoArriveLabel = mapAction?.action === 'arrived' && mapAction.status === 'success'
     ? '已到达'
     : XIAOLING_MAP_COPY.demoArriveCta;
   const demoPanelMessage = mapAction?.message ?? actionFeedback
     ?? (tourState.error ? '在线导览暂未连接，已使用本地讲解继续。' : XIAOLING_MAP_COPY.demoText);
   const dockOffsets = useMemo(() => getMapDockOffsets(viewportHeight), [viewportHeight]);
+  const navigationStripTop = insets.top + (mapStatus !== 'ready' ? 196 : 144);
+  const locationErrorTop = insets.top + (navigating && activeGuideSpot ? 264 : 188);
+  const navigationDistanceText = formatDistance(displayDistance);
+  const navigationWalkText = estimateWalk(displayDistance);
 
   const snapDockToLevel = useCallback((level: MapDockLevel) => {
     const nextOffset = dockOffsets[level];
@@ -685,15 +685,7 @@ export default function MapGuidePage() {
         <View style={[styles.beaconDot, { backgroundColor: activeColor }]} />
         <View style={styles.beaconCopy}>
           <View style={styles.beaconTitleRow}>
-            <Text style={styles.beaconTitle} numberOfLines={1}>{statusLabel} · {routeTitle}</Text>
-            <Pressable
-              style={styles.coordinateBadge}
-              onPress={handleLocate}
-              accessibilityRole="button"
-              accessibilityLabel="地图校准"
-            >
-              <Text style={styles.coordinateBadgeText}>{COORDINATE_STATUS}</Text>
-            </Pressable>
+            <Text style={styles.beaconTitle} numberOfLines={1}>{statusLabel}</Text>
           </View>
           <Text style={styles.beaconText} numberOfLines={1}>
             {activeGuideSpot ? `下一段看 ${activeGuideSpot.name}` : XIAOLING_MAP_COPY.beaconFallback}
@@ -710,8 +702,70 @@ export default function MapGuidePage() {
         </View>
       )}
 
+      {navigating && activeGuideSpot && (
+        <Reanimated.View
+          entering={FadeInUp.delay(90).duration(360)}
+          style={[
+            styles.navigationStrip,
+            { top: navigationStripTop, borderColor: activeColor },
+          ]}
+        >
+          <View style={styles.navigationTopRow}>
+            <View style={styles.navigationTargetBlock}>
+              <Text style={styles.navigationKicker}>导航中 · 前往</Text>
+              <Text style={styles.navigationTargetName} numberOfLines={1}>
+                {activeGuideSpot.name}
+              </Text>
+            </View>
+            <View style={styles.navigationPulse}>
+              <View style={[styles.navigationPulseDot, { backgroundColor: activeColor }]} />
+              <Text style={styles.navigationPulseText}>路线已绘制</Text>
+            </View>
+          </View>
+
+          <View style={styles.navigationBottomRow}>
+            <View style={styles.navigationMetaGroup}>
+              <View style={styles.navigationMetaPill}>
+                <Text style={styles.navigationMetaLabel}>距离</Text>
+                <Text style={styles.navigationMetaValue}>{navigationDistanceText}</Text>
+              </View>
+              <View style={styles.navigationMetaPill}>
+                <Text style={styles.navigationMetaLabel}>步行</Text>
+                <Text style={styles.navigationMetaValue}>{navigationWalkText}</Text>
+              </View>
+            </View>
+            <View style={styles.navigationActions}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.navigationActionBtn,
+                  styles.navigationArriveBtn,
+                  pressed && styles.navigationPressed,
+                ]}
+                onPress={handleDemoArrive}
+                accessibilityRole="button"
+                accessibilityLabel={`到达${activeGuideSpot.name}`}
+              >
+                <Text style={styles.navigationArriveText}>到达</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.navigationActionBtn,
+                  styles.navigationStopBtn,
+                  pressed && styles.navigationPressed,
+                ]}
+                onPress={handleCancelNavigation}
+                accessibilityRole="button"
+                accessibilityLabel="结束导航"
+              >
+                <Text style={styles.navigationStopText}>结束导航</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Reanimated.View>
+      )}
+
       {locationError && (
-        <View style={[styles.errorToast, { top: insets.top + 188 }]}>
+        <View style={[styles.errorToast, { top: locationErrorTop }]}>
           <Text style={styles.errorText}>{locationError}</Text>
         </View>
       )}
@@ -755,20 +809,10 @@ export default function MapGuidePage() {
                   {activeImage && (
                     <Image source={activeImage} style={styles.spotThumb} resizeMode="cover" />
                   )}
-                  <Text style={styles.dockCopy} numberOfLines={3}>
-                    {guideLine || routeCopy}
-                  </Text>
-                </View>
-                <View style={styles.guideStatusRow}>
-                  <Text style={styles.guideStatusText}>{statusLabel}</Text>
-                  <Pressable
-                    onPress={handleLocate}
-                    accessibilityRole="button"
-                    accessibilityLabel="地图校准"
-                  >
-                    <Text style={styles.guideStatusText}>{COORDINATE_STATUS}</Text>
-                  </Pressable>
-                </View>
+                <Text style={styles.dockCopy} numberOfLines={2}>
+                  {guideLine || routeCopy}
+                </Text>
+              </View>
               </View>
 
               <MapGuideAvatar
@@ -804,37 +848,25 @@ export default function MapGuidePage() {
             </View>
 
             <View style={styles.demoPanel}>
-              <View style={styles.demoCopy}>
-                <Text style={styles.demoLabel}>{XIAOLING_MAP_COPY.demoLabel}</Text>
-                <Text
-                  style={[styles.demoText, actionFeedback && styles.demoFeedbackText]}
-                  numberOfLines={2}
-                >
-                  {demoPanelMessage}
-                </Text>
-              </View>
-              <View style={styles.demoActions}>
+              <View style={styles.demoHeaderRow}>
+                <View style={styles.demoCopy}>
+                  <Text style={styles.demoLabel}>{XIAOLING_MAP_COPY.demoLabel}</Text>
+                  <Text
+                    style={[styles.demoText, actionFeedback && styles.demoFeedbackText]}
+                    numberOfLines={2}
+                  >
+                    {demoPanelMessage}
+                  </Text>
+                </View>
                 <Pressable
-                  style={[styles.demoBtn, !activeGuideSpot && styles.actionBtnDisabled]}
+                  style={[styles.demoArrivalPill, !activeGuideSpot && styles.actionBtnDisabled]}
                   onPress={handleDemoArrive}
                   accessibilityRole="button"
                   accessibilityLabel="标记抵达当前景点"
                   accessibilityState={{ disabled: !activeGuideSpot }}
                   disabled={!activeGuideSpot}
                 >
-                  <Text style={styles.demoBtnText}>{demoArriveLabel}</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.demoBtn, styles.demoBtnDark, !activeGuideSpot && styles.actionBtnDisabled]}
-                  onPress={handleStartNarration}
-                  accessibilityRole="button"
-                  accessibilityLabel="开始到点讲解"
-                  accessibilityState={{ disabled: !activeGuideSpot }}
-                  disabled={!activeGuideSpot}
-                >
-                  <Text style={[styles.demoBtnText, styles.demoBtnTextLight]}>
-                    {demoListenLabel}
-                  </Text>
+                  <Text style={styles.demoArrivalText}>{demoArriveLabel}</Text>
                 </Pressable>
               </View>
             </View>
@@ -1033,15 +1065,15 @@ const styles = StyleSheet.create({
   },
   guideBeacon: {
     position: 'absolute',
-    left: 18,
-    right: 18,
+    left: 64,
+    right: 64,
     zIndex: 32,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 16,
-    backgroundColor: 'rgba(42,37,32,0.82)',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 15,
+    backgroundColor: 'rgba(42,37,32,0.76)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.14)',
     shadowColor: Colors.ink,
@@ -1051,10 +1083,10 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   beaconDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 10,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    marginRight: 8,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.74)',
   },
@@ -1065,35 +1097,20 @@ const styles = StyleSheet.create({
   beaconTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  coordinateBadge: {
-    flexShrink: 0,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+    justifyContent: 'center',
   },
   beaconTitle: {
     flex: 1,
     flexShrink: 1,
     minWidth: 0,
-    fontSize: 12,
+    fontSize: 11,
     color: '#fff',
     fontWeight: '800',
     letterSpacing: 1,
   },
-  coordinateBadgeText: {
-    fontSize: 9,
-    color: 'rgba(255,255,255,0.82)',
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
   beaconText: {
-    marginTop: 3,
-    fontSize: 11,
+    marginTop: 2,
+    fontSize: 10,
     color: 'rgba(255,255,255,0.72)',
   },
   mapNotice: {
@@ -1116,6 +1133,133 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.gray600,
     fontWeight: '600',
+  },
+  navigationStrip: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    zIndex: 34,
+    padding: 12,
+    borderRadius: 18,
+    backgroundColor: 'rgba(253,251,247,0.96)',
+    borderWidth: 1.5,
+    shadowColor: Colors.ink,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.16,
+    shadowRadius: 22,
+    elevation: 8,
+  },
+  navigationTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  navigationTargetBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  navigationKicker: {
+    fontSize: 10,
+    color: Colors.primaryDark,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  navigationTargetName: {
+    marginTop: 2,
+    fontSize: 18,
+    color: Colors.ink,
+    fontWeight: '900',
+  },
+  navigationPulse: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(106,156,137,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(106,156,137,0.16)',
+  },
+  navigationPulseDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  navigationPulseText: {
+    fontSize: 10,
+    color: Colors.gray700,
+    fontWeight: '800',
+  },
+  navigationBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    marginTop: 10,
+  },
+  navigationMetaGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 7,
+  },
+  navigationMetaPill: {
+    flex: 1,
+    minHeight: 42,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(42,37,32,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(42,37,32,0.08)',
+  },
+  navigationMetaLabel: {
+    fontSize: 9,
+    color: Colors.gray500,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  navigationMetaValue: {
+    marginTop: 2,
+    fontSize: 12,
+    color: Colors.ink,
+    fontWeight: '900',
+  },
+  navigationActions: {
+    width: 132,
+    flexDirection: 'row',
+    gap: 7,
+  },
+  navigationActionBtn: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navigationArriveBtn: {
+    backgroundColor: Colors.accent,
+    shadowColor: Colors.accent,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  navigationStopBtn: {
+    backgroundColor: Colors.ink,
+  },
+  navigationPressed: {
+    opacity: 0.78,
+  },
+  navigationArriveText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  navigationStopText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '900',
   },
   errorToast: {
     position: 'absolute',
@@ -1140,11 +1284,11 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 28,
-    paddingTop: 8,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(253,251,247,0.96)',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+    paddingTop: 6,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(253,251,247,0.97)',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(106,156,137,0.18)',
     shadowColor: Colors.ink,
@@ -1156,10 +1300,10 @@ const styles = StyleSheet.create({
   dockHandleTouch: {
     alignSelf: 'center',
     width: 76,
-    height: 22,
+    height: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   dockHandle: {
     width: 42,
@@ -1175,10 +1319,10 @@ const styles = StyleSheet.create({
   },
   dockContent: {},
   dockHero: {
-    minHeight: 176,
+    minHeight: 118,
     flexDirection: 'row',
     alignItems: 'stretch',
-    gap: 8,
+    gap: 10,
   },
   guideScript: {
     flex: 1,
@@ -1202,9 +1346,9 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
   },
   guideTalkBox: {
-    minHeight: 64,
-    marginTop: 8,
-    padding: 8,
+    minHeight: 54,
+    marginTop: 7,
+    padding: 7,
     borderRadius: Radius.md,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1212,38 +1356,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(42,37,32,0.07)',
   },
-  guideStatusRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 7,
-    marginTop: 8,
-  },
-  guideStatusText: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 999,
-    overflow: 'hidden',
-    fontSize: 10,
-    color: Colors.gray700,
-    fontWeight: '800',
-    backgroundColor: 'rgba(106,156,137,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(106,156,137,0.14)',
-  },
   avatarModule: {
-    width: 118,
-    height: 196,
+    width: 86,
+    height: 126,
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
   avatarSpeech: {
-    width: 136,
-    minHeight: 48,
-    marginLeft: -18,
-    marginBottom: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    borderRadius: 14,
+    width: 104,
+    minHeight: 28,
+    marginLeft: -8,
+    marginBottom: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 11,
     backgroundColor: 'rgba(42,37,32,0.9)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.16)',
@@ -1253,23 +1379,16 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 5,
   },
-  avatarSpeechLabel: {
-    fontSize: 9,
-    color: 'rgba(255,255,255,0.68)',
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
   avatarSpeechText: {
-    marginTop: 3,
-    fontSize: 10,
-    lineHeight: 13,
+    fontSize: 9,
+    lineHeight: 12,
     color: '#fff',
     fontWeight: '700',
   },
   avatarStage: {
-    width: 112,
-    height: 148,
-    borderRadius: 18,
+    width: 82,
+    height: 88,
+    borderRadius: 15,
     overflow: 'hidden',
     backgroundColor: 'rgba(106,156,137,0.1)',
     borderWidth: 1.5,
@@ -1281,15 +1400,15 @@ const styles = StyleSheet.create({
   },
   avatarNameTag: {
     position: 'absolute',
-    bottom: 0,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
+    bottom: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 2,
     borderRadius: 999,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.88)',
   },
   avatarNameText: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#fff',
     fontWeight: '900',
     letterSpacing: 1,
@@ -1299,9 +1418,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   spotThumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 9,
     marginRight: 8,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.72)',
@@ -1318,29 +1437,33 @@ const styles = StyleSheet.create({
   },
   dockTitle: {
     marginTop: 2,
-    fontSize: 17,
+    fontSize: 18,
     color: Colors.ink,
     fontWeight: '900',
   },
   dockCopy: {
-    marginTop: 4,
+    marginTop: 2,
     fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 16,
     color: Colors.gray600,
   },
   metricRow: {
     flexDirection: 'row',
-    gap: 7,
-    marginTop: 9,
+    gap: 0,
+    marginTop: 7,
+    minHeight: 42,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(106,156,137,0.075)',
+    borderWidth: 1,
+    borderColor: 'rgba(106,156,137,0.13)',
   },
   metricItem: {
     flex: 1,
-    paddingVertical: 6,
-    borderRadius: Radius.md,
-    backgroundColor: 'rgba(106,156,137,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(106,156,137,0.12)',
+    paddingVertical: 5,
+    backgroundColor: 'transparent',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   metricValue: {
     fontSize: 12,
@@ -1354,8 +1477,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   progressTrack: {
-    height: 5,
-    marginTop: 8,
+    height: 4,
+    marginTop: 7,
     borderRadius: 999,
     overflow: 'hidden',
     backgroundColor: 'rgba(106,156,137,0.16)',
@@ -1366,15 +1489,22 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accent,
   },
   demoPanel: {
-    marginTop: 8,
-    padding: 8,
-    borderRadius: 14,
-    backgroundColor: 'rgba(200,75,49,0.08)',
+    marginTop: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 13,
+    backgroundColor: 'rgba(200,75,49,0.07)',
     borderWidth: 1,
-    borderColor: 'rgba(200,75,49,0.18)',
+    borderColor: 'rgba(200,75,49,0.15)',
+  },
+  demoHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   demoCopy: {
-    marginBottom: 6,
+    flex: 1,
+    minWidth: 0,
   },
   demoLabel: {
     fontSize: 11,
@@ -1385,6 +1515,7 @@ const styles = StyleSheet.create({
   demoText: {
     marginTop: 2,
     fontSize: 11,
+    lineHeight: 15,
     color: Colors.gray600,
   },
   demoFeedbackText: {
@@ -1392,40 +1523,30 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 16,
   },
-  demoActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  demoBtn: {
-    flex: 1,
-    minHeight: 31,
-    borderRadius: 10,
+  demoArrivalPill: {
+    minWidth: 76,
+    minHeight: 34,
+    paddingHorizontal: 10,
+    borderRadius: 999,
     backgroundColor: '#fff',
     borderWidth: 1,
-    borderColor: 'rgba(200,75,49,0.2)',
+    borderColor: 'rgba(200,75,49,0.24)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  demoBtnDark: {
-    backgroundColor: Colors.accent,
-    borderColor: Colors.accent,
-  },
-  demoBtnText: {
+  demoArrivalText: {
     fontSize: 12,
     color: Colors.accent,
     fontWeight: '900',
   },
-  demoBtnTextLight: {
-    color: '#fff',
-  },
   actionRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 9,
+    marginTop: 7,
   },
   primaryBtn: {
     flex: 1,
-    minHeight: 36,
+    minHeight: 38,
     borderRadius: 12,
     backgroundColor: Colors.accent,
     alignItems: 'center',
@@ -1444,7 +1565,7 @@ const styles = StyleSheet.create({
   },
   secondaryBtn: {
     flex: 1,
-    minHeight: 36,
+    minHeight: 38,
     borderRadius: 12,
     backgroundColor: Colors.ink,
     alignItems: 'center',
@@ -1465,28 +1586,26 @@ const styles = StyleSheet.create({
   miniActionRow: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 7,
+    marginTop: 4,
   },
   textBtn: {
     flex: 1,
-    minHeight: 28,
-    borderRadius: 10,
+    minHeight: 26,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(42,37,32,0.05)',
-    borderWidth: 1,
-    borderColor: 'rgba(42,37,32,0.08)',
+    backgroundColor: 'transparent',
   },
   textBtnText: {
     fontSize: 11,
-    color: Colors.gray700,
+    color: Colors.primaryDark,
     fontWeight: '800',
   },
   routeRail: {
-    marginTop: 8,
+    marginTop: 9,
   },
   routeRailTitle: {
-    marginBottom: 7,
+    marginBottom: 6,
     fontSize: 11,
     color: Colors.gray500,
     fontWeight: '800',
@@ -1497,11 +1616,11 @@ const styles = StyleSheet.create({
     paddingRight: 14,
   },
   routeNode: {
-    width: 72,
-    paddingHorizontal: 7,
-    paddingVertical: 7,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.72)',
+    width: 68,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.66)',
     borderWidth: 1,
     borderColor: 'rgba(42,37,32,0.08)',
     alignItems: 'center',

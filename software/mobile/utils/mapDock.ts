@@ -2,20 +2,20 @@ export type MapDockLevel = 'expanded' | 'half' | 'collapsed';
 
 export type MapDockOffsets = Record<MapDockLevel, number>;
 
-const MIN_HALF_OFFSET = 190;
-const MAX_HALF_OFFSET = 280;
-const MIN_COLLAPSED_OFFSET = 360;
-const MAX_COLLAPSED_OFFSET = 480;
-const MIN_LEVEL_GAP = 86;
+const MIN_HALF_OFFSET = 230;
+const MAX_HALF_OFFSET = 310;
+const MIN_COLLAPSED_OFFSET = 380;
+const MAX_COLLAPSED_OFFSET = 430;
+const MIN_LEVEL_GAP = 90;
 const FLING_VELOCITY = 0.65;
 
 export function getMapDockOffsets(viewportHeight: number): MapDockOffsets {
   const safeHeight = Number.isFinite(viewportHeight) ? Math.max(0, viewportHeight) : 0;
   const collapsed = Math.round(
-    Math.min(MAX_COLLAPSED_OFFSET, Math.max(MIN_COLLAPSED_OFFSET, safeHeight * 0.55)),
+    Math.min(MAX_COLLAPSED_OFFSET, Math.max(MIN_COLLAPSED_OFFSET, safeHeight * 0.54)),
   );
   const preferredHalf = Math.round(
-    Math.min(MAX_HALF_OFFSET, Math.max(MIN_HALF_OFFSET, safeHeight * 0.34)),
+    Math.min(MAX_HALF_OFFSET, Math.max(MIN_HALF_OFFSET, safeHeight * 0.37)),
   );
 
   return {

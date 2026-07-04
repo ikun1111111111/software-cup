@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import {
   Alert,
+  Image as RNImage,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Image as ExpoImage } from 'expo-image';
 import { Colors } from '@/constants/colors';
 import { useUserStore } from '@/stores/userStore';
 import { useAuth } from '@/hooks/useAuth';
@@ -17,67 +19,144 @@ import { setDigitalHumanPageContext, speakWithDigitalHuman } from '@/services/di
 import { trackMobileEvent, flushMobileEvents } from '@/services/mobileAnalytics';
 import { SESSION_ID } from '@/services/dataSync';
 
+const PROFILE_VISUALS = {
+  hero: require('../../assets/images/explore/hero-courtyard.png'),
+  heroEcho: require('../../assets/images/explore/hero-overview.png'),
+  seal: require('../../assets/images/explore/seal-lingshan.png'),
+};
+
 const FEEDBACK_OPTIONS = [
-  { key: 'clear_narration', label: '讲解清晰', insight: 'narration_quality' },
+  { key: 'clear_narration', label: '讲解清楚', insight: 'narration_quality' },
   { key: 'route_fit', label: '路线合适', insight: 'route_fit' },
   { key: 'needs_followup', label: '还想追问', insight: 'question_demand' },
 ] as const;
 
-interface MenuItem {
-  icon: string;
+const INTEREST_LABELS: Record<string, string> = {
+  history: '历史文化',
+  nature: '自然风光',
+  family: '亲子同行',
+  photo: '拍照打卡',
+  quiet: '安静陪伴',
+  budget: '轻量消费',
+  deep_explain: '深度讲解',
+  free_walk: '自由游逛',
+};
+
+const PACE_LABELS = {
+  slow: '慢游',
+  normal: '适中',
+  fast: '高效',
+} as const;
+
+const DEPTH_LABELS = {
+  brief: '简明',
+  standard: '标准',
+  deep: '深入',
+} as const;
+
+const COMPANION_LABELS = {
+  quiet: '少打扰',
+  balanced: '适度提醒',
+  active: '主动陪伴',
+} as const;
+
+function getAvatarText(name?: string, username?: string) {
+  const source = (name || username || '灵').trim();
+  return source.slice(0, 1).toUpperCase();
+}
+
+function getProfileSignature(interests: string[], companionLabel: string) {
+  const firstInterest = interests[0] ?? '自由游逛';
+  return `${firstInterest} · ${companionLabel}`;
+}
+
+interface ActionItem {
+  mark: string;
   label: string;
   detail: string;
   onPress: () => void;
   danger?: boolean;
 }
 
-function MenuRow({ item }: { item: MenuItem }) {
+function ProgressLine({ width }: { width: `${number}%` }) {
   return (
-    <Pressable
-      style={({ pressed }) => [styles.menuRow, pressed && styles.pressed]}
-      onPress={item.onPress}
-      accessibilityRole="button"
-      accessibilityLabel={item.label}
-    >
-      <View style={[styles.menuIconBox, item.danger && styles.menuIconDanger]}>
-        <Text style={[styles.menuIcon, item.danger && styles.menuDangerText]}>{item.icon}</Text>
-      </View>
-      <View style={styles.menuTextGroup}>
-        <Text style={[styles.menuLabel, item.danger && styles.menuDangerText]}>{item.label}</Text>
-        <Text style={styles.menuDetail}>{item.detail}</Text>
-      </View>
-      <Text style={[styles.menuArrow, item.danger && styles.menuDangerText]}>›</Text>
-    </Pressable>
-  );
-}
-
-function StatBlock({ value, label }: { value: string | number; label: string }) {
-  return (
-    <View style={styles.statBlock}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={styles.progressTrack}>
+      <View style={[styles.progressFill, { width }]} />
     </View>
   );
 }
 
-function NotLoggedIn({ onLogin }: { onLogin: () => void }) {
+function PreferencePill({ label }: { label: string }) {
   return (
-    <View style={styles.guestShell}>
-      <View style={styles.guestMark}>
-        <Text style={styles.guestMarkText}>灵</Text>
+    <View style={styles.preferencePill}>
+      <Text style={styles.preferencePillText}>{label}</Text>
+    </View>
+  );
+}
+
+function ActionRow({ item }: { item: ActionItem }) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.actionRow,
+        item.danger && styles.actionRowDanger,
+        pressed && styles.pressed,
+      ]}
+      onPress={item.onPress}
+      accessibilityRole="button"
+      accessibilityLabel={item.label}
+    >
+      <View style={[styles.actionMark, item.danger && styles.actionMarkDanger]}>
+        <Text style={[styles.actionMarkText, item.danger && styles.dangerText]}>{item.mark}</Text>
       </View>
-      <Text style={styles.guestKicker}>XIAOLING PROFILE</Text>
-      <Text style={styles.guestTitle}>登录后保存小灵导览档案</Text>
-      <Text style={styles.guestDesc}>
-        同步打卡记录、旅行回忆、导览偏好和反馈，让小灵下次更懂你的节奏。
-      </Text>
-      <Pressable
-        style={({ pressed }) => [styles.loginBtn, pressed && styles.pressed]}
-        onPress={onLogin}
-        accessibilityRole="button"
-      >
-        <Text style={styles.loginBtnText}>去登录</Text>
-      </Pressable>
+      <View style={styles.actionTextGroup}>
+        <Text style={[styles.actionLabel, item.danger && styles.dangerText]}>{item.label}</Text>
+        <Text style={styles.actionDetail}>{item.detail}</Text>
+      </View>
+      <Text style={[styles.actionArrow, item.danger && styles.dangerText]}>›</Text>
+    </Pressable>
+  );
+}
+
+function GuestProfile({ onLogin, topInset }: { onLogin: () => void; topInset: number }) {
+  return (
+    <View style={[styles.guestStage, { paddingTop: topInset + 18 }]}>
+      <ExpoImage source={PROFILE_VISUALS.hero} style={StyleSheet.absoluteFill} contentFit="cover" />
+      <ExpoImage source={PROFILE_VISUALS.heroEcho} style={[StyleSheet.absoluteFill, styles.heroEchoImage]} contentFit="cover" />
+      <View style={styles.heroScrim} />
+      <View style={styles.heroWarmth} />
+
+      <View style={[styles.heroTopBar, styles.guestHeroTopBar]}>
+        <View style={styles.heroSeal}>
+          <ExpoImage source={PROFILE_VISUALS.seal} style={styles.heroSealImage} contentFit="contain" />
+        </View>
+        <View style={styles.heroCounter}>
+          <Text style={styles.heroCounterNum}>档案</Text>
+          <Text style={styles.heroCounterLabel}>未登录</Text>
+        </View>
+      </View>
+
+      <View style={styles.guestShell}>
+        <View style={styles.guestAvatarStage}>
+          <Text style={styles.guestAvatarText}>灵</Text>
+          <View style={styles.guestAvatarSeal}>
+            <Text style={styles.guestAvatarSealText}>客</Text>
+          </View>
+        </View>
+        <Text style={styles.guestKicker}>小灵导览档案</Text>
+        <Text style={styles.guestTitle}>登录后继续保存你的灵山旅程</Text>
+        <Text style={styles.guestDesc}>
+          路线进度、问讯记录、旅行记忆和体验反馈都会沉淀成个人档案，让小灵下次更懂你的节奏。
+        </Text>
+        <Pressable
+          style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+          onPress={onLogin}
+          accessibilityRole="button"
+          accessibilityLabel="去登录"
+        >
+          <Text style={styles.primaryButtonText}>去登录</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -88,18 +167,29 @@ export default function ProfilePage() {
   const { user } = useUserStore();
   const { logout } = useAuth();
   const [tourState] = useTour();
-  const { progress } = tourState;
+  const { progress, guideProfile } = tourState;
 
   const completion = progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
   const progressWidth = `${Math.min(100, Math.max(0, completion))}%` as `${number}%`;
+  const remainingStops = Math.max(progress.total - progress.completed, 0);
+  const routeName = tourState.currentRoute?.name ?? '尚未选择路线';
+  const routeHint = tourState.currentRoute
+    ? tourState.currentRoute.description || '当前小灵导览路线'
+    : '从首页或云游页开启路线后，这里会显示实时进度。';
+  const companionLabel = COMPANION_LABELS[guideProfile.companionLevel ?? 'balanced'];
+  const roleLabel = user?.role === 'admin' ? '管理端账号' : '游客账号';
+  const interests = guideProfile.interests.map((item) => INTEREST_LABELS[item] ?? item).slice(0, 4);
+  const displayName = user?.nickname || user?.username || '灵山游客';
+  const avatarText = getAvatarText(user?.nickname, user?.username);
+  const profileSignature = getProfileSignature(interests, companionLabel);
 
   useEffect(() => {
     setDigitalHumanPageContext('profile');
     const timer = setTimeout(() => {
       speakWithDigitalHuman(
         user
-          ? '这里是你的小灵导览档案。你的路线进度和反馈会帮助我更好地服务你。'
-          : '登录后，我可以为你保存导览档案、旅行回忆和游客反馈。',
+          ? '这里是你的导览档案。我会根据路线进度、偏好和反馈，调整接下来的陪伴方式。'
+          : '登录后，我可以帮你保存导览档案、旅行记忆和游客反馈。',
         'neutral',
       );
     }, 700);
@@ -133,33 +223,41 @@ export default function ProfilePage() {
     Alert.alert('反馈已记录', '谢谢你，小灵会把它同步到运营洞察里。');
   }, [progress.completed, progress.total, tourState.currentRoute]);
 
-  const menuItems: MenuItem[] = [
+  if (!user) {
+    return (
+      <View style={styles.root}>
+        <GuestProfile onLogin={() => router.push('/auth/login')} topInset={insets.top} />
+      </View>
+    );
+  }
+
+  const actionItems: ActionItem[] = [
     {
-      icon: '演',
-      label: '数字人表现包 Demo',
-      detail: '查看小灵表情、动作和播报状态',
-      onPress: () => router.push('/vrm-performance-demo'),
+      mark: '档',
+      label: '编辑个人信息',
+      detail: '设置昵称、头像和档案名片',
+      onPress: () => router.push('/profile/edit'),
     },
     {
-      icon: '档',
-      label: '修改资料',
-      detail: '调整昵称、头像和基础身份信息',
-      onPress: () => Alert.alert('修改资料', '功能开发中，敬请期待。'),
+      mark: '行',
+      label: tourState.currentRoute ? '继续当前路线' : '选择导览路线',
+      detail: tourState.currentRoute ? `下一步完成 ${remainingStops} 个节点` : '从云游页开始一条适合你的路线',
+      onPress: () => router.push('/explore'),
     },
     {
-      icon: '密',
-      label: '修改密码',
-      detail: '保护账号安全和旅行数据',
-      onPress: () => Alert.alert('修改密码', '功能开发中，敬请期待。'),
+      mark: '问',
+      label: '向小灵追问',
+      detail: '继续问景点、路线、典故和现场服务',
+      onPress: () => router.push('/chat'),
     },
     {
-      icon: '偏',
-      label: '小灵偏好设置',
-      detail: '设置讲解深度、陪伴频率和路线偏好',
-      onPress: () => Alert.alert('偏好设置', '功能开发中，敬请期待。'),
+      mark: '记',
+      label: '查看旅行记忆',
+      detail: '整理打卡、问讯和手帐记录',
+      onPress: () => router.push('/memory'),
     },
     {
-      icon: '退',
+      mark: '退',
       label: '退出登录',
       detail: '结束当前账号会话',
       onPress: handleLogout,
@@ -167,85 +265,132 @@ export default function ProfilePage() {
     },
   ];
 
-  if (!user) {
-    return (
-      <View style={[styles.root, styles.centeredRoot, { paddingTop: insets.top + 24 }]}>
-        <NotLoggedIn onLogin={() => router.push('/auth/login')} />
-      </View>
-    );
-  }
-
-  const roleLabel = user.role === 'admin' ? '管理端账号' : '旅行者';
-  const routeName = tourState.currentRoute?.name ?? '尚未选择路线';
-  const routeHint = tourState.currentRoute ? '当前导览路线' : '从首页或路线页开启小灵导览';
-
   return (
     <ScrollView
       style={styles.root}
-      contentContainerStyle={{ paddingTop: insets.top + 18, paddingBottom: insets.bottom + 42 }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + 42 }}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.hero}>
-        <View style={styles.heroTexture} />
-        <View style={styles.heroTop}>
-          <View>
-            <Text style={styles.heroKicker}>XIAOLING GUIDE PROFILE</Text>
-            <Text style={styles.heroTitle}>我的小灵导览档案</Text>
+      <View style={[styles.hero, { paddingTop: insets.top + 18 }]}>
+        <ExpoImage source={PROFILE_VISUALS.hero} style={StyleSheet.absoluteFill} contentFit="cover" />
+        <ExpoImage source={PROFILE_VISUALS.heroEcho} style={[StyleSheet.absoluteFill, styles.heroEchoImage]} contentFit="cover" />
+        <View style={styles.heroScrim} />
+        <View style={styles.heroWarmth} />
+
+        <View style={styles.heroTopBar}>
+          <View style={styles.heroSeal}>
+            <ExpoImage source={PROFILE_VISUALS.seal} style={styles.heroSealImage} contentFit="contain" />
           </View>
-          <View style={styles.statusSeal}>
-            <Text style={styles.statusSealText}>在线</Text>
+          <View style={styles.heroCounter}>
+            <Text style={styles.heroCounterNum}>{completion}%</Text>
+            <Text style={styles.heroCounterLabel}>档案进度</Text>
           </View>
         </View>
 
-        <View style={styles.identityRow}>
-          <View style={styles.avatarWrap}>
-            <Text style={styles.avatarText}>灵</Text>
+        <View style={styles.heroHeader}>
+          <View style={styles.avatarStage}>
+            {user.avatar ? (
+              <RNImage
+                source={{ uri: user.avatar }}
+                style={styles.avatarImage}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+              />
+            ) : (
+              <Text style={styles.avatarInitial}>{avatarText}</Text>
+            )}
+            <View style={styles.avatarSeal}>
+              <Text style={styles.avatarSealText}>灵</Text>
+            </View>
           </View>
-          <View style={styles.identityText}>
-            <Text style={styles.profileName}>{user.nickname || user.username}</Text>
+
+          <View style={styles.nameBlock}>
+            <Text style={styles.heroKicker}>LINGSHAN PROFILE</Text>
+            <Text style={styles.profileName} numberOfLines={1}>{displayName}</Text>
             <Text style={styles.profileUsername}>@{user.username}</Text>
-            <View style={styles.rolePill}>
-              <Text style={styles.rolePillText}>{roleLabel}</Text>
+            <Text style={styles.profileTagline} numberOfLines={1}>{profileSignature}</Text>
+            <View style={styles.badgeRail}>
+              <View style={styles.miniBadge}>
+                <Text style={styles.miniBadgeText}>{roleLabel}</Text>
+              </View>
+              <View style={styles.miniBadgeWarm}>
+                <Text style={styles.miniBadgeWarmText}>{PACE_LABELS[guideProfile.pace]}</Text>
+              </View>
             </View>
           </View>
         </View>
 
-        <Text style={styles.heroSub}>
-          路线偏好、讲解节奏和反馈会沉淀成你的导览档案，让小灵越陪越顺手。
+        <Text style={styles.heroDesc}>
+          小灵会把你的路线偏好、讲解节奏和现场反馈合并成一份可持续更新的导览档案。
         </Text>
+
+        <View style={styles.heroMetaRail}>
+          <View style={styles.heroMetaItem}>
+            <Text style={styles.heroMetaValue}>{progress.completed}</Text>
+            <Text style={styles.heroMetaLabel}>已完成</Text>
+          </View>
+          <View style={styles.heroMetaDivider} />
+          <View style={styles.heroMetaItem}>
+            <Text style={styles.heroMetaValue}>{remainingStops}</Text>
+            <Text style={styles.heroMetaLabel}>待完成</Text>
+          </View>
+          <View style={styles.heroMetaDivider} />
+          <View style={styles.heroMetaItem}>
+            <Text style={styles.heroMetaValue}>{PACE_LABELS[guideProfile.pace]}</Text>
+            <Text style={styles.heroMetaLabel}>游览节奏</Text>
+          </View>
+        </View>
       </View>
 
-      <View style={styles.progressPanel}>
-        <View style={styles.progressHeader}>
+      <View style={styles.routePanel}>
+        <View style={styles.sectionHeader}>
           <View>
-            <Text style={styles.sectionKicker}>TRIP SIGNAL</Text>
-            <Text style={styles.sectionTitle}>今日导览进度</Text>
+            <Text style={styles.sectionKicker}>当前路线</Text>
+            <Text style={styles.sectionTitle}>{routeName}</Text>
           </View>
-          <Text style={styles.completionText}>{completion}%</Text>
+          <Text style={styles.sectionMeta}>{progress.completed}/{progress.total}</Text>
+        </View>
+        <Text style={styles.routeHint}>{routeHint}</Text>
+        <ProgressLine width={progressWidth} />
+      </View>
+
+      <View style={styles.preferencePanel}>
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionKicker}>小灵偏好画像</Text>
+            <Text style={styles.sectionTitle}>陪伴方式</Text>
+          </View>
+          <Text style={styles.preferenceScore}>{companionLabel}</Text>
         </View>
 
-        <View style={styles.routeStrip}>
-          <Text style={styles.routeLabel}>{routeHint}</Text>
-          <Text style={styles.routeName}>{routeName}</Text>
+        <View style={styles.preferenceGrid}>
+          <View style={styles.preferenceTile}>
+            <Text style={styles.preferenceLabel}>游览节奏</Text>
+            <Text style={styles.preferenceValue}>{PACE_LABELS[guideProfile.pace]}</Text>
+          </View>
+          <View style={styles.preferenceTile}>
+            <Text style={styles.preferenceLabel}>讲解深度</Text>
+            <Text style={styles.preferenceValue}>{DEPTH_LABELS[guideProfile.narrationDepth]}</Text>
+          </View>
+          <View style={styles.preferenceTile}>
+            <Text style={styles.preferenceLabel}>自动讲解</Text>
+            <Text style={styles.preferenceValue}>{guideProfile.autoNarrate ? '开启' : '关闭'}</Text>
+          </View>
         </View>
 
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: progressWidth }]} />
-        </View>
-
-        <View style={styles.statsRow}>
-          <StatBlock value={progress.completed} label="已打卡" />
-          <StatBlock value={progress.total} label="路线站点" />
-          <StatBlock value={Math.max(progress.total - progress.completed, 0)} label="待完成" />
+        <View style={styles.preferencePills}>
+          {interests.map((item) => (
+            <PreferencePill key={item} label={item} />
+          ))}
         </View>
       </View>
 
       <View style={styles.feedbackPanel}>
         <View style={styles.feedbackCopy}>
-          <Text style={styles.feedbackKicker}>SERVICE INSIGHT</Text>
-          <Text style={styles.feedbackTitle}>把体验反馈给小灵</Text>
+          <Text style={styles.sectionKicker}>体验反馈</Text>
+          <Text style={styles.feedbackTitle}>把最近的感受告诉小灵</Text>
           <Text style={styles.feedbackDesc}>
-            选择最贴近感受的一项，系统会把它沉淀为路线、讲解和现场运营洞察。
+            选择一项最贴近的体验，系统会把它用于路线、讲解和现场运营洞察。
           </Text>
         </View>
         <View style={styles.feedbackOptions}>
@@ -263,10 +408,10 @@ export default function ProfilePage() {
         </View>
       </View>
 
-      <View style={styles.menuPanel}>
-        <Text style={styles.menuPanelTitle}>档案与设置</Text>
-        {menuItems.map((item) => (
-          <MenuRow key={item.label} item={item} />
+      <View style={styles.actionPanel}>
+        <Text style={styles.actionPanelTitle}>常用操作</Text>
+        {actionItems.map((item) => (
+          <ActionRow key={item.label} item={item} />
         ))}
       </View>
     </ScrollView>
@@ -276,54 +421,79 @@ export default function ProfilePage() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#F4F1EA',
-  },
-  centeredRoot: {
-    justifyContent: 'center',
+    backgroundColor: Colors.paper,
   },
   pressed: {
-    opacity: 0.78,
+    opacity: 0.76,
     transform: [{ scale: 0.99 }],
   },
+  guestStage: {
+    flex: 1,
+    minHeight: 760,
+    paddingHorizontal: 18,
+    paddingBottom: 28,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+    backgroundColor: Colors.ink,
+  },
   guestShell: {
-    marginHorizontal: 20,
     paddingHorizontal: 24,
-    paddingVertical: 32,
-    borderRadius: 8,
-    backgroundColor: '#FEFCF7',
+    paddingVertical: 30,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,253,248,0.94)',
     borderWidth: 1,
-    borderColor: '#DED6C8',
-    alignItems: 'flex-start',
+    borderColor: 'rgba(255,255,255,0.55)',
     shadowColor: Colors.ink,
     shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.12,
-    shadowRadius: 28,
+    shadowOpacity: 0.22,
+    shadowRadius: 26,
     elevation: 8,
   },
-  guestMark: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+  guestAvatarStage: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
     backgroundColor: Colors.ink,
+    borderWidth: 3,
+    borderColor: '#D6B45A',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
+    marginBottom: 22,
   },
-  guestMarkText: {
-    color: '#F8E8C9',
-    fontSize: 34,
+  guestAvatarText: {
+    color: '#FFF8E8',
+    fontSize: 38,
+    lineHeight: 44,
+    fontWeight: '900',
+  },
+  guestAvatarSeal: {
+    position: 'absolute',
+    right: -5,
+    bottom: -3,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.vermilion,
+    borderWidth: 2,
+    borderColor: '#FFFDF8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  guestAvatarSealText: {
+    color: '#FFFFFF',
+    fontSize: 12,
     fontWeight: '900',
   },
   guestKicker: {
-    color: Colors.accent,
-    fontSize: 11,
+    color: Colors.vermilion,
+    fontSize: 12,
     fontWeight: '900',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   guestTitle: {
     color: Colors.textPrimary,
-    fontSize: 26,
-    lineHeight: 34,
+    fontSize: 28,
+    lineHeight: 36,
     fontWeight: '900',
     marginBottom: 12,
   },
@@ -333,246 +503,365 @@ const styles = StyleSheet.create({
     lineHeight: 23,
     marginBottom: 24,
   },
-  loginBtn: {
+  primaryButton: {
     minHeight: 46,
-    paddingHorizontal: 28,
+    paddingHorizontal: 26,
     borderRadius: 6,
-    backgroundColor: Colors.vermilion,
+    backgroundColor: Colors.ink,
+    alignSelf: 'flex-start',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: Colors.vermilion,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.24,
-    shadowRadius: 14,
-    elevation: 4,
   },
-  loginBtnText: {
-    color: '#FFFFFF',
+  primaryButtonText: {
+    color: '#FFF8E8',
     fontSize: 16,
     fontWeight: '900',
   },
   hero: {
-    marginHorizontal: 16,
-    padding: 20,
-    borderRadius: 8,
+    minHeight: 430,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
     backgroundColor: Colors.ink,
     overflow: 'hidden',
-    shadowColor: Colors.ink,
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.18,
-    shadowRadius: 28,
-    elevation: 8,
   },
-  heroTexture: {
-    position: 'absolute',
-    top: -36,
-    right: -42,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    borderWidth: 32,
-    borderColor: 'rgba(200,169,81,0.12)',
-    transform: [{ rotate: '-16deg' }],
+  heroEchoImage: {
+    opacity: 0.2,
   },
-  heroTop: {
+  heroScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(12,10,8,0.66)',
+  },
+  heroWarmth: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(200,75,49,0.12)',
+  },
+  heroTopBar: {
+    zIndex: 2,
     flexDirection: 'row',
-    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: 16,
-    marginBottom: 28,
+    alignItems: 'center',
+    marginBottom: 34,
   },
-  heroKicker: {
-    color: '#C8A951',
-    fontSize: 10,
-    fontWeight: '900',
-    marginBottom: 8,
+  guestHeroTopBar: {
+    justifyContent: 'flex-start',
+    gap: 10,
   },
-  heroTitle: {
-    color: '#FFF8E8',
-    fontSize: 25,
-    lineHeight: 32,
-    fontWeight: '900',
-  },
-  statusSeal: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  heroSeal: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(248,232,201,0.5)',
+    borderColor: 'rgba(255,228,203,0.72)',
+    backgroundColor: 'rgba(255,250,241,0.92)',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(200,75,49,0.24)',
+    transform: [{ rotate: '-7deg' }],
+    overflow: 'hidden',
   },
-  statusSealText: {
-    color: '#FFF8E8',
-    fontSize: 12,
-    fontWeight: '900',
+  heroSealImage: {
+    width: 44,
+    height: 44,
   },
-  identityRow: {
-    flexDirection: 'row',
+  heroCounter: {
+    minWidth: 72,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
-    gap: 14,
+  },
+  heroCounterNum: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  heroCounterLabel: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 11,
+  },
+  heroHeader: {
+    zIndex: 2,
+    flexDirection: 'row',
+    gap: 16,
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 18,
   },
-  avatarWrap: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+  avatarStage: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: '#FFF8E8',
+    borderWidth: 3,
+    borderColor: '#D6B45A',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#C8A951',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    elevation: 6,
   },
-  avatarText: {
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 48,
+  },
+  avatarInitial: {
     color: Colors.ink,
-    fontSize: 36,
+    fontSize: 42,
+    lineHeight: 50,
     fontWeight: '900',
   },
-  identityText: {
+  avatarSeal: {
+    position: 'absolute',
+    right: -4,
+    bottom: 2,
+    width: 31,
+    height: 31,
+    borderRadius: 15.5,
+    backgroundColor: Colors.vermilion,
+    borderWidth: 2,
+    borderColor: Colors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarSealText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  nameBlock: {
     flex: 1,
     minWidth: 0,
   },
+  heroKicker: {
+    color: 'rgba(255,255,255,0.68)',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
   profileName: {
-    color: '#FFFFFF',
-    fontSize: 23,
+    color: '#FFF8E8',
+    fontSize: 32,
+    lineHeight: 38,
     fontWeight: '900',
-    marginBottom: 4,
+    fontFamily: 'MaShanZheng',
   },
   profileUsername: {
-    color: 'rgba(255,248,232,0.64)',
+    color: 'rgba(255,248,232,0.65)',
     fontSize: 13,
-    marginBottom: 10,
+    marginTop: 6,
   },
-  rolePill: {
-    alignSelf: 'flex-start',
+  profileTagline: {
+    color: '#D6B45A',
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 7,
+  },
+  badgeRail: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+    marginTop: 10,
+  },
+  miniBadge: {
+    minHeight: 27,
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 5,
+    borderRadius: 999,
     backgroundColor: 'rgba(106,156,137,0.22)',
     borderWidth: 1,
-    borderColor: 'rgba(106,156,137,0.4)',
+    borderColor: 'rgba(184,212,200,0.42)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  rolePillText: {
-    color: '#B8D4C8',
+  miniBadgeText: {
+    color: '#DCEDE5',
     fontSize: 12,
+    fontWeight: '900',
+  },
+  miniBadgeWarm: {
+    minHeight: 27,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(200,169,81,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(214,180,90,0.44)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  miniBadgeWarmText: {
+    color: '#F1D98A',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  heroDesc: {
+    zIndex: 2,
+    color: 'rgba(255,248,232,0.75)',
+    fontSize: 14,
+    lineHeight: 23,
+    marginBottom: 16,
+  },
+  heroMetaRail: {
+    zIndex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.13)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  heroMetaItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  heroMetaValue: {
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '800',
   },
-  heroSub: {
-    color: 'rgba(255,248,232,0.72)',
-    fontSize: 13,
-    lineHeight: 22,
+  heroMetaLabel: {
+    marginTop: 3,
+    color: 'rgba(255,255,255,0.62)',
+    fontSize: 10,
   },
-  progressPanel: {
+  heroMetaDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  routePanel: {
     marginHorizontal: 16,
     marginTop: 14,
     padding: 18,
-    borderRadius: 8,
-    backgroundColor: '#FEFCF7',
+    borderRadius: 18,
+    backgroundColor: '#FFFDF8',
     borderWidth: 1,
-    borderColor: '#E4DCCF',
+    borderColor: '#E2D8C8',
   },
-  progressHeader: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 14,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   sectionKicker: {
-    color: Colors.celadon,
+    color: Colors.gray400,
     fontSize: 10,
-    fontWeight: '900',
+    fontWeight: '800',
     marginBottom: 6,
   },
   sectionTitle: {
     color: Colors.textPrimary,
-    fontSize: 19,
-    fontWeight: '900',
+    fontSize: 22,
+    lineHeight: 28,
+    fontFamily: 'MaShanZheng',
   },
-  completionText: {
+  sectionMeta: {
     color: Colors.vermilion,
-    fontSize: 36,
-    lineHeight: 40,
+    fontSize: 25,
+    lineHeight: 30,
     fontWeight: '900',
   },
-  routeStrip: {
-    padding: 14,
-    borderRadius: 6,
-    backgroundColor: '#F4EFE5',
-    borderLeftWidth: 4,
-    borderLeftColor: Colors.gold,
+  routeHint: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 21,
     marginBottom: 16,
-  },
-  routeLabel: {
-    color: Colors.textTertiary,
-    fontSize: 12,
-    marginBottom: 5,
-  },
-  routeName: {
-    color: Colors.textPrimary,
-    fontSize: 16,
-    lineHeight: 22,
-    fontWeight: '900',
   },
   progressTrack: {
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#E5DDD0',
+    backgroundColor: '#E8DED0',
     overflow: 'hidden',
-    marginBottom: 16,
   },
   progressFill: {
     height: '100%',
     borderRadius: 5,
     backgroundColor: Colors.vermilion,
   },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  statBlock: {
-    flex: 1,
-    minHeight: 78,
-    borderRadius: 6,
-    backgroundColor: '#F8F3EA',
-    alignItems: 'center',
-    justifyContent: 'center',
+  preferencePanel: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    padding: 18,
+    borderRadius: 18,
+    backgroundColor: '#EAF2EE',
     borderWidth: 1,
-    borderColor: '#E9E0D2',
+    borderColor: '#C7DCD3',
   },
-  statValue: {
-    color: Colors.ink,
-    fontSize: 23,
+  preferenceScore: {
+    color: Colors.primaryDark,
+    fontSize: 14,
+    lineHeight: 24,
     fontWeight: '900',
-    marginBottom: 5,
   },
-  statLabel: {
+  preferenceGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  preferenceTile: {
+    flex: 1,
+    minHeight: 76,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(74,122,104,0.16)',
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    justifyContent: 'space-between',
+  },
+  preferenceLabel: {
     color: Colors.textSecondary,
     fontSize: 12,
     fontWeight: '700',
+  },
+  preferenceValue: {
+    color: Colors.textPrimary,
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  preferencePills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  preferencePill: {
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: Colors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  preferencePillText: {
+    color: '#FFF8E8',
+    fontSize: 12,
+    fontWeight: '900',
   },
   feedbackPanel: {
     marginHorizontal: 16,
     marginTop: 14,
     padding: 18,
-    borderRadius: 8,
-    backgroundColor: '#EDE4D5',
+    borderRadius: 18,
+    backgroundColor: '#F0E6D6',
     borderWidth: 1,
-    borderColor: '#DCCFBF',
+    borderColor: '#DCCDB8',
   },
   feedbackCopy: {
     marginBottom: 14,
   },
-  feedbackKicker: {
-    color: Colors.vermilion,
-    fontSize: 10,
-    fontWeight: '900',
-    marginBottom: 6,
-  },
   feedbackTitle: {
     color: Colors.textPrimary,
-    fontSize: 19,
+    fontSize: 20,
+    lineHeight: 26,
     fontWeight: '900',
     marginBottom: 8,
   },
@@ -588,80 +877,83 @@ const styles = StyleSheet.create({
   },
   feedbackOption: {
     minHeight: 42,
-    paddingHorizontal: 14,
-    borderRadius: 6,
-    backgroundColor: Colors.ink,
+    paddingHorizontal: 15,
+    borderRadius: 14,
+    backgroundColor: Colors.vermilion,
     alignItems: 'center',
     justifyContent: 'center',
   },
   feedbackOptionText: {
-    color: '#FFF8E8',
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '900',
   },
-  menuPanel: {
+  actionPanel: {
     marginHorizontal: 16,
     marginTop: 14,
-    borderRadius: 8,
-    backgroundColor: '#FEFCF7',
+    borderRadius: 18,
+    backgroundColor: '#FFFDF8',
     borderWidth: 1,
-    borderColor: '#E4DCCF',
+    borderColor: '#E2D8C8',
     overflow: 'hidden',
   },
-  menuPanelTitle: {
+  actionPanelTitle: {
     paddingHorizontal: 18,
     paddingTop: 17,
-    paddingBottom: 6,
+    paddingBottom: 7,
     color: Colors.textPrimary,
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '900',
   },
-  menuRow: {
+  actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 13,
+    paddingVertical: 14,
     borderTopWidth: 1,
-    borderTopColor: '#EEE7DC',
+    borderTopColor: '#EEE4D7',
     gap: 12,
   },
-  menuIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 6,
-    backgroundColor: '#F2EADD',
+  actionRowDanger: {
+    backgroundColor: '#FFF8F6',
+  },
+  actionMark: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#F0E7D9',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  menuIconDanger: {
+  actionMarkDanger: {
     backgroundColor: Colors.errorBg,
   },
-  menuIcon: {
+  actionMarkText: {
     color: Colors.ink,
     fontSize: 16,
     fontWeight: '900',
   },
-  menuTextGroup: {
+  actionTextGroup: {
     flex: 1,
     minWidth: 0,
   },
-  menuLabel: {
+  actionLabel: {
     color: Colors.textPrimary,
     fontSize: 15,
     fontWeight: '900',
     marginBottom: 4,
   },
-  menuDetail: {
+  actionDetail: {
     color: Colors.textTertiary,
     fontSize: 12,
     lineHeight: 17,
   },
-  menuDangerText: {
-    color: Colors.error,
-  },
-  menuArrow: {
+  actionArrow: {
     color: Colors.gray400,
     fontSize: 24,
     fontWeight: '300',
+  },
+  dangerText: {
+    color: Colors.error,
   },
 });

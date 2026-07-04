@@ -608,11 +608,8 @@ function ExploreHero({
   spots,
   routes,
   insets,
-  onPhoto,
-  onScan,
   onStartGuide,
   onAskGuide,
-  onFreeAsk,
   activeRouteName,
   progressLabel,
   nextSpotName,
@@ -620,17 +617,13 @@ function ExploreHero({
   spots: Spot[];
   routes: TourRoute[];
   insets: { top: number };
-  onPhoto: () => void;
-  onScan: () => void;
   onStartGuide: () => void;
   onAskGuide: () => void;
-  onFreeAsk: (question: string) => void;
   activeRouteName?: string;
   progressLabel?: string;
   nextSpotName?: string;
 }) {
   const guide = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE);
-  const [freeQuestion, setFreeQuestion] = useState('');
   const [vrmKey] = useState(0);
 
   useEffect(() => {
@@ -705,93 +698,36 @@ function ExploreHero({
             <Text style={styles.guideSpeechText} numberOfLines={3}>
               {guide.isSpeaking && guide.subtitle ? guide.subtitle : guideLine}
             </Text>
-          </View>
-
-          {/* 自由提问 */}
-          <View style={styles.freeAskRow}>
-            <TextInput
-              style={styles.freeAskInput}
-              placeholder="想问什么？直接输入提问"
-              placeholderTextColor="rgba(255,255,255,0.5)"
-              value={freeQuestion}
-              onChangeText={setFreeQuestion}
-              returnKeyType="send"
-              onSubmitEditing={() => {
-                const q = freeQuestion.trim();
-                if (q) {
-                  onFreeAsk(q);
-                  setFreeQuestion('');
-                }
-              }}
-            />
-            <Pressable
-              style={({ pressed }) => [
-                styles.freeAskBtn,
-                pressed && styles.pressedSoft,
-                !freeQuestion.trim() && { opacity: 0.5 },
-              ]}
-              onPress={() => {
-                const q = freeQuestion.trim();
-                if (q) {
-                  onFreeAsk(q);
-                  setFreeQuestion('');
-                }
-              }}
-              disabled={!freeQuestion.trim()}
-            >
-              <Text style={styles.freeAskBtnText}>发送</Text>
-            </Pressable>
+            <View style={styles.guideSpeechMeta}>
+              <Text style={styles.guideSpeechMetaText}>{routes.length} 条路线</Text>
+              <View style={styles.guideSpeechMetaDot} />
+              <Text style={styles.guideSpeechMetaText}>{progressLabel || heroStory.duration}</Text>
+              <View style={styles.guideSpeechMetaDot} />
+              <Text style={styles.guideSpeechMetaText} numberOfLines={1}>
+                {nextSpotName || heroStory.bestTime}
+              </Text>
+            </View>
           </View>
         </View>
       </View>
 
-      <View style={styles.heroMetaRail}>
-        <View style={styles.heroMetaItem}>
-          <Text style={styles.heroMetaValue}>{routes.length}</Text>
-          <Text style={styles.heroMetaLabel}>可选路线</Text>
+      <View style={styles.heroActionPanel}>
+        <View style={styles.heroActions}>
+          <Pressable
+            style={({ pressed }) => [styles.heroPrimaryAction, pressed && styles.pressedSoft]}
+            onPress={onStartGuide}
+          >
+            <Text style={styles.heroPrimaryActionText}>
+              {activeRouteName ? '继续小灵导览' : '开始独自游览'}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.heroGhostAction, pressed && styles.pressedSoft]}
+            onPress={onAskGuide}
+          >
+            <Text style={styles.heroGhostActionText}>问小灵</Text>
+          </Pressable>
         </View>
-        <View style={styles.heroMetaDivider} />
-        <View style={styles.heroMetaItem}>
-          <Text style={styles.heroMetaValue}>{progressLabel || heroStory.duration}</Text>
-          <Text style={styles.heroMetaLabel}>{activeRouteName ? '导览进度' : '推荐停留'}</Text>
-        </View>
-        <View style={styles.heroMetaDivider} />
-        <View style={styles.heroMetaItem}>
-          <Text style={styles.heroMetaValue}>{nextSpotName || heroStory.bestTime}</Text>
-          <Text style={styles.heroMetaLabel}>{activeRouteName ? '下一站' : '最佳时段'}</Text>
-        </View>
-      </View>
-
-      <View style={styles.heroActions}>
-        <Pressable
-          style={({ pressed }) => [styles.heroPrimaryAction, pressed && styles.pressedSoft]}
-          onPress={onStartGuide}
-        >
-          <Text style={styles.heroPrimaryActionText}>
-            {activeRouteName ? '继续小灵导览' : '开始独自游览'}
-          </Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.heroGhostAction, pressed && styles.pressedSoft]}
-          onPress={onAskGuide}
-        >
-          <Text style={styles.heroGhostActionText}>问小灵</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.heroMiniActions}>
-        <Pressable style={({ pressed }) => [styles.heroMiniButton, pressed && styles.pressedSoft]} onPress={onPhoto}>
-          <View style={styles.heroMiniImageWrap}>
-            <Image source={EXPLORE_VISUALS.spotRecognition} style={styles.heroMiniImage} contentFit="cover" />
-          </View>
-          <Text style={styles.heroMiniText}>识别眼前景点</Text>
-        </Pressable>
-        <Pressable style={({ pressed }) => [styles.heroMiniButton, pressed && styles.pressedSoft]} onPress={onScan}>
-          <View style={[styles.heroMiniImageWrap, styles.heroMiniSealWrap]}>
-            <Image source={EXPLORE_VISUALS.checkinSeal} style={styles.heroMiniImage} contentFit="contain" />
-          </View>
-          <Text style={styles.heroMiniText}>扫码到点打卡</Text>
-        </Pressable>
       </View>
     </View>
   );
@@ -1015,19 +951,6 @@ export default function ExplorePage() {
     }, 650);
   }, [router]);
 
-  const handleFreeAsk = useCallback((question: string) => {
-    VRMManager.speak(`我来帮你问问：${question}`, 'thinking');
-    router.push({
-      pathname: '/chat',
-      params: {
-        initialQuestion: question,
-        sourcePage: 'explore',
-        returnTo: '/explore',
-        returnLabel: '返回探索',
-      },
-    });
-  }, [router]);
-
   const handleStartGuide = useCallback(() => {
     if (tourState.currentRoute) {
       const target = tourState.currentSpot;
@@ -1089,11 +1012,8 @@ export default function ExplorePage() {
                 spots={spots}
                 routes={routes}
                 insets={insets}
-                onPhoto={handleOpenPhoto}
-                onScan={handleOpenScan}
                 onStartGuide={handleStartGuide}
                 onAskGuide={handleAskGuide}
-                onFreeAsk={handleFreeAsk}
                 activeRouteName={tourState.currentRoute?.name}
                 progressLabel={
                   tourState.progress.total > 0
@@ -1214,8 +1134,8 @@ const styles = StyleSheet.create({
   // Immersive hero
   heroStage: {
     minHeight: 600,
-    paddingHorizontal: 18,
-    paddingBottom: 18,
+    paddingHorizontal: 20,
+    paddingBottom: 24,
     justifyContent: 'space-between',
     overflow: 'hidden',
     backgroundColor: Colors.ink,
@@ -1225,7 +1145,7 @@ const styles = StyleSheet.create({
   },
   heroScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(12,10,8,0.64)',
+    backgroundColor: 'rgba(12,10,8,0.58)',
   },
   heroWarmth: {
     ...StyleSheet.absoluteFillObject,
@@ -1279,11 +1199,11 @@ const styles = StyleSheet.create({
   },
   guideStageBody: {
     zIndex: 2,
-    minHeight: 330,
+    minHeight: 318,
     justifyContent: 'flex-end',
   },
   guideVrmCard: {
-    height: 252,
+    height: 236,
     position: 'relative',
     justifyContent: 'flex-end',
     alignItems: 'center',
@@ -1292,16 +1212,16 @@ const styles = StyleSheet.create({
   guideAura: {
     position: 'absolute',
     bottom: 18,
-    width: 204,
-    height: 204,
-    borderRadius: 102,
+    width: 190,
+    height: 190,
+    borderRadius: 95,
     backgroundColor: 'rgba(106,156,137,0.24)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
   },
   guideVrmViewport: {
-    width: 194,
-    height: 252,
+    width: 182,
+    height: 236,
     position: 'relative',
   },
   vrmReloadBtn: {
@@ -1366,12 +1286,12 @@ const styles = StyleSheet.create({
     maxWidth: 286,
   },
   guideSpeechBubble: {
-    marginTop: 10,
-    padding: 12,
-    borderRadius: Radius.lg,
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
-    backgroundColor: 'rgba(247,245,240,0.13)',
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(247,245,240,0.15)',
   },
   guideSpeechLabel: {
     fontSize: 10,
@@ -1386,76 +1306,38 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.92)',
     fontWeight: '500',
   },
-  freeAskRow: {
-    marginTop: 14,
+  guideSpeechMeta: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.14)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    padding: 6,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.13)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
   },
-  freeAskInput: {
-    flex: 1,
-    minHeight: 38,
-    paddingHorizontal: 12,
-    fontSize: 13,
-    color: '#fff',
-    fontWeight: '500',
-  },
-  freeAskBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: '#FFE4CB',
-  },
-  freeAskBtnText: {
-    fontSize: 12,
-    color: Colors.ink,
+  guideSpeechMetaText: {
+    flexShrink: 1,
+    color: 'rgba(255,245,232,0.78)',
+    fontSize: 11,
     fontWeight: '800',
   },
-  heroMetaRail: {
+  guideSpeechMetaDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,228,203,0.55)',
+  },
+  heroActionPanel: {
     zIndex: 2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.13)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
-  },
-  heroMetaItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  heroMetaValue: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  heroMetaLabel: {
-    marginTop: 3,
-    color: 'rgba(255,255,255,0.62)',
-    fontSize: 10,
-  },
-  heroMetaDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: 'rgba(255,255,255,0.18)',
   },
   heroActions: {
-    zIndex: 2,
     flexDirection: 'row',
     gap: 8,
   },
   heroPrimaryAction: {
-    flex: 1.2,
-    minHeight: 44,
-    borderRadius: 16,
+    flex: 1,
+    minHeight: 50,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#FFE4CB',
@@ -1466,67 +1348,18 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   heroGhostAction: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: 16,
+    minWidth: 92,
+    minHeight: 50,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   heroGhostActionText: {
     fontSize: 13,
     color: '#fff',
-    fontWeight: '700',
-  },
-  heroMiniActions: {
-    zIndex: 2,
-    flexDirection: 'row',
-    gap: 10,
-  },
-  heroMiniButton: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: Radius.md,
-    paddingHorizontal: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  heroMiniMark: {
-    width: 26,
-    height: 26,
-    lineHeight: 26,
-    borderRadius: Radius.sm,
-    textAlign: 'center',
-    color: Colors.gold,
-    fontWeight: '900',
-    backgroundColor: 'rgba(200,169,81,0.16)',
-  },
-  heroMiniImageWrap: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255,228,203,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
-  },
-  heroMiniSealWrap: {
-    backgroundColor: 'rgba(255,250,241,0.92)',
-  },
-  heroMiniImage: {
-    width: '100%',
-    height: '100%',
-  },
-  heroMiniText: {
-    flex: 1,
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.76)',
     fontWeight: '700',
   },
 

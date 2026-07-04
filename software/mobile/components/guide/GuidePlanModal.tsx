@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, Pressable, StyleSheet, ScrollView, Animated, Dimensions, ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
 import InlineModal from '@/components/ui/InlineModal';
@@ -184,7 +185,12 @@ export function GuidePlanModal({
                 accessibilityLabel="开启小灵主动带路"
               >
                 <View style={[styles.collabIconWrap, { backgroundColor: Colors.primaryBg }]}>
-                  <Text style={styles.collabIcon}>👥</Text>
+                  <Image
+                    source={require('../../assets/images/putidadao.jpg')}
+                    style={styles.collabIconImage}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
                 </View>
                 <Text style={styles.collabCardTitle}>小灵主动带路</Text>
                 <Text style={styles.collabCardDesc}>小灵规划路线、提醒下一站，到点主动讲解</Text>
@@ -199,7 +205,12 @@ export function GuidePlanModal({
                 accessibilityLabel="选择小灵安静陪伴方案"
               >
                 <View style={[styles.collabIconWrap, { backgroundColor: Colors.accentBg }]}>
-                  <Text style={styles.collabIcon}>🎤</Text>
+                  <Image
+                    source={require('../../assets/images/wumingqiao.jpg')}
+                    style={styles.collabIconImage}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                  />
                 </View>
                 <Text style={styles.collabCardTitle}>小灵安静陪伴</Text>
                 <Text style={styles.collabCardDesc}>你自由慢逛，小灵只在关键节点轻声提醒</Text>
@@ -387,9 +398,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
-  collabIcon: {
-    fontSize: 26,
+  collabIconImage: {
+    width: '100%',
+    height: '100%',
   },
   collabCardTitle: {
     fontSize: 16,
