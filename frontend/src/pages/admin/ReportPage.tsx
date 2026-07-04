@@ -20,11 +20,14 @@ import PageTransition from '../../components/admin/PageTransition';
 import {
   getTrends,
   getTopQuestions,
-  triggerReport,
-  getReportStatus,
+  generateReportArchive,
+  getLatestReportArchive,
+  getReportArchive,
+  getReportArchiveStatus,
+  listReportArchives,
   type TrendsItem,
   type TopQuestionItem,
-  type ReportStatusResult,
+  type ReportArchive,
 } from '../../api/analytics';
 
 function parseInlineToRuns(text: string): TextRun[] {
@@ -102,16 +105,38 @@ function markdownToDocx(content: string): Paragraph[] {
   return children;
 }
 
+function formatArchiveTime(value?: string | null): string {
+  if (!value) return '???';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 16);
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 const ReportPage: React.FC = () => {
   const [trends, setTrends] = useState<TrendsItem[]>([]);
   const [topQuestions, setTopQuestions] = useState<TopQuestionItem[]>([]);
-  const [report, setReport] = useState<ReportStatusResult | null>(null);
+  const [report, setReport] = useState<ReportArchive | null>(null);
+  const [archives, setArchives] = useState<ReportArchive[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMobile = false; // web-only
+
+  const loadArchives = useCallback(async () => {
+    const [latest, archiveList] = await Promise.all([
+      getLatestReportArchive('sentiment'),
+      listReportArchives({ reportType: 'sentiment', pageSize: 8 }),
+    ]);
+    setReport(latest);
+    setArchives(archiveList.items);
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -126,12 +151,13 @@ const ReportPage: React.FC = () => {
         setStartDate(trendsRes[0].date);
         setEndDate(trendsRes[trendsRes.length - 1].date);
       }
+      await loadArchives();
     } catch (err: any) {
       message.error('加载数据失败: ' + (err?.message || '未知错误'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loadArchives]);
 
   useEffect(() => {
     loadData();
@@ -140,28 +166,33 @@ const ReportPage: React.FC = () => {
     };
   }, [loadData]);
 
-  const startPolling = useCallback((taskId: string) => {
+  const startPolling = useCallback((reportId: number) => {
     let attempts = 0;
     const maxAttempts = 40;
     const interval = setInterval(async () => {
       attempts++;
       try {
-        const status = await getReportStatus(taskId);
+        const status = await getReportArchiveStatus(reportId);
         if (status.status === 'done') {
           clearInterval(interval);
           pollRef.current = null;
           setReport(status);
+          await loadArchives();
           setGenerating(false);
-          message.success({ content: '报告生成完成', key: 'report_gen', duration: 2 });
+          message.success({ content: '??????', key: 'report_gen', duration: 2 });
+        } else if (status.status === 'failed') {
+          clearInterval(interval);
+          pollRef.current = null;
+          setGenerating(false);
+          message.error({ content: status.errorMessage || '????????????', key: 'report_gen', duration: 3 });
         } else if (attempts >= maxAttempts) {
           clearInterval(interval);
           pollRef.current = null;
           setGenerating(false);
-          message.warning('报告生成超时，请稍后手动刷新');
+          message.warning('??????????????');
         } else {
-          // Update loading message with progress
           message.loading({
-            content: `报告生成中，已等待 ${Math.round((attempts * 5) / 60)} 分钟...`,
+            content: `????????? ${Math.round((attempts * 5) / 60)} ??...`,
             key: 'report_gen',
             duration: 0,
           });
@@ -171,25 +202,34 @@ const ReportPage: React.FC = () => {
       }
     }, 5000);
     pollRef.current = interval;
-  }, []);
+  }, [loadArchives]);
 
   const handleGenerateReport = useCallback(async () => {
     if (pollRef.current) clearInterval(pollRef.current);
     setGenerating(true);
-    setReport(null);
     try {
-      const result = await triggerReport({
+      const result = await generateReportArchive({
+        reportType: 'sentiment',
         startDate: startDate || undefined,
         endDate: endDate || undefined,
         days: 7,
       });
-      message.loading({ content: '报告生成中，请稍候...', key: 'report_gen', duration: 0 });
-      startPolling(result.taskId);
+      message.loading({ content: '?????????...', key: 'report_gen', duration: 0 });
+      startPolling(result.reportId);
     } catch (err: any) {
-      message.error({ content: '提交失败: ' + (err?.message || '未知错误'), key: 'report_gen' });
+      message.error({ content: '????: ' + (err?.message || '????'), key: 'report_gen' });
       setGenerating(false);
     }
   }, [startDate, endDate, startPolling]);
+
+  const handleSelectArchive = useCallback(async (archive: ReportArchive) => {
+    try {
+      const detail = await getReportArchive(archive.id);
+      setReport(detail);
+    } catch (err: any) {
+      message.error('????????: ' + (err?.message || '????'));
+    }
+  }, []);
 
   const handleExport = useCallback(async () => {
     if (!report?.content) {
@@ -213,7 +253,7 @@ const ReportPage: React.FC = () => {
     });
 
     const blob = await Packer.toBlob(doc);
-    saveAs(blob, `游客感受度报告-${report.period || '未命名'}.docx`);
+    saveAs(blob, `游客感受度报告-${report.periodText || '未命名'}.docx`);
     message.success('报告已导出');
   }, [report]);
 
@@ -333,7 +373,7 @@ const ReportPage: React.FC = () => {
               marginTop: '4px',
             }}>
               <CalendarOutlined style={{ fontSize: '12px', opacity: 0.7 }} />
-              {report?.period || (startDate && endDate ? `${startDate} 至 ${endDate}` : '请选择日期范围')}
+              {report?.periodText || (startDate && endDate ? `${startDate} 至 ${endDate}` : '请选择日期范围')}
             </span>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -386,6 +426,52 @@ const ReportPage: React.FC = () => {
             </button>
           </div>
         </div>
+
+        <PaperPanel title="????" style={{ marginBottom: 24 }}>
+          {archives.length > 0 ? (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 10,
+            }}>
+              {archives.map((item) => {
+                const active = report?.id === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleSelectArchive(item)}
+                    style={{
+                      width: '100%',
+                      minHeight: 74,
+                      padding: '12px 14px',
+                      textAlign: 'left',
+                      border: active ? '1px solid rgba(200,75,49,0.45)' : '1px solid rgba(184,115,51,0.14)',
+                      borderRadius: 8,
+                      background: active ? 'rgba(200,75,49,0.08)' : 'rgba(255,253,247,0.66)',
+                      cursor: 'pointer',
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 12, color: 'var(--text-tertiary)' }}>
+                      <span>{item.triggerSource === 'scheduled' ? '????' : '????'}</span>
+                      <span>{item.status === 'done' ? '???' : item.status === 'failed' ? '??' : '???'}</span>
+                    </span>
+                    <strong style={{ display: 'block', marginTop: 6, fontSize: 14, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.periodText || formatArchiveTime(item.createdAt)}
+                    </strong>
+                    <small style={{ display: 'block', marginTop: 4, color: 'var(--text-tertiary)' }}>
+                      {formatArchiveTime(item.generatedAt || item.createdAt)}
+                    </small>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ color: 'var(--text-tertiary)', padding: '18px 0' }}>
+              ????????? 18:00 ???????????????????
+            </div>
+          )}
+        </PaperPanel>
 
         {report?.content && (
           <PaperPanel title="报告摘要" withScrollHead style={{ marginBottom: 24 }}>

@@ -15,7 +15,11 @@ const TAB_EMOJIS: Record<string, string> = {
 };
 
 const TAB_IMAGES: Record<string, any> = {
-  '云游': require('../../assets/images/explore/route-map.png'),
+  '启扉': require('../../assets/images/tabs/tab-home.png'),
+  '问询': require('../../assets/images/tabs/tab-chat.png'),
+  '云游': require('../../assets/images/tabs/tab-explore.png'),
+  '记忆': require('../../assets/images/tabs/tab-memory.png'),
+  '我的': require('../../assets/images/tabs/tab-profile.png'),
 };
 
 const TabIcon = React.memo(function TabIcon({ label, focused }: { label: string; focused: boolean }) {

@@ -4,6 +4,7 @@ from app.models.avatar import AvatarConfig
 from app.models.tourist import TouristProfile, ScenicSpot, TourRoute
 from app.models.memory import TravelMemory, JourneySummary
 from app.models.mobile_event import MobileTourEvent
+from app.models.report_archive import ReportArchive
 from app.models.user import User
 
 __all__ = [
@@ -18,5 +19,6 @@ __all__ = [
     "TravelMemory",
     "JourneySummary",
     "MobileTourEvent",
+    "ReportArchive",
     "User",
 ]
