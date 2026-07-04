@@ -239,7 +239,7 @@ function HeroSection({
                 <Image
                   source={require('../../assets/images/home/home-free-explore.png')}
                   style={styles.entryImage}
-                  contentFit="contain"
+                  contentFit="cover"
                   cachePolicy="memory-disk"
                 />
               </View>
@@ -268,7 +268,7 @@ function HeroSection({
                 <Image
                   source={require('../../assets/images/home/home-guided-tour.png')}
                   style={styles.entryImage}
-                  contentFit="contain"
+                  contentFit="cover"
                   cachePolicy="memory-disk"
                 />
               </View>
@@ -338,7 +338,7 @@ function FeatureCard({ feature, index }: {
           <Image
             source={feature.image}
             style={styles.featImage}
-            contentFit="contain"
+            contentFit="cover"
             cachePolicy="memory-disk"
           />
           <View style={[styles.featTag, { backgroundColor: feature.color }]}>
