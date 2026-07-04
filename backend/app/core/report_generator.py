@@ -5,11 +5,12 @@ via Qwen-Long (or fallback to DeepSeek).
 """
 import logging
 from datetime import datetime, timedelta
-from typing import Sequence
+from typing import Any, Sequence
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.analytics import mobile_tour_summary
 from app.core.llm_router import LLMTask, route
 from app.models.interaction import InteractionLog
 
@@ -141,6 +142,81 @@ def _build_report_prompt(stats: dict, sample_interactions: list[dict]) -> list[d
 
 
 # ── Public API ───────────────────────────────────────────────────────────────
+
+
+def _format_marketing_list(items: list[dict[str, Any]], name_key: str, metric_key: str) -> str:
+    lines = []
+    for index, item in enumerate(items[:8], 1):
+        name = item.get(name_key) or item.get("route_id") or item.get("spot_id") or "unknown"
+        metric = item.get(metric_key, 0)
+        lines.append(f"{index}. {name} ({metric_key}: {metric})")
+    return "\n".join(lines) if lines else "No data"
+
+
+def _build_marketing_report_prompt(stats: dict[str, Any]) -> list[dict]:
+    routes_text = _format_marketing_list(stats.get("routes", []), "route_name", "starts")
+    spots_text = _format_marketing_list(stats.get("hot_spots", []), "spot_name", "event_count")
+    preferences = stats.get("preference_distribution") or {}
+    pref_text = "\n".join(f"- {key}: {value}" for key, value in preferences.items()) or "No data"
+
+    system_msg = (
+        "You are a tourism operations analyst. Create a concise marketing decision "
+        "report from mobile guide usage data. Include: 1) demand signal, "
+        "2) high-potential routes or spots, 3) user preference insight, "
+        "4) 2-3 actionable campaign suggestions. Keep it practical."
+    )
+    user_msg = f"""Mobile guide operation summary:
+- Period: last {stats.get('days', 7)} days
+- Total events: {stats.get('total_events', 0)}
+- Active sessions: {stats.get('active_sessions', 0)}
+- Route starts: {stats.get('route_starts', 0)}
+- Route completions: {stats.get('route_completions', 0)}
+- Route completion rate: {stats.get('route_completion_rate', 0):.1%}
+
+Top routes:
+{routes_text}
+
+Hot spots:
+{spots_text}
+
+Preference distribution:
+{pref_text}
+"""
+    return [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": user_msg},
+    ]
+
+
+async def generate_marketing_report(
+    db: AsyncSession,
+    days: int = 7,
+) -> dict:
+    """Generate a mobile-guide marketing decision report."""
+    now = datetime.utcnow()
+    stats = await mobile_tour_summary(db, days=days, limit=8)
+    messages = _build_marketing_report_prompt(stats)
+
+    try:
+        report_text = await route(LLMTask.summary, messages=messages)
+    except Exception as e:
+        logger.error("LLM marketing report generation failed: %s", e)
+        report_text = (
+            "## Marketing Decision Report\n\n"
+            f"- Period: last {stats.get('days', days)} days\n"
+            f"- Active sessions: {stats.get('active_sessions', 0)}\n"
+            f"- Route starts: {stats.get('route_starts', 0)}\n"
+            f"- Route completions: {stats.get('route_completions', 0)}\n"
+            f"- Completion rate: {stats.get('route_completion_rate', 0):.1%}\n\n"
+            "LLM summary unavailable; use the attached operation stats for decisions."
+        )
+
+    return {
+        "content": report_text.strip(),
+        "stats": stats,
+        "generated_at": now.isoformat(),
+        "period": f"last {stats.get('days', days)} days",
+    }
 
 
 async def generate_report(
