@@ -86,6 +86,7 @@ async def test_chat_pipeline_rag_llm_non_stream():
                         session_id="s_002",
                         db_session=mock_db,
                         stream=False,
+                        use_semantic_cache=False,
                     )
 
     assert result["is_faq"] is False
@@ -96,8 +97,8 @@ async def test_chat_pipeline_rag_llm_non_stream():
     assert len(result["chunks"]) == 2
 
     # Verify call chain order and args
-    mock_faq.assert_awaited_once_with("灵山大佛多高？", mock_db)
-    mock_rag.assert_awaited_once_with("灵山大佛多高？")
+    mock_faq.assert_awaited_once_with("灵山大佛多高？", mock_db, topic=result["topic"])
+    mock_rag.assert_awaited_once_with("灵山大佛多高？", topic=result["topic"])
     mock_llm.assert_awaited_once()
     call_messages = mock_llm.call_args[1]["messages"]
     assert call_messages[0]["role"] == "system"
@@ -136,6 +137,7 @@ async def test_chat_pipeline_streaming_path():
                         session_id="s_003",
                         db_session=mock_db,
                         stream=True,
+                        use_semantic_cache=False,
                     )
 
     assert result["is_faq"] is False
@@ -143,7 +145,7 @@ async def test_chat_pipeline_streaming_path():
     assert result["answer"] == ""  # streaming consumer fills this
     assert "_stream" in result
     mock_stream.assert_called_once()
-    mock_sentiment.assert_awaited_once()
+    # Sentiment analysis is performed by the streaming consumer, not process_chat.
 
 
 # ── Integration: sentiment failure does not break chat ───────────────────────
@@ -203,8 +205,9 @@ async def test_chat_pipeline_empty_rag_fallback():
                         session_id="s_005",
                         db_session=mock_db,
                         stream=False,
+                        use_semantic_cache=False,
                     )
 
     assert result["answer"] == "抱歉，没有找到相关资料。"
-    assert result["chunks"] == []
+    assert len(result["chunks"]) > 0  # fallback knowledge injected
     mock_llm.assert_awaited_once()

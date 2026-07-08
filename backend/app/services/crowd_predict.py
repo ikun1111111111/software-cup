@@ -36,12 +36,11 @@ async def get_crowd_prediction(
     stmt = (
         select(
             TouristBehavior.attraction_name,
-            TouristBehavior.visit_hour,
             func.count(TouristBehavior.id).label("visitor_count"),
-            func.avg(TouristBehavior.satisfaction_score).label("avg_satisfaction"),
+            func.avg(TouristBehavior.satisfaction).label("avg_satisfaction"),
         )
-        .group_by(TouristBehavior.attraction_name, TouristBehavior.visit_hour)
-        .order_by(TouristBehavior.attraction_name, TouristBehavior.visit_hour)
+        .group_by(TouristBehavior.attraction_name)
+        .order_by(TouristBehavior.attraction_name)
     )
     if attraction_name:
         stmt = stmt.where(TouristBehavior.attraction_name == attraction_name)
@@ -53,40 +52,8 @@ async def get_crowd_prediction(
     predictions: dict[str, list[dict]] = {}
     for row in rows:
         spot = row.attraction_name
-        hour = row.visit_hour or 10
-        base_count = row.visitor_count
-
-        # Weekend/holiday multiplier
-        multiplier = 1.4 if is_weekend else 1.0
-
-        # Time-of-day curve: peak at 10-11 and 14-15
-        if hour in (10, 11, 14, 15):
-            time_factor = 1.3
-        elif hour in (9, 12, 13, 16):
-            time_factor = 1.0
-        elif hour in (8, 17):
-            time_factor = 0.7
-        else:
-            time_factor = 0.3
-
-        predicted = int(base_count * multiplier * time_factor)
-
-        if predicted < CROWD_LOW:
-            level = "low"
-            emoji = "🟢"
-        elif predicted < CROWD_MEDIUM:
-            level = "medium"
-            emoji = "🟡"
-        else:
-            level = "high"
-            emoji = "🔴"
-
-        predictions.setdefault(spot, []).append({
-            "hour": hour,
-            "predicted_visitors": predicted,
-            "crowd_level": level,
-            "emoji": emoji,
-        })
+        base_count = max(20, int((row.visitor_count or 0) / 10))
+        predictions[spot] = _generate_default_hours(is_weekend, base_count)
 
     # If no data, generate reasonable defaults for known spots
     if not predictions:
@@ -167,9 +134,11 @@ async def get_crowd_alerts(
     }
 
 
-def _generate_default_hours(is_weekend: bool) -> list[dict]:
+def _generate_default_hours(is_weekend: bool, base_count: int | None = None) -> list[dict]:
     """Generate default hourly predictions when no historical data exists."""
-    base = 80 if is_weekend else 50
+    base = base_count if base_count is not None else (80 if is_weekend else 50)
+    if is_weekend:
+        base = int(base * 1.35)
     hours = []
     for h in range(8, 18):
         if h in (10, 11, 14, 15):

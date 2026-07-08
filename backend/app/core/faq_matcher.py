@@ -1,7 +1,7 @@
 """FAQ exact and fuzzy matching against the faq_entries table."""
 import logging
 
-from sqlalchemy import select, or_, func
+from sqlalchemy import select, or_, func, case
 
 from app.models.knowledge import FaqEntry
 
@@ -11,17 +11,26 @@ logger = logging.getLogger(__name__)
 # e.g. 0.3 means at least 30% of FAQ keywords must match user question keywords.
 _MIN_KEYWORD_OVERLAP_RATIO = 0.3
 # Minimum absolute keyword matches for short FAQ entries.
-_MIN_KEYWORD_MATCHES = 1
+_MIN_KEYWORD_MATCHES = 2
+_BROAD_GUIDE_MARKERS = ("介绍", "讲讲", "讲解", "看点", "亮点")
 
 
-async def search_faq(question: str, db_session) -> dict | None:
-    """Search FAQ by exact or fuzzy match.
+def _normalize_question(question: str) -> str:
+    """Keep FAQ matching focused on the tourist's actual question."""
+    q = question.strip()
+    marker = "游客问题："
+    if marker in q:
+        q = q.rsplit(marker, 1)[-1].strip()
+    return q
+
+
+async def search_faq(question: str, db_session, topic: str | None = None) -> dict | None:
+    """Search FAQ by exact or fuzzy match, optionally biased by topic.
 
     Matching strategy:
-        1. Exact/partial match: user question contains FAQ question
-           OR FAQ question contains user question (bidirectional)
-        2. Keyword match: jieba-cut keywords matched against FaqEntry.keywords
-           with overlap-ratio scoring and threshold filtering.
+        1. Exact/partial match on question text (topic-independent)
+        2. Keyword match with overlap-ratio scoring
+        3. If topic is provided, boost FAQs in the same category
 
     Returns:
         {"question": str, "answer": str, "source": "faq"|"faq_fuzzy", "faq_id": int}
@@ -30,10 +39,12 @@ async def search_faq(question: str, db_session) -> dict | None:
     if not question or not question.strip():
         return None
 
-    q = question.strip()
+    q = _normalize_question(question)
+    if not q:
+        return None
+    q_lower = q.lower()
 
     # Step 1: Bidirectional exact / partial match on question text
-    # User question contains FAQ question, OR FAQ question contains user question
     stmt = select(FaqEntry).where(
         FaqEntry.is_active == True,
         or_(
@@ -41,6 +52,11 @@ async def search_faq(question: str, db_session) -> dict | None:
             func.lower(q).like(func.lower(FaqEntry.question) + "%"),
         ),
     )
+    if topic:
+        # Prefer same-topic match; if none, still allow cross-topic exact match
+        stmt = stmt.order_by(
+            case((FaqEntry.category == topic, 1), else_=0).desc()
+        )
     result = await db_session.execute(stmt)
     faq = result.scalar_one_or_none()
     if faq:
@@ -84,22 +100,34 @@ async def search_faq(question: str, db_session) -> dict | None:
             continue
 
         # Compute overlap: intersection / union
-        intersection = user_keywords & faq_keywords
+        token_matches = user_keywords & faq_keywords
+        substring_matches = {
+            kw for kw in faq_keywords
+            if len(kw) > 1 and kw in q_lower
+        }
+        matched_keywords = token_matches | substring_matches
         union = user_keywords | faq_keywords
         if not union:
             continue
 
-        overlap_ratio = len(intersection) / len(union)
+        overlap_ratio = len(matched_keywords) / len(union)
         # Also consider raw intersection count for short queries
-        match_count = len(intersection)
+        match_count = len(matched_keywords)
+        has_specific_match = any(len(kw) >= 4 for kw in substring_matches)
+        is_broad_guide_request = any(marker in q_lower for marker in _BROAD_GUIDE_MARKERS)
 
         # Must meet threshold
         meets_threshold = (
             overlap_ratio >= _MIN_KEYWORD_OVERLAP_RATIO
             or match_count >= _MIN_KEYWORD_MATCHES
+            or (topic and faq.category == topic and has_specific_match)
         )
-        if not meets_threshold:
+        if not meets_threshold or (is_broad_guide_request and match_count < _MIN_KEYWORD_MATCHES + 1):
             continue
+
+        # Topic boost: same-category FAQ gets +0.15
+        if topic and faq.category == topic:
+            overlap_ratio += 0.15
 
         # Pick the one with highest overlap ratio; tie-break by match count
         if overlap_ratio > best_score or (

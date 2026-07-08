@@ -166,37 +166,12 @@
   --color-oriental-auxiliary-light: #4A6D8E;
   --color-oriental-auxiliary-bg: #E8EEF4;
 
-  /* ── Cultural Colors ── */
-  --color-celadon: #6BA292;        /* 茶青 */
-  --color-ochre: #B87333;          /* 赭石 */
-  --color-lotus: #D4A5A5;          /* 藕粉 */
-  --color-gold: #C8A951;           /* 鎏金 */
-
-  /* ── Paper Background ── */
-  --color-paper: #F7F5F0;
-  --color-paper-warm: #FDFBF7;
-
-  /* ── Section Spacing ── */
-  --space-section-sm: 48px;
-  --space-section-md: 64px;
-  --space-section-lg: 96px;
-  --space-section-xl: 128px;
-
-  /* ── Extended Radius ── */
-  --radius-seal: 4px;
-
-  /* ── Extended Shadows ── */
-  --shadow-glow-vermilion: 0 0 0 3px rgba(200, 75, 49, 0.15);
-  --shadow-glow-cyan: 0 0 0 3px rgba(106, 156, 137, 0.15);
-
-  /* ── Z-Index Extension ── */
-  --z-background: -1;
-
   /* ── Animation Timing ── */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   --ease-in-out-sine: cubic-bezier(0.37, 0, 0.63, 1);
   --ease-ink: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-zen: cubic-bezier(0.22, 1, 0.36, 1);
 
   --duration-instant: 100ms;
   --duration-fast: 200ms;
@@ -255,6 +230,26 @@
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
+}
+
+@keyframes inkRipple {
+  0% { transform: scale(0.3); opacity: 0.68; }
+  100% { transform: scale(1.85); opacity: 0; }
+}
+
+@keyframes inkArcSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes inkPulse {
+  0%, 100% { transform: scale(0.84); opacity: 0.65; }
+  50% { transform: scale(1.18); opacity: 1; }
+}
+
+@keyframes zenFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
 }
 
 @keyframes pulse-ring {
@@ -434,7 +429,8 @@ html, body, #root {
 }
 
 body {
-  background: transparent;
+  background: var(--color-paper) var(--texture-paper);
+  background-size: 100px 100px;
   color: var(--text-primary);
   line-height: var(--line-height-normal);
   overflow-x: hidden;
@@ -667,21 +663,13 @@ a {
   display: none;
 }
 
-/* ── Safe Area (for mobile notch / home indicator) ── */
+/* ── Safe Area (for mobile notch) ── */
 .safe-area-top {
   padding-top: env(safe-area-inset-top);
 }
 
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom);
-}
-
-/* 全局：固定定位底部元素自动适配安全区域 */
-html {
-  --sat: env(safe-area-inset-top, 0px);
-  --sab: env(safe-area-inset-bottom, 0px);
-  --sal: env(safe-area-inset-left, 0px);
-  --sar: env(safe-area-inset-right, 0px);
 }
 
 /* ============================================
@@ -863,4 +851,55 @@ html {
 .badge-error {
   background: var(--color-error-bg);
   color: var(--color-error);
+}
+
+/* ============================================
+   Large Screen Tokens (景区互动大屏)
+   ============================================ */
+
+:root {
+  --viewport-w: 1920px;
+  --viewport-h: 1080px;
+
+  --font-size-display-lg: 56px;
+  --font-size-display-md: 44px;
+  --font-size-display-sm: 32px;
+  --font-size-body-lg: 20px;
+  --font-size-body-md: 18px;
+  --font-size-body-sm: 16px;
+
+  --dock-height: 80px;
+  --dock-bottom: 40px;
+
+  --panel-radius-lg: 28px;
+  --panel-radius-md: 20px;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.page-fullscreen {
+  width: var(--viewport-w);
+  height: var(--viewport-h);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-panel {
+  background: rgba(253, 251, 247, 0.72);
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
 }

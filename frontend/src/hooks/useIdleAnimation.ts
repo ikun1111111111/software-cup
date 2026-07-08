@@ -28,53 +28,75 @@ export const useIdleAnimation = (
   } = options;
 
   const blinkTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const breathRafRef = useRef<number>();
+  const breathRafRef = useRef<number>(0);
   const startTimeRef = useRef(Date.now());
+  const mountedRef = useRef(true);
+  const enabledRef = useRef(enabled);
+  const setParameterRef = useRef(setParameter);
+
+  // Keep refs in sync
+  useEffect(() => { enabledRef.current = enabled; }, [enabled]);
+  useEffect(() => { setParameterRef.current = setParameter; }, [setParameter]);
 
   // Blink logic
   const scheduleBlink = useCallback(() => {
-    if (!enabled) return;
+    if (!enabledRef.current || !mountedRef.current) return;
     const delay = blinkIntervalMin + Math.random() * (blinkIntervalMax - blinkIntervalMin);
     blinkTimerRef.current = setTimeout(() => {
-      if (!enabled) return;
+      if (!enabledRef.current || !mountedRef.current) return;
       // Close eyes
-      setParameter('ParamEyeLOpen', 0);
-      setParameter('ParamEyeROpen', 0);
+      setParameterRef.current('ParamEyeLOpen', 0);
+      setParameterRef.current('ParamEyeROpen', 0);
 
       // Open eyes after blink duration
       setTimeout(() => {
-        setParameter('ParamEyeLOpen', 1);
-        setParameter('ParamEyeROpen', 1);
+        if (!mountedRef.current) return;
+        setParameterRef.current('ParamEyeLOpen', 1);
+        setParameterRef.current('ParamEyeROpen', 1);
       }, blinkDuration);
 
       scheduleBlink();
     }, delay);
-  }, [enabled, blinkIntervalMin, blinkIntervalMax, blinkDuration, setParameter]);
+  }, [blinkIntervalMin, blinkIntervalMax, blinkDuration]);
 
   // Breathing logic
   const breathLoop = useCallback(() => {
-    if (!enabled) return;
+    if (!enabledRef.current || !mountedRef.current) {
+      // Stop the loop when disabled or unmounted
+      return;
+    }
     const elapsed = (Date.now() - startTimeRef.current) / 1000;
     const t = (elapsed / breathCycle) * 2 * Math.PI;
     const breathValue = Math.sin(t) * breathAmplitude;
 
     // Subtle body angle for breathing effect
-    setParameter('ParamBodyAngleX', breathValue * 2);
-    setParameter('ParamBodyAngleY', Math.sin(t * 0.7) * 1.5);
-    setParameter('ParamBodyAngleZ', Math.sin(t * 0.5) * 1);
+    setParameterRef.current('ParamBodyAngleX', breathValue * 2);
+    setParameterRef.current('ParamBodyAngleY', Math.sin(t * 0.7) * 1.5);
+    setParameterRef.current('ParamBodyAngleZ', Math.sin(t * 0.5) * 1);
 
     breathRafRef.current = requestAnimationFrame(breathLoop);
-  }, [enabled, breathAmplitude, breathCycle, setParameter]);
+  }, [breathAmplitude, breathCycle]);
 
   useEffect(() => {
-    if (!enabled) return;
+    mountedRef.current = true;
+    enabledRef.current = enabled;
+    startTimeRef.current = Date.now();
 
-    scheduleBlink();
-    breathRafRef.current = requestAnimationFrame(breathLoop);
+    if (enabled) {
+      scheduleBlink();
+      breathRafRef.current = requestAnimationFrame(breathLoop);
+    }
 
     return () => {
-      if (blinkTimerRef.current) clearTimeout(blinkTimerRef.current);
-      if (breathRafRef.current) cancelAnimationFrame(breathRafRef.current);
+      mountedRef.current = false;
+      if (blinkTimerRef.current) {
+        clearTimeout(blinkTimerRef.current);
+        blinkTimerRef.current = undefined;
+      }
+      if (breathRafRef.current) {
+        cancelAnimationFrame(breathRafRef.current);
+        breathRafRef.current = 0;
+      }
     };
   }, [enabled, scheduleBlink, breathLoop]);
 };

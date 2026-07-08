@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 // 消息类型
 export interface Message {
@@ -17,6 +18,8 @@ interface ChatState {
   currentSessionId: string | null;
   isStreaming: boolean;
   error: string | null;
+  activeTopic: string | null;
+  panelCollapsed: boolean;
 
   // 操作
   addMessage: (message: Message) => void;
@@ -27,16 +30,22 @@ interface ChatState {
   setCurrentSession: (sessionId: string) => void;
   setError: (error: string | null) => void;
   removeMessage: (id: string) => void;
+  setActiveTopic: (topic: string | null) => void;
+  setPanelCollapsed: (collapsed: boolean) => void;
   getHistory: (maxRounds?: number) => Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 // 创建对话状态store
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>()(
+  persist(
+    (set, get) => ({
   // 初始状态
   messages: [],
   currentSessionId: null,
   isStreaming: false,
   error: null,
+  activeTopic: null,
+  panelCollapsed: true,
 
   // 添加消息
   addMessage: (message) =>
@@ -82,6 +91,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: state.messages.filter((msg) => msg.id !== id),
     })),
 
+  // 设置当前主题
+  setActiveTopic: (topic) =>
+    set({ activeTopic: topic, panelCollapsed: topic ? false : true }),
+
+  // 设置信息面板折叠状态
+  setPanelCollapsed: (collapsed) =>
+    set({ panelCollapsed: collapsed }),
+
   // 获取历史消息（用于传给后端API）
   getHistory: (maxRounds = 5) => {
     const { messages } = get();
@@ -92,6 +109,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
       content: msg.content,
     }));
   },
-}));
+    }),
+    {
+      name: 'chat-store',
+      partialize: (state) => ({
+        messages: state.messages.filter((m) => m.status !== 'sending'),
+        currentSessionId: state.currentSessionId,
+      }),
+    }
+  )
+);
 
 export default useChatStore;

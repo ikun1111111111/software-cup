@@ -23,22 +23,22 @@ EXCEL_PATH = Path(__file__).parent.parent.parent.parent / "docs" / "景点景区
 # Expected 17 columns in the Excel file
 EXPECTED_COLUMNS = [
     "tourist_id",
+    "user_nickname",
+    "age",
+    "gender",
     "attraction_name",
+    "attraction_content",
+    "attraction_type",
     "visit_date",
-    "costs",
-    "stay_duration_minutes",
-    "satisfaction_score",
-    "companion_count",
-    "companion_type",
-    "weather",
-    "temperature",
-    "is_holiday",
-    "visit_hour",
-    "device_type",
-    "search_keyword",
-    "click_attraction",
-    "page_view_count",
-    "review_text",
+    "stay_duration",
+    "ticket_cost",
+    "food_cost",
+    "shopping_cost",
+    "transport_cost",
+    "entertainment_cost",
+    "total_cost",
+    "group_size",
+    "satisfaction",
 ]
 
 # Batch size for database inserts
@@ -98,39 +98,47 @@ def normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
         # Chinese → English
         "游客ID": "tourist_id",
         "游客id": "tourist_id",
+        "用户昵称": "user_nickname",
+        "游客昵称": "user_nickname",
+        "昵称": "user_nickname",
+        "年龄": "age",
+        "性别": "gender",
         "景点名称": "attraction_name",
         "景点": "attraction_name",
+        "景点内容": "attraction_content",
+        "景点介绍": "attraction_content",
+        "景点类型": "attraction_type",
+        "景点类别": "attraction_type",
         "访问日期": "visit_date",
         "游览日期": "visit_date",
         "日期": "visit_date",
-        "消费金额": "costs",
-        "消费": "costs",
-        "停留时长(分钟)": "stay_duration_minutes",
-        "停留时长": "stay_duration_minutes",
-        "游览时长": "stay_duration_minutes",
-        "满意度评分": "satisfaction_score",
-        "满意度": "satisfaction_score",
-        "同行人数": "companion_count",
-        "同伴人数": "companion_count",
-        "同行类型": "companion_type",
-        "同伴类型": "companion_type",
-        "天气": "weather",
-        "气温": "temperature",
-        "温度": "temperature",
-        "是否节假日": "is_holiday",
-        "节假日": "is_holiday",
-        "访问时段": "visit_hour",
-        "游览时段": "visit_hour",
-        "设备类型": "device_type",
-        "设备": "device_type",
-        "搜索关键词": "search_keyword",
-        "搜索词": "search_keyword",
-        "点击景点": "click_attraction",
-        "浏览页数": "page_view_count",
-        "页面浏览数": "page_view_count",
-        "评价内容": "review_text",
-        "评论": "review_text",
-        "评价": "review_text",
+        "停留时长(分钟)": "stay_duration",
+        "停留时长": "stay_duration",
+        "游览时长": "stay_duration",
+        "门票消费": "ticket_cost",
+        "门票花费": "ticket_cost",
+        "门票费用": "ticket_cost",
+        "餐饮消费": "food_cost",
+        "餐饮花费": "food_cost",
+        "餐饮费用": "food_cost",
+        "美食消费": "food_cost",
+        "文创消费": "shopping_cost",
+        "购物消费": "shopping_cost",
+        "纪念品消费": "shopping_cost",
+        "交通消费": "transport_cost",
+        "交通花费": "transport_cost",
+        "娱乐消费": "entertainment_cost",
+        "娱乐花费": "entertainment_cost",
+        "其他消费": "entertainment_cost",
+        "总消费": "total_cost",
+        "消费金额": "total_cost",
+        "消费": "total_cost",
+        "总花费": "total_cost",
+        "同行人数": "group_size",
+        "同伴人数": "group_size",
+        "团队人数": "group_size",
+        "满意度评分": "satisfaction",
+        "满意度": "satisfaction",
     }
     df = df.rename(columns=column_mapping)
     return df
@@ -151,7 +159,7 @@ def load_and_clean_data(file_path: Optional[Path] = None) -> pd.DataFrame:
         raise FileNotFoundError(f"Excel data file not found: {path}")
 
     logger.info("Loading Excel data from %s", path)
-    df = pd.read_excel(path)
+    df = pd.read_csv(path) if path.suffix.lower() == ".csv" else pd.read_excel(path)
 
     # Normalize column names
     df = normalize_column_names(df)
@@ -160,12 +168,10 @@ def load_and_clean_data(file_path: Optional[Path] = None) -> pd.DataFrame:
     for col in EXPECTED_COLUMNS:
         if col not in df.columns:
             logger.warning("Missing column '%s', filling with defaults", col)
-            if col in ("costs", "satisfaction_score", "temperature"):
+            if col in ("stay_duration", "ticket_cost", "food_cost", "shopping_cost", "transport_cost", "entertainment_cost", "total_cost"):
                 df[col] = 0.0
-            elif col in ("stay_duration_minutes", "companion_count", "visit_hour", "page_view_count"):
+            elif col in ("age", "group_size", "satisfaction"):
                 df[col] = 0
-            elif col == "is_holiday":
-                df[col] = False
             else:
                 df[col] = ""
 
@@ -179,29 +185,18 @@ def load_and_clean_data(file_path: Optional[Path] = None) -> pd.DataFrame:
         df["visit_date"] = df["visit_date"].apply(_parse_date)
 
     # Clean: parse numeric fields
-    df["costs"] = df["costs"].apply(_parse_float)
-    df["satisfaction_score"] = df["satisfaction_score"].apply(lambda x: _parse_float(x, 3.0))
-    df["stay_duration_minutes"] = df["stay_duration_minutes"].apply(_parse_int)
-    df["companion_count"] = df["companion_count"].apply(_parse_int)
-    df["temperature"] = df["temperature"].apply(lambda x: _parse_float(x, 20.0))
-    df["visit_hour"] = df["visit_hour"].apply(_parse_int)
-    df["page_view_count"] = df["page_view_count"].apply(lambda x: _parse_int(x, 1))
+    for col in ("stay_duration", "ticket_cost", "food_cost", "shopping_cost", "transport_cost", "entertainment_cost", "total_cost"):
+        df[col] = df[col].apply(_parse_float)
 
-    # Clean: parse boolean
-    df["is_holiday"] = df["is_holiday"].apply(_parse_bool)
-
-    # Clean: string fields
-    for col in ["companion_type", "weather", "device_type"]:
-        df[col] = df[col].fillna("").astype(str)
+    df["age"] = df["age"].apply(_parse_int)
+    df["group_size"] = df["group_size"].apply(_parse_int)
+    df["satisfaction"] = df["satisfaction"].apply(lambda x: _parse_int(x, 3))
 
     # Clean: clamp satisfaction to 1-5
-    df["satisfaction_score"] = df["satisfaction_score"].clip(1.0, 5.0)
+    df["satisfaction"] = df["satisfaction"].clip(1, 5)
 
     # Clean: clamp stay duration to reasonable range
-    df["stay_duration_minutes"] = df["stay_duration_minutes"].clip(0, 1440)
-
-    # Clean: clamp visit_hour to 0-23
-    df["visit_hour"] = df["visit_hour"].clip(0, 23)
+    df["stay_duration"] = df["stay_duration"].clip(0, 1440)
 
     total_after = len(df)
     dropped = total_before - total_after
@@ -245,22 +240,22 @@ async def import_behavior_data(
             try:
                 record = TouristBehavior(
                     tourist_id=str(row["tourist_id"]),
+                    user_nickname=str(row.get("user_nickname", "")) or None,
+                    age=_parse_int(row.get("age", 0)) or None,
+                    gender=str(row.get("gender", "")) or None,
                     attraction_name=str(row["attraction_name"]),
+                    attraction_content=str(row.get("attraction_content", "")) or None,
+                    attraction_type=str(row.get("attraction_type", "")) or None,
                     visit_date=row.get("visit_date"),
-                    costs=_parse_float(row.get("costs", 0)),
-                    stay_duration_minutes=_parse_int(row.get("stay_duration_minutes", 0)),
-                    satisfaction_score=_parse_float(row.get("satisfaction_score", 3.0)),
-                    companion_count=_parse_int(row.get("companion_count", 0)),
-                    companion_type=str(row.get("companion_type", "")) or None,
-                    weather=str(row.get("weather", "")) or None,
-                    temperature=_parse_float(row.get("temperature", 20.0)),
-                    is_holiday=_parse_bool(row.get("is_holiday", False)),
-                    visit_hour=_parse_int(row.get("visit_hour", 0)),
-                    device_type=str(row.get("device_type", "")) or None,
-                    search_keyword=str(row.get("search_keyword", "")) or None,
-                    click_attraction=str(row.get("click_attraction", "")) or None,
-                    page_view_count=_parse_int(row.get("page_view_count", 1)),
-                    review_text=str(row.get("review_text", "")) or None,
+                    stay_duration=_parse_float(row.get("stay_duration", 0)),
+                    ticket_cost=_parse_float(row.get("ticket_cost", 0)),
+                    food_cost=_parse_float(row.get("food_cost", 0)),
+                    shopping_cost=_parse_float(row.get("shopping_cost", 0)),
+                    transport_cost=_parse_float(row.get("transport_cost", 0)),
+                    entertainment_cost=_parse_float(row.get("entertainment_cost", 0)),
+                    total_cost=_parse_float(row.get("total_cost", 0)),
+                    group_size=_parse_int(row.get("group_size", 0)),
+                    satisfaction=_parse_int(row.get("satisfaction", 3)),
                 )
                 records.append(record)
                 inserted += 1
@@ -308,17 +303,20 @@ async def compute_spot_statistics(db: AsyncSession) -> dict:
         SELECT
             attraction_name,
             COUNT(*) AS total_visits,
-            ROUND(AVG(satisfaction_score)::numeric, 2) AS avg_satisfaction,
-            ROUND(AVG(stay_duration_minutes)::numeric, 1) AS avg_stay_minutes,
-            ROUND(AVG(costs)::numeric, 2) AS avg_cost,
-            MODE() WITHIN GROUP (ORDER BY visit_hour) AS peak_hour,
+            ROUND(AVG(satisfaction)::numeric, 2) AS avg_satisfaction,
+            ROUND(AVG(stay_duration)::numeric, 1) AS avg_stay_minutes,
+            ROUND(AVG(total_cost)::numeric, 2) AS avg_cost,
+            NULL AS peak_hour,
             MODE() WITHIN GROUP (
-                ORDER BY CASE WHEN is_holiday THEN 'holiday' ELSE 'weekday' END
+                ORDER BY CASE WHEN EXTRACT(MONTH FROM visit_date) IN (3, 4, 5) THEN 'spring'
+                    WHEN EXTRACT(MONTH FROM visit_date) IN (6, 7, 8) THEN 'summer'
+                    WHEN EXTRACT(MONTH FROM visit_date) IN (9, 10, 11) THEN 'autumn'
+                    ELSE 'winter' END
             ) AS peak_season,
-            COUNT(*) FILTER (WHERE companion_type = 'family') > COUNT(*) FILTER (WHERE companion_type = 'couple') AS popular_with_family,
-            COUNT(*) FILTER (WHERE companion_type = 'couple') > COUNT(*) FILTER (WHERE companion_type = 'family') AS popular_with_couples,
-            COUNT(*) FILTER (WHERE companion_type = 'solo' OR companion_count = 0) > COUNT(*) FILTER (WHERE companion_count > 0) AS popular_with_solo,
-            COUNT(*) FILTER (WHERE review_text IS NOT NULL AND review_text != '') AS total_reviews,
+            COUNT(*) FILTER (WHERE group_size >= 3) > COUNT(*) FILTER (WHERE group_size = 2) AS popular_with_family,
+            COUNT(*) FILTER (WHERE group_size = 2) > COUNT(*) FILTER (WHERE group_size >= 3) AS popular_with_couples,
+            COUNT(*) FILTER (WHERE group_size <= 1) > COUNT(*) FILTER (WHERE group_size > 1) AS popular_with_solo,
+            COUNT(*) FILTER (WHERE satisfaction IS NOT NULL) AS total_reviews,
             NOW()
         FROM tourist_behaviors
         GROUP BY attraction_name

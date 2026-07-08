@@ -1,0 +1,274 @@
+{
+  "dynasty": "ming",
+  "dynastyName": "大明灵山",
+  "welcomeText": "欢迎来到大明灵山。我是你的导游小景。元末战乱后，这片土地沉寂了数十年，直到洪武年间，释行晖禅师披荆斩棘、四处化缘，才让祥符禅寺重现于世。此后二百余年，宣德扩建、正统赐经、万历建塔，一代代高僧在此弘法传灯。从天竺僧人智澜远渡重洋担任住持，到汉月法藏禅师弘扬临济宗的棒喝家风，祥符禅寺在明代迎来了又一次辉煌。请随我一同走入这段沉毅而壮阔的历史。",
+  "hotspots": [
+    {
+      "id": "hot-ming-01",
+      "name": "山门重修",
+      "position": { "left": "10.94%", "top": "14.81%" },
+      "color": "#A04030",
+      "cardId": "ming-01"
+    },
+    {
+      "id": "hot-ming-02",
+      "name": "梵宫扩建",
+      "position": { "left": "26.04%", "top": "55.00%" },
+      "color": "#C8A951",
+      "cardId": "ming-02"
+    },
+    {
+      "id": "hot-ming-03",
+      "name": "藏经阁",
+      "position": { "left": "45.83%", "top": "33.33%" },
+      "color": "#D45A3D",
+      "cardId": "ming-03"
+    },
+    {
+      "id": "hot-ming-04",
+      "name": "寺塔凌霄",
+      "position": { "left": "67.71%", "top": "28.70%" },
+      "color": "#E8B951",
+      "cardId": "ming-04"
+    },
+    {
+      "id": "hot-ming-05",
+      "name": "大悲殿",
+      "position": { "left": "65.10%", "top": "67.59%" },
+      "color": "#B85040",
+      "cardId": "ming-05"
+    }
+  ],
+  "cards": [
+    {
+      "id": "ming-01",
+      "title": "山门重修 · 洪武重建",
+      "summary": "明初释行晖禅师主持重修祥符禅寺，历经数年艰辛恢复了寺院基本格局。",
+      "mainImage": "bg-ming-01.jpg",
+      "auxImage": null,
+      "segments": [
+        {
+          "text": "朱红山门矗立眼前，石狮静默，石阶蜿蜒而上。明初战火刚熄，这里还是一片断壁残垣。",
+          "emotion": "neutral",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-ming-01-rebuild.png",
+            "caption": "明代古寺山门",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "洪武年间，释行晖禅师披荆斩棘，四处化缘，终于获准重建寺院。一座寺院的重兴，往往需要朝廷敕准、信众合力。",
+          "emotion": "think",
+          "duration": 5000,
+          "exhibit": {
+            "type": "scroll",
+            "asset": "img-ming-01-rebuild.png",
+            "caption": "寺院重建规划想象",
+            "animation": "scrollUnroll",
+            "position": "full"
+          }
+        },
+        {
+          "text": "山门重修，不仅是建筑的复原，更意味着这片佛土重新接通了人间香火。",
+          "emotion": "smile",
+          "duration": 4500,
+          "exhibit": {
+            "type": "comparison",
+            "asset": "img-ming-01-rebuild.png",
+            "caption": "山门旧貌与新颜对照",
+            "animation": "crossfade",
+            "position": "full"
+          }
+        }
+      ],
+      "interactiveQuestion": "明初百废待兴，一座寺院重修要化缘多少年？"
+    },
+    {
+      "id": "ming-02",
+      "title": "梵宫扩建 · 天竺智澜",
+      "summary": "宣德年间道岩、智澜两位法师大力营建佛殿，天竺僧人智澜担任寺院「领事」。",
+      "mainImage": "bg-ming-02.jpg",
+      "auxImage": null,
+      "segments": [
+        {
+          "text": "金色琉璃瓦的主殿在阳光下熠熠生辉，殿前广场开阔，香炉青烟袅袅。",
+          "emotion": "neutral",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-ming-01-rebuild.png",
+            "caption": "明代禅寺主殿",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "宣德年间，天竺僧人智澜远渡重洋，与道岩法师一同扩建佛殿，并担任「领事」——相当于今日的住持。",
+          "emotion": "think",
+          "duration": 5500,
+          "exhibit": {
+            "type": "calligraphy",
+            "asset": "img-ming-04-monk.png",
+            "caption": "天竺僧人智澜画像想象",
+            "animation": "brushWrite",
+            "position": "center"
+          }
+        },
+        {
+          "text": "一位外国僧人能主理中国名刹，足见明代佛教交流的开放与国际化。",
+          "emotion": "smile",
+          "duration": 4500,
+          "exhibit": {
+            "type": "comparison",
+            "asset": "img-ming-01-rebuild.png",
+            "caption": "梵宫扩建前后规模对照",
+            "animation": "crossfade",
+            "position": "full"
+          }
+        }
+      ],
+      "interactiveQuestion": "天竺僧人来中国当「住持」，明代就这么国际化了？"
+    },
+    {
+      "id": "ming-03",
+      "title": "藏经阁 · 正统赐经",
+      "summary": "正统年间朝廷赐给祥符禅寺一部《大藏经》，这是极高的荣誉。",
+      "mainImage": "bg-ming-03.jpg",
+      "auxImage": null,
+      "segments": [
+        {
+          "text": "二层藏经阁飞檐翘角，朱红漆柱间隐约可见层层经函，静谧而庄重。",
+          "emotion": "neutral",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-ming-02-sutra.png",
+            "caption": "明代藏经阁楼",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "正统年间，朝廷赐下《大藏经》。明代大藏主要有南京「南藏」与北京「北藏」两个版本，赐经应为其中之一。",
+          "emotion": "think",
+          "duration": 5500,
+          "exhibit": {
+            "type": "scroll",
+            "asset": "img-ming-02-sutra.png",
+            "caption": "《大藏经》经卷",
+            "animation": "scrollUnroll",
+            "position": "full"
+          }
+        },
+        {
+          "text": "一部大藏经通常有六千多卷，是寺院的镇寺之宝，也是皇权对佛法认可的证明。",
+          "emotion": "smile",
+          "duration": 4500,
+          "exhibit": {
+            "type": "comparison",
+            "asset": "img-ming-02-sutra.png",
+            "caption": "南北藏刻本分布示意",
+            "animation": "crossfade",
+            "position": "full"
+          }
+        }
+      ],
+      "interactiveQuestion": "一套《大藏经》有多少卷？相当于今天多少本书？"
+    },
+    {
+      "id": "ming-04",
+      "title": "寺塔凌霄 · 万历重建",
+      "summary": "万历初年顺庵禅师主持重建寺塔，古塔成为寺院的标志性建筑。",
+      "mainImage": "bg-ming-04.jpg",
+      "auxImage": null,
+      "segments": [
+        {
+          "text": "佛塔凌霄而立，每层飞檐悬挂风铃，塔身佛龛在朝霞中若隐若现。",
+          "emotion": "neutral",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-ming-03-pagoda.png",
+            "caption": "明代禅寺佛塔",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "万历初年，顺庵禅师主持重建寺塔。古塔不仅是舍利供奉之所，也往往承载着一方风水。",
+          "emotion": "think",
+          "duration": 5000,
+          "exhibit": {
+            "type": "map",
+            "asset": "img-ming-03-pagoda.png",
+            "caption": "佛塔与寺院风水示意",
+            "animation": "scrollRevealLeft",
+            "position": "full"
+          }
+        },
+        {
+          "text": "这座塔后来历经沧桑，成为寺院最醒目的地标，也见证了祥符禅寺的兴衰。",
+          "emotion": "smile",
+          "duration": 4500,
+          "exhibit": {
+            "type": "comparison",
+            "asset": "img-ming-03-pagoda.png",
+            "caption": "古塔历代变迁想象",
+            "animation": "crossfade",
+            "position": "full"
+          }
+        }
+      ],
+      "interactiveQuestion": "你觉得古塔是用来藏舍利，还是用来「镇风水」？"
+    },
+    {
+      "id": "ming-05",
+      "title": "大悲殿 · 临济宗的棒喝家风",
+      "summary": "天启年间祥符禅寺建成大悲殿，汉月法藏弘扬临济宗，观音信仰与棒喝家风在此交汇。",
+      "mainImage": "bg-ming-05.jpg",
+      "auxImage": null,
+      "segments": [
+        {
+          "text": "大悲殿红墙金瓦，殿内观音菩萨像慈悲庄严，供桌上香烟袅袅。",
+          "emotion": "neutral",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-ming-05-guanyin.png",
+            "caption": "明代大悲殿",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "汉月法藏禅师在此弘扬临济宗，以「棒喝」闻名，风格凌厉直接，讲究顿悟。",
+          "emotion": "think",
+          "duration": 5000,
+          "exhibit": {
+            "type": "calligraphy",
+            "asset": "img-ming-04-monk.png",
+            "caption": "临济宗棒喝家风",
+            "animation": "brushWrite",
+            "position": "center"
+          }
+        },
+        {
+          "text": "明代中后期，江南水灾频繁，观音信仰日益兴盛。大悲殿的建成，正是佛法回应人间疾苦的方式。",
+          "emotion": "smile",
+          "duration": 5000,
+          "exhibit": {
+            "type": "comparison",
+            "asset": "img-ming-05-guanyin.png",
+            "caption": "明代观音信仰与江南水灾祈福",
+            "animation": "crossfade",
+            "position": "full"
+          }
+        }
+      ],
+      "interactiveQuestion": "临济宗以「棒喝」闻名——师父一棒打下来，你悟了吗？"
+    }
+  ]
+}

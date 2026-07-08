@@ -38,21 +38,6 @@ class EmbeddingEngine:
                 logger.warning("Using mock embedding model (RAG vector search disabled)")
         return self._model
 
-
-class _MockEmbeddingModel:
-    """Fallback mock model that returns zero vectors when the real model fails to load."""
-
-    def __init__(self, dim: int):
-        self._dim = dim
-
-    def encode(self, texts, **kwargs):
-        import numpy as np
-        return {"dense_vecs": np.zeros((len(texts), self._dim), dtype=np.float32)}
-
-    @property
-    def dim(self) -> int:
-        return self._dim
-
     def encode(self, texts: list[str], batch_size: int = 32) -> list[list[float]]:
         """Encode a batch of texts into dense vectors (blocking, run in thread)."""
         if not texts:
@@ -83,6 +68,21 @@ class _MockEmbeddingModel:
 
         embeddings = self.encode([text])
         return embeddings[0]
+
+
+class _MockEmbeddingModel:
+    """Fallback mock model that returns zero vectors when the real model fails to load."""
+
+    def __init__(self, dim: int):
+        self._dim = dim
+
+    def encode(self, texts, **kwargs):
+        import numpy as np
+        return {"dense_vecs": np.zeros((len(texts), self._dim), dtype=np.float32)}
+
+    @property
+    def dim(self) -> int:
+        return self._dim
 
 
 async def _load_model_async() -> None:

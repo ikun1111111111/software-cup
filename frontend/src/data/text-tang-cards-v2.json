@@ -1,0 +1,394 @@
+{
+  "dynasty": "tang",
+  "dynastyName": "大唐灵山",
+  "welcomeText": "施主安好！我是你的AI导游小景。此刻我们正站在大唐灵山——没错，就是一千三百多年前，玄奘法师亲口赐名「小灵山」的地方。接下来，我将陪你穿越时光，去山巅寻访玄奘的足迹、去古寺听杭恽将军舍山的故事、去法堂感受窥基法师的弘法、去摩崖仰望盛唐佛国、去竹林溪边与唐代诗人隔空对吟。准备好了吗？我们的灵山之旅，现在开始！",
+  "hotspots": [
+    {
+      "id": "hot-tang-01",
+      "name": "山巅远眺",
+      "position": { "left": "50%", "top": "18%" },
+      "color": "#D4A843",
+      "cardId": "tang-01"
+    },
+    {
+      "id": "hot-tang-02",
+      "name": "古寺山门",
+      "position": { "left": "42%", "top": "38%" },
+      "color": "#B87333",
+      "cardId": "tang-02"
+    },
+    {
+      "id": "hot-tang-03",
+      "name": "法堂遗址",
+      "position": { "left": "55%", "top": "48%" },
+      "color": "#C84B31",
+      "cardId": "tang-03"
+    },
+    {
+      "id": "hot-tang-04",
+      "name": "摩崖佛窟",
+      "position": { "left": "28%", "top": "58%" },
+      "color": "#C8882E",
+      "cardId": "tang-04"
+    },
+    {
+      "id": "hot-tang-05",
+      "name": "竹林溪涧",
+      "position": { "left": "68%", "top": "72%" },
+      "color": "#6A9C89",
+      "cardId": "tang-05"
+    }
+  ],
+  "cards": [
+    {
+      "id": "tang-01",
+      "title": "山巅远眺 · 玄奘为何叫它「小灵山」？",
+      "summary": "贞观年间，玄奘取经归来游历东南，见此地三峰环列、太湖浩渺，酷似佛陀讲法的印度灵鹫山，遂赐名「小灵山」。",
+      "mainImage": "bg-tang-01.png",
+      "auxImage": "img-tang-02-gaya.png",
+      "segments": [
+        {
+          "text": "小景我第一次站在这里，山风拂面，云海翻涌，也忍不住感叹——这山形，这气韵，难怪玄奘法师当年一眼就认出了它。",
+          "emotion": "smile",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-tang-01-mountains.png",
+            "caption": "小灵山远眺",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "贞观十九年，玄奘法师从西域取经归来。他走了十七年，途经一百一十国，带回了六百五十七部佛经。",
+          "emotion": "think",
+          "duration": 5000,
+          "exhibit": {
+            "type": "map",
+            "asset": "exhibit-map-xuanzang.png",
+            "caption": "玄奘西行路线图",
+            "animation": "scrollRevealLeft",
+            "position": "full"
+          }
+        },
+        {
+          "text": "后来玄奘奉旨游历东南，由归田的唐右将军杭恽陪同，来到了这座马迹山。他站在山巅四望——三峰环列如莲花，太湖烟波浩渺接天际。",
+          "emotion": "neutral",
+          "duration": 5500,
+          "exhibit": {
+            "type": "comparison",
+            "asset": "exhibit-comparison-peak.png",
+            "caption": "左：印度灵鹫山古画  ·  右：无锡灵山实景",
+            "animation": "splitReveal",
+            "position": "full"
+          }
+        },
+        {
+          "text": "玄奘忽然想起他在印度见过的灵鹫山——那是佛陀讲法的地方，山势与此地何其相似！他不禁叹道：「无殊西竺国灵鹫之胜也」。",
+          "emotion": "surprise",
+          "duration": 5500,
+          "exhibit": {
+            "type": "calligraphy",
+            "asset": "exhibit-calligraphy-xiaolingshan.png",
+            "caption": "「无殊西竺国灵鹫之胜也」",
+            "animation": "brushWrite",
+            "position": "center"
+          }
+        },
+        {
+          "text": "于是，他提笔为这座山赐名——「小灵山」。不是「灵山」，因为天竺那座才是真正的灵山。但我们脚下这片土地，从此便有了佛性灵气。",
+          "emotion": "smile",
+          "duration": 5000,
+          "exhibit": {
+            "type": "calligraphy",
+            "asset": "exhibit-calligraphy-xiaolingshan.png",
+            "caption": "玄奘赐名「小灵山」",
+            "animation": "sealStamp",
+            "position": "center"
+          }
+        }
+      ],
+      "interactiveQuestion": "您猜猜看，玄奘去过的印度灵鹫山，和咱们脚下这座小灵山，哪座更高？"
+    },
+    {
+      "id": "tang-02",
+      "title": "古寺山门 · 杭恽为何捐出祖坟山？",
+      "summary": "唐代右将军杭恽归田后虔信佛法，因与玄奘交好，毅然捐出祖坟山地建寺，奠定了祥符禅寺的前身。",
+      "mainImage": "bg-tang-02.png",
+      "auxImage": "img-tang-04-deed.png",
+      "segments": [
+        {
+          "text": "现在我们来到了古寺山门。一千三百多年前，这里还没有「祥符禅寺」这个名字，只有一片杭恽将军家族的祖坟山地。",
+          "emotion": "neutral",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-tang-03-general.png",
+            "caption": "杭恽将军像",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "杭恽，无锡马迹山人，官至唐代右将军，曾随李渊、李世民父子南征北战。功成名就后，他选择归田故里，虔心向佛。",
+          "emotion": "think",
+          "duration": 5000,
+          "exhibit": {
+            "type": "scroll",
+            "asset": "exhibit-scroll-hangyun.png",
+            "caption": "《旧唐书》相关记载",
+            "animation": "scrollUnroll",
+            "position": "full"
+          }
+        },
+        {
+          "text": "玄奘法师游历东南时，杭恽亲自陪同登临此山。玄奘一句「无殊灵鹫」，杭恽便生出一个念头——与其让祖坟山归于尘土，不如舍给佛门，普度众生。",
+          "emotion": "neutral",
+          "duration": 5500,
+          "exhibit": {
+            "type": "comparison",
+            "asset": "exhibit-ancestry-temple.png",
+            "caption": "左：杭氏宗祠  →  右：山寺初建",
+            "animation": "crossfade",
+            "position": "full"
+          }
+        },
+        {
+          "text": "在唐代，祖坟山是家族的根。舍山为寺，等于把整个家族的未来都托付给了佛法。杭恽的决心，您可想见？",
+          "emotion": "think",
+          "duration": 4500,
+          "exhibit": {
+            "type": "scroll",
+            "asset": "exhibit-deed-scroll.png",
+            "caption": "舍山地契（摹本）",
+            "animation": "scrollUnroll",
+            "position": "full"
+          }
+        },
+        {
+          "text": "正是这片祖坟山，后来建起了小灵山寺——也就是今天祥符禅寺的前身。杭恽将军的舍山之举，让这一方圣地从此佛光普照，千年不绝。",
+          "emotion": "smile",
+          "duration": 5000,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-tang-07-temple.png",
+            "caption": "唐代山寺复原想象",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        }
+      ],
+      "interactiveQuestion": "如果换作是您，皇帝赐您良田百亩，和玄奘让您捐出祖坟山建寺，您会选哪一个？"
+    },
+    {
+      "id": "tang-03",
+      "title": "法堂遗址 · 玄奘最得意的弟子来了",
+      "summary": "玄奘弟子窥基受师嘱托，出任小灵山寺第一任住持，在此开法弘法，承继慈恩宗脉。",
+      "mainImage": "bg-tang-03.png",
+      "auxImage": "img-tang-06-sutra.png",
+      "segments": [
+        {
+          "text": "这里是当年的法堂遗址。玄奘法师赐名之后，还需要有人来住持弘法。他选中的，是自己最得意的弟子——窥基。",
+          "emotion": "neutral",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-tang-05-lineage.png",
+            "caption": "窥基法师像",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "窥基法师生于将门，却自幼聪慧过人，精通梵汉双语。玄奘亲自为他讲授《瑜伽师地论》，前后历时九个月。师徒情谊，可见一斑。",
+          "emotion": "smile",
+          "duration": 5500,
+          "exhibit": {
+            "type": "scroll",
+            "asset": "exhibit-letter-xuanzang.png",
+            "caption": "玄奘致窥基手书（摹本）",
+            "animation": "scrollUnroll",
+            "position": "full"
+          }
+        },
+        {
+          "text": "玄奘晚年，将慈恩宗的法脉郑重托付给窥基，并嘱他日后前往小灵山寺，在此开法弘法，让这方圣地不致荒废。",
+          "emotion": "think",
+          "duration": 5000,
+          "exhibit": {
+            "type": "map",
+            "asset": "exhibit-lineage-cien.png",
+            "caption": "慈恩宗法脉传承图",
+            "animation": "scrollRevealLeft",
+            "position": "full"
+          }
+        },
+        {
+          "text": "窥基不负所托，来到小灵山寺出任第一任住持。他在这里宣讲唯识宗义，四方学僧云集，一时之间，小灵山寺成为江南佛学重镇。",
+          "emotion": "smile",
+          "duration": 5500,
+          "exhibit": {
+            "type": "image",
+            "asset": "exhibit-dharma-hall.png",
+            "caption": "法堂讲经场景复原",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "后人赞誉小灵山寺「山连鹫岭，法继慈恩」——地理上连通了印度的灵鹫山，法脉上承继了玄奘的慈恩宗。这份荣耀，始于窥基。",
+          "emotion": "smile",
+          "duration": 5500,
+          "exhibit": {
+            "type": "calligraphy",
+            "asset": "exhibit-calligraphy-cien.png",
+            "caption": "「山连鹫岭，法继慈恩」",
+            "animation": "brushWrite",
+            "position": "center"
+          }
+        }
+      ],
+      "interactiveQuestion": "慈恩宗讲「万法唯识」，大意是你看到的世界很大程度上是你的心造出来的。您觉得有道理吗？"
+    },
+    {
+      "id": "tang-04",
+      "title": "摩崖佛窟 · 盛唐佛国的石刻见证",
+      "summary": "唐代佛教鼎盛，灵山一带多有摩崖石刻佛像。千百年风雨侵蚀，仍能想见当年梵音缭绕、信众云集的盛景。",
+      "mainImage": "bg-tang-04.png",
+      "auxImage": "img-tang-08-sects.png",
+      "segments": [
+        {
+          "text": "您看这些山崖——在唐代，这里可不是光秃秃的石头。一整面崖壁上，刻满了佛像、菩萨、飞天，香火缭绕，梵音不绝。",
+          "emotion": "neutral",
+          "duration": 5000,
+          "exhibit": {
+            "type": "image",
+            "asset": "exhibit-buddha-face.png",
+            "caption": "唐代摩崖造像复原想象",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "唐代是佛教造像的黄金时代。武则天崇佛，举国上下掀起了造佛像的热潮。江南虽然远离长安，但信佛的风气一点也不弱。",
+          "emotion": "think",
+          "duration": 5000,
+          "exhibit": {
+            "type": "scroll",
+            "asset": "exhibit-scroll-wuzhou.png",
+            "caption": "《旧唐书·则天本纪》相关记载",
+            "animation": "scrollUnroll",
+            "position": "full"
+          }
+        },
+        {
+          "text": "小灵山寺的僧众和信众们，就在寺旁的山崖上开凿佛窟。一锤一凿，刻出了佛陀慈悲的面容、菩萨优雅的体态、还有力士威猛的身形。",
+          "emotion": "neutral",
+          "duration": 5500,
+          "exhibit": {
+            "type": "comparison",
+            "asset": "exhibit-moya-detail.png",
+            "caption": "左：工匠开凿场景  ·  右：石刻细部特写",
+            "animation": "splitReveal",
+            "position": "full"
+          }
+        },
+        {
+          "text": "这些造像不仅是为了祈福，更是一种修行的方式。传说每凿下一锤，便消去一分业障。所以匠人们凿得格外虔诚，也格外精细。",
+          "emotion": "think",
+          "duration": 5000,
+          "exhibit": {
+            "type": "image",
+            "asset": "exhibit-buddha-face.png",
+            "caption": "唐代石刻佛像面部特写",
+            "animation": "fadeSlideIn",
+            "position": "center"
+          }
+        },
+        {
+          "text": "如今摩崖造像大多已随岁月风化，但站在这里，闭上眼睛，您依然能听见一千多年前，那些铁锤敲击岩石的回响。",
+          "emotion": "smile",
+          "duration": 5000,
+          "exhibit": {
+            "type": "image",
+            "asset": "bg-tang-04.png",
+            "caption": "今日摩崖遗址",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        }
+      ],
+      "interactiveQuestion": "您觉得，为什么古人要把佛像刻在石头上，而不是画在纸上或木头上？"
+    },
+    {
+      "id": "tang-05",
+      "title": "竹林溪涧 · 唐风诗韵与文人足迹",
+      "summary": "唐代文人墨客好游山玩水，灵山一带的竹林溪流留下了无数诗篇。白居易、孟郊等人都曾在此驻足。",
+      "mainImage": "bg-tang-05.png",
+      "auxImage": null,
+      "segments": [
+        {
+          "text": "穿过竹林，便是这条溪涧。一千多年前，唐代文人墨客最爱在这样的地方停留。山风、流水、鸟鸣，都是写诗的灵感。",
+          "emotion": "smile",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "bg-tang-05.png",
+            "caption": "竹林溪涧",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "白居易任苏州刺史时，曾多次来无锡游山玩水。他写过一句「湖上春来似画图」，这「湖」就是咱们脚下的太湖。",
+          "emotion": "neutral",
+          "duration": 5000,
+          "exhibit": {
+            "type": "calligraphy",
+            "asset": "exhibit-poem-baijuyi.png",
+            "caption": "白居易《春题湖上》：湖上春来似画图",
+            "animation": "brushWrite",
+            "position": "center"
+          }
+        },
+        {
+          "text": "还有孟郊，那位写下「慈母手中线，游子身上衣」的诗人，也是无锡人。他年轻时就在这附近的山中读书，想必也走过这条溪水。",
+          "emotion": "think",
+          "duration": 5500,
+          "exhibit": {
+            "type": "image",
+            "asset": "exhibit-painting-scholar.png",
+            "caption": "唐代文人溪边赋诗图",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "您听——溪水潺潺，竹影婆娑。如果闭上眼睛，是不是能听到有人在溪边吟诵：「东邻有佳人，雅致在林泉」……",
+          "emotion": "smile",
+          "duration": 5000,
+          "exhibit": {
+            "type": "calligraphy",
+            "asset": "exhibit-poem-generic.png",
+            "caption": "唐人咏灵山诗句",
+            "animation": "brushWrite",
+            "position": "center"
+          }
+        },
+        {
+          "text": "小灵山寺在唐代不仅是佛门圣地，也是文人雅集之所。佛性与诗性，在此交融。这，便是大唐灵山最动人的风景。",
+          "emotion": "smile",
+          "duration": 5000,
+          "exhibit": {
+            "type": "comparison",
+            "asset": "exhibit-poets-gathering.png",
+            "caption": "文人雅集想象图",
+            "animation": "crossfade",
+            "position": "full"
+          }
+        }
+      ],
+      "interactiveQuestion": "如果让您用一句诗来形容眼前的竹林溪涧，您会怎么写？"
+    }
+  ]
+}

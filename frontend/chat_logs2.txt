@@ -1,0 +1,5 @@
+log: [ChatPage] Digital human ready
+log: [SSE] data line: {"question": "灵山大佛有多高？", "answer": "灵山大佛通高88米，其中佛体高79米，莲花座高9米。它是目前世界上最高的青铜释迦牟尼立像 currentEvent: done
+log: [ChatPage] SSE event: done data preview: {"question":"灵山大佛有多高？","answer":"灵山大佛通高88米，其中佛体高79
+log: [ChatPage] done handler start, lastMessage: msg_1780905929401 assistant sending content length: 0
+log: [ChatPage] done handler updated status to sent for msg_1780905929401

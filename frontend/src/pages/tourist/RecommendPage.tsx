@@ -1,528 +1,812 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ClockCircleOutlined, CompassOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
-import { message } from 'antd';
-import { listRoutes, getRouteById, type TourRoute, type TourRouteDetail } from '../../api/routes';
-import { getSpotById, type SpotDetail } from '../../api/spots';
-import { getDNAProfile, getDNARecommendations, type DNAProfile, type DNARecommendResponse } from '../../api/routes';
-import RecommendEngine from '../../components/Recommend/RecommendEngine';
-import RoutePushButton from '../../components/Recommend/RoutePushButton';
-import DNARadarChart from '../../components/tourist/DNARadarChart';
-import DNATag from '../../components/tourist/DNATag';
-import type { RecommendationResult } from '../../api/routes';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import MiniRouteTimeline from '../../components/Galgame/MiniRouteTimeline';
+import GalgameRouteScroll from '../../components/Galgame/GalgameRouteScroll';
+import GuideBubble from '../../components/Galgame/GuideBubble';
+import GalgameDialog from '../../components/Galgame/GalgameDialog';
+import { listRoutes, listSpots, type Spot, type TourRoute } from '../../api/spots';
+import { useDigitalHuman } from '../../components/tourist/DigitalHumanProvider';
+import { useChatStore, Message } from '../../stores/chatStore';
+import { useSSE } from '../../hooks/useSSE';
+import type { Emotion } from '../../components/DigitalHuman/EmotionController';
+import type { RouteData, RouteSpot } from '../../components/Galgame/routeData';
 
-const INTEREST_OPTIONS = [
-  { label: '历史文化', value: 'history' },
-  { label: '自然风光', value: 'nature' },
-  { label: '亲子活动', value: 'family' },
-  { label: '全部路线', value: '' },
+const WELCOME_TEXT =
+  '欢迎来到路线推荐。我是你的数字导览人小景，会为你规划最适合的灵山游览路线。你想先了解哪条路线呢？';
+
+const DIALOG_PROMPTS = {
+  list: '请选择一条路线，小景为你讲解。也可以直接向我提问。',
+  overview: '已选择路线，可以开始游览、返回列表，或直接提问。',
+  tour: '正在游览中，可切换站点、查看概览，或随时向我提问。',
+};
+
+interface DialogChoice {
+  id: string;
+  text: string;
+  onClick: () => void;
+}
+
+type ViewMode = 'list' | 'overview' | 'tour';
+type TravelPreferenceId = 'culture' | 'nature' | 'family';
+type DisplayRoute = RouteData & {
+  routeType: string;
+  description: string;
+};
+
+interface TravelPreference {
+  id: TravelPreferenceId;
+  label: string;
+  subtitle: string;
+  routeTypes: string[];
+  keywords: string[];
+}
+
+interface RouteRecommendation {
+  route: DisplayRoute;
+  score: number;
+  reason: string;
+  matchedKeywords: string[];
+}
+
+const PREFERENCE_OPTIONS: TravelPreference[] = [
+  {
+    id: 'culture',
+    label: '人文历史',
+    subtitle: '典故、建筑、佛教艺术',
+    routeTypes: ['culture', 'history'],
+    keywords: ['历史', '文化', '玄奘', '祥符', '梵宫', '五印', '三圣', '佛教', '艺术', '非遗'],
+  },
+  {
+    id: 'nature',
+    label: '自然风光',
+    subtitle: '太湖、园林、慢行放松',
+    routeTypes: ['nature', 'scenery'],
+    keywords: ['自然', '风光', '太湖', '园林', '菩提', '曼飞龙', '精舍', '山水', '漫步', '放松'],
+  },
+  {
+    id: 'family',
+    label: '亲子休闲',
+    subtitle: '互动、表演、轻松节奏',
+    routeTypes: ['family', 'kids', 'leisure'],
+    keywords: ['亲子', '孩子', '家庭', '互动', '表演', '九龙', '佛手', '百子', '轻松', '拍照'],
+  },
 ];
 
+function getPreferenceById(id: TravelPreferenceId): TravelPreference {
+  return PREFERENCE_OPTIONS.find((item) => item.id === id) || PREFERENCE_OPTIONS[0];
+}
+
+function uniq(values: string[]): string[] {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function scoreRouteByPreference(route: DisplayRoute, preference: TravelPreference): RouteRecommendation {
+  const routeText = [
+    route.name,
+    route.duration,
+    route.description,
+    route.openingText,
+    route.closingText,
+    ...route.spots.flatMap((spot) => [
+      spot.name,
+      spot.description,
+      ...spot.qa.flatMap((qa) => [qa.q, qa.a]),
+    ]),
+  ].join(' ');
+
+  const matchedKeywords = uniq(preference.keywords.filter((keyword) => routeText.includes(keyword)));
+  const typeMatched = preference.routeTypes.includes(route.routeType);
+  const nameMatched = preference.keywords.some((keyword) => route.name.includes(keyword));
+  const spotMatchCount = route.spots.reduce((count, spot) => {
+    const spotText = `${spot.name} ${spot.description}`;
+    return count + preference.keywords.filter((keyword) => spotText.includes(keyword)).length;
+  }, 0);
+
+  const score =
+    35 +
+    (typeMatched ? 42 : 0) +
+    (nameMatched ? 12 : 0) +
+    Math.min(matchedKeywords.length * 5, 28) +
+    Math.min(spotMatchCount * 2, 16);
+
+  let reason = `匹配「${matchedKeywords.slice(0, 3).join('、')}」等兴趣点`;
+  if (typeMatched) {
+    reason = `路线主题与「${preference.label}」高度匹配`;
+  } else if (matchedKeywords.length === 0) {
+    reason = '综合景点密度、时长和讲解内容推荐';
+  }
+
+  return {
+    route,
+    score: Math.min(score, 99),
+    reason,
+    matchedKeywords,
+  };
+}
+
+function buildRouteRecommendations(
+  routes: DisplayRoute[],
+  preference: TravelPreference
+): RouteRecommendation[] {
+  return routes
+    .map((route, index) => ({
+      ...scoreRouteByPreference(route, preference),
+      index,
+    }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map(({ index: _index, ...item }) => item);
+}
+
 const RecommendPage: React.FC = () => {
-  const [selectedType, setSelectedType] = useState<string>('');
-  const [routes, setRoutes] = useState<TourRoute[]>([]);
-  const [expandedRoute, setExpandedRoute] = useState<string | null>(null);
-  const [routeDetail, setRouteDetail] = useState<TourRouteDetail | null>(null);
-  const [spotCache, setSpotCache] = useState<Record<string, SpotDetail>>({});
-  const [loading, setLoading] = useState(false);
-  const [aiRecs, setAiRecs] = useState<RecommendationResult[]>([]);
-  const [roomId, setRoomId] = useState<string | null>(
-    () => sessionStorage.getItem('active_room_id'),
-  );
+  const { isSpeaking, speak, stop, setEmotion } = useDigitalHuman();
 
-  // DNA state
-  const [dnaProfile, setDnaProfile] = useState<DNAProfile | null>(null);
-  const [dnaRecs, setDnaRecs] = useState<DNARecommendResponse | null>(null);
-  const [dnaLoading, setDnaLoading] = useState(false);
+  const {
+    currentSessionId,
+    isStreaming,
+    addMessage,
+    updateMessage,
+    updateMessageStatus,
+    setStreaming,
+    setCurrentSession,
+    getHistory,
+  } = useChatStore();
 
-  const isMobile = false;
-  const sessionId = sessionStorage.getItem('session_id') || 'anonymous';
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const [currentSpotIndex, setCurrentSpotIndex] = useState(0);
+  const [guideText, setGuideText] = useState('');
+  const [dialogText, setDialogText] = useState(DIALOG_PROMPTS.list);
+  const [dialogChoices, setDialogChoices] = useState<DialogChoice[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [isChatStreaming, setIsChatStreaming] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [bubbleKey, setBubbleKey] = useState(0);
+  const [selectedPreference, setSelectedPreference] = useState<TravelPreferenceId>('culture');
 
-  // Listen for room changes
+  const [routesRaw, setRoutesRaw] = useState<TourRoute[]>([]);
+  const [spotsMap, setSpotsMap] = useState<Record<string, Spot>>({});
+  const [loading, setLoading] = useState(true);
+  const selectedPreferenceOption = getPreferenceById(selectedPreference);
+
   useEffect(() => {
-    const handler = () => {
-      setRoomId(sessionStorage.getItem('active_room_id'));
-    };
-    window.addEventListener('room_changed', handler);
-    window.addEventListener('storage', handler);
-    return () => {
-      window.removeEventListener('room_changed', handler);
-      window.removeEventListener('storage', handler);
-    };
-  }, []);
-
-  // Load DNA profile and recommendations
-  useEffect(() => {
-    const loadDNA = async () => {
-      setDnaLoading(true);
+    let cancelled = false;
+    const load = async () => {
       try {
-        const [profile, recs] = await Promise.all([
-          getDNAProfile(sessionId),
-          getDNARecommendations(sessionId, 5),
-        ]);
-        setDnaProfile(profile);
-        setDnaRecs(recs);
-      } catch (err: any) {
-        // DNA not available for new users without behavior data
-        console.log('DNA data not available:', err?.message);
+        const [routes, spots] = await Promise.all([listRoutes(), listSpots()]);
+        if (cancelled) return;
+        setRoutesRaw(routes);
+        setSpotsMap(Object.fromEntries(spots.map((s) => [s.id, s])));
+      } catch (e) {
+        console.error('Failed to load route data', e);
       } finally {
-        setDnaLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-    loadDNA();
-  }, [sessionId]);
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  // Fetch routes from backend
-  useEffect(() => {
-    setLoading(true);
-    listRoutes(selectedType || undefined)
-      .then((res) => {
-        const data = (res as any)?.data ?? res;
-        setRoutes(Array.isArray(data) ? data : []);
-      })
-      .catch(() => {
-        setRoutes([]);
-      })
-      .finally(() => setLoading(false));
-  }, [selectedType]);
-
-  const handleSelectRec = useCallback((rec: RecommendationResult) => {
-    // Find matching route and expand it
-    const found = routes.find((r) => r.id === rec.route_id);
-    if (found) {
-      setExpandedRoute(found.id);
-      getRouteById(found.id)
-        .then((res) => {
-          const detail = (res as any)?.data ?? res;
-          setRouteDetail(detail);
-          const spotIds: string[] = detail.spot_order || [];
-          const cache: Record<string, SpotDetail> = {};
-          Promise.all(
-            spotIds.map(async (spotId: string) => {
-              try {
-                const sRes = await getSpotById(spotId);
-                cache[spotId] = (sRes as any)?.data ?? sRes;
-              } catch {
-                /* skip */
-              }
-            }),
-          ).then(() => setSpotCache(cache));
+  const routes = useMemo<DisplayRoute[]>(() => {
+    return routesRaw.map((route) => {
+      const spots: RouteSpot[] = route.spot_order
+        .map((spotId) => {
+          const spot = spotsMap[spotId];
+          if (!spot) return null;
+          return {
+            id: spot.id,
+            name: spot.name,
+            icon: spot.thumbnail ? `/${spot.thumbnail}` : '/image/icons/icon-default.png',
+            x: spot.display_x ?? 50,
+            y: spot.display_y ?? 50,
+            description: spot.overview || '',
+            duration: spot.duration || '',
+            qa: spot.qa_json || [],
+          };
         })
-        .catch(() => setRouteDetail(null));
-    }
-  }, [routes]);
+        .filter(Boolean) as RouteSpot[];
+      return {
+        id: route.id,
+        name: route.name,
+        duration: route.duration,
+        routeType: route.route_type,
+        description: route.description,
+        color: route.color || '#2A2520',
+        brushImage: route.brush_image ? `/${route.brush_image}` : '/image/brushes/brush-ink.png',
+        spots,
+        openingText: route.opening_text || `欢迎来到${route.name}。`,
+        closingText: route.closing_text || '祝您游览愉快。',
+      };
+    });
+  }, [routesRaw, spotsMap]);
 
-  // Fetch route detail when expanded
-  const handleExpandRoute = useCallback(
-    async (routeId: string) => {
-      if (expandedRoute === routeId) {
-        setExpandedRoute(null);
-        setRouteDetail(null);
-        return;
+  const routeRecommendations = useMemo(
+    () => buildRouteRecommendations(routes, selectedPreferenceOption),
+    [routes, selectedPreferenceOption]
+  );
+
+  const selectedRoute = useMemo(
+    () => routes.find((r) => r.id === selectedRouteId) || null,
+    [routes, selectedRouteId]
+  );
+
+  const selectedRouteRecommendation = useMemo(
+    () => routeRecommendations.find((item) => item.route.id === selectedRouteId) || null,
+    [routeRecommendations, selectedRouteId]
+  );
+
+  const previewRoute = selectedRoute ?? routeRecommendations[0]?.route ?? null;
+  const previewSpotIndex = selectedRoute ? currentSpotIndex : 0;
+
+  const handleRouteScrollSpotClick = useCallback(
+    (index: number) => {
+      if (!previewRoute) return;
+      if (!selectedRoute) {
+        setSelectedRouteId(previewRoute.id);
       }
-      setExpandedRoute(routeId);
-      setRouteDetail(null);
-      try {
-        const res = await getRouteById(routeId);
-        const detail = (res as any)?.data ?? res;
-        setRouteDetail(detail);
-        const spotIds: string[] = detail.spot_order || [];
-        const cache: Record<string, SpotDetail> = {};
-        await Promise.all(
-          spotIds.map(async (spotId: string) => {
-            try {
-              const sRes = await getSpotById(spotId);
-              cache[spotId] = (sRes as any)?.data ?? sRes;
-            } catch {
-              /* skip */
-            }
-          }),
+      setCurrentSpotIndex(index);
+      setViewMode('tour');
+    },
+    [previewRoute, selectedRoute]
+  );
+
+  const narrate = useCallback(
+    (text: string, opts?: { emotion?: Emotion }) => {
+      setGuideText(text);
+      setIsTyping(true);
+      setBubbleKey((k) => k + 1);
+      speak(text, { emotion: opts?.emotion });
+    },
+    [speak]
+  );
+
+  const handleSkipSpeaking = useCallback(() => {
+    stop();
+    setIsTyping(false);
+  }, [stop]);
+
+  const handlePreferenceSelect = useCallback(
+    (preferenceId: TravelPreferenceId) => {
+      const nextPreference = getPreferenceById(preferenceId);
+      const nextRecommendations = buildRouteRecommendations(routes, nextPreference);
+      const topRecommendation = nextRecommendations[0];
+
+      setSelectedPreference(preferenceId);
+      setSelectedRouteId(null);
+      setCurrentSpotIndex(0);
+      setViewMode('list');
+
+      if (topRecommendation) {
+        narrate(
+          `收到，你更偏好${nextPreference.label}。小景首推「${topRecommendation.route.name}」，${topRecommendation.reason}。`,
+          { emotion: 'smile' }
         );
-        setSpotCache(cache);
-      } catch {
-        setRouteDetail(null);
+      } else {
+        narrate(`收到，你更偏好${nextPreference.label}。小景会按这个方向为你筛选路线。`, { emotion: 'smile' });
       }
     },
-    [expandedRoute],
+    [routes, narrate]
   );
 
-  const handleRecommendations = useCallback((recs: RecommendationResult[]) => {
-    setAiRecs(recs);
-  }, []);
+  /* ---------- 内联 SSE 问答 ---------- */
+  const { connect, disconnect } = useSSE({
+    onMessage: (msg) => {
+      const {
+        messages: latestMessages,
+        updateMessage: latestUpdateMessage,
+        updateMessageStatus: latestUpdateStatus,
+      } = useChatStore.getState();
+      const lastMessage = latestMessages[latestMessages.length - 1];
 
-  const handleInterestChange = useCallback((value: string) => {
-    setSelectedType(value);
-  }, []);
-
-  const renderRouteCard = useCallback(
-    (route: TourRoute, index: number) => {
-      const isExpanded = expandedRoute === route.id;
-      return (
-        <div
-          key={route.id}
-          data-testid={`route-card-${route.id}`}
-          className="card-hover animate-fade-in-up"
-          style={{
-            border: '1px solid var(--border-light)',
-            borderRadius: 'var(--radius-lg)',
-            overflow: 'hidden',
-            marginBottom: '16px',
-            backgroundColor: 'var(--surface-card)',
-            animationDelay: `${index * 80}ms`,
-          }}
-        >
-          <div
-            style={{
-              padding: isMobile ? '16px' : '20px',
-              background: route.gradient || 'linear-gradient(135deg, #6A9C89 0%, #8CBFAD 100%)',
-              color: '#fff',
-              cursor: 'pointer',
-              position: 'relative',
-            }}
-            onClick={() => handleExpandRoute(route.id)}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{
-                margin: 0, fontSize: '18px', fontWeight: 700,
-                fontFamily: 'var(--font-calligraphy)', letterSpacing: 1,
-              }}>
-                {route.name}
-              </h3>
-              {isExpanded ? <UpOutlined style={{ fontSize: '12px' }} /> : <DownOutlined style={{ fontSize: '12px' }} />}
-            </div>
-            <div
-              style={{
-                display: 'flex', gap: '20px', marginTop: '8px',
-                fontSize: '14px', opacity: 0.9,
-                fontFamily: 'var(--font-serif)',
-              }}
-            >
-              <span>
-                <ClockCircleOutlined /> {route.duration}
-              </span>
-            </div>
-          </div>
-
-          <div style={{ padding: isMobile ? '14px 16px' : '16px 20px' }}>
-            <p
-              style={{
-                color: 'var(--text-secondary)', margin: '0 0 12px 0',
-                fontSize: '15px', lineHeight: 1.8,
-                fontFamily: 'var(--font-serif)',
-              }}
-            >
-              {route.description}
-            </p>
-
-            {isExpanded && routeDetail && (
-              <div
-                style={{
-                  marginTop: '16px', paddingTop: '16px',
-                  borderTop: '1px solid var(--border-light)',
-                }}
-              >
-                <div style={{
-                  fontSize: '15px', fontWeight: 700, marginBottom: '12px',
-                  color: 'var(--text-primary)', fontFamily: 'var(--font-calligraphy)', letterSpacing: 1,
-                  display: 'flex', alignItems: 'center', gap: 8,
-                }}>
-                  <div style={{ width: 3, height: 16, background: 'var(--color-primary)', borderRadius: 2 }} />
-                  路线景点
-                </div>
-                {routeDetail.spot_order.map((spotId, i) => {
-                  const spot = spotCache[spotId];
-                  const detail = routeDetail.spot_details?.[spotId];
-                  return (
-                    <div
-                      key={spotId}
-                      style={{
-                        padding: '12px',
-                        marginBottom: '8px',
-                        border: '1px solid var(--border-light)',
-                        borderRadius: 'var(--radius-md)',
-                        backgroundColor: 'var(--surface-card)',
-                        position: 'relative',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                        <span
-                          style={{
-                            width: 24, height: 24, borderRadius: '50%',
-                            background: 'var(--color-primary)', color: '#fff',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: '12px', fontWeight: 700, flexShrink: 0,
-                            fontFamily: 'var(--font-calligraphy)',
-                          }}
-                        >
-                          {i + 1}
-                        </span>
-                        <span style={{
-                          fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)',
-                          fontFamily: 'var(--font-serif)',
-                        }}>
-                          {spot?.name || spotId}
-                        </span>
-                      </div>
-                      {spot?.overview && (
-                        <div style={{
-                          fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '6px',
-                          fontFamily: 'var(--font-serif)', lineHeight: 1.6,
-                        }}>
-                          {spot.overview}
-                        </div>
-                      )}
-                      {detail?.讲解重点 && detail.讲解重点.length > 0 && (
-                        <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-serif)' }}>
-                          <div style={{ fontWeight: 500, marginBottom: '4px' }}>讲解重点：</div>
-                          <ul style={{ margin: '0 0 0 16px', padding: 0 }}>
-                            {detail.讲解重点.map((p, j) => <li key={j}>{p}</li>)}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      );
+      if (msg.event === 'token') {
+        if (lastMessage && lastMessage.role === 'assistant') {
+          const updated = lastMessage.content + (msg.data.token || '');
+          latestUpdateMessage(lastMessage.id, updated);
+          setGuideText(updated);
+        }
+      } else if (msg.event === 'faq_hit') {
+        setStreaming(false);
+        setIsChatStreaming(false);
+        if (lastMessage) {
+          const answer = msg.data.answer || '';
+          latestUpdateMessage(lastMessage.id, answer);
+          latestUpdateStatus(lastMessage.id, 'sent');
+          setGuideText(answer);
+          setEmotion(detectEmotion(answer));
+          speak(answer, { emotion: detectEmotion(answer) });
+        }
+      } else if (msg.event === 'done') {
+        setStreaming(false);
+        setIsChatStreaming(false);
+        if (lastMessage) {
+          const finalContent = lastMessage.content || msg.data?.answer || '';
+          latestUpdateMessage(lastMessage.id, finalContent);
+          latestUpdateStatus(lastMessage.id, 'sent');
+          setGuideText(finalContent);
+          setEmotion(detectEmotion(finalContent));
+          speak(finalContent, { emotion: detectEmotion(finalContent) });
+        }
+      } else if (msg.event === 'error') {
+        setStreaming(false);
+        setIsChatStreaming(false);
+        setGuideText(msg.data.error || '生成回答时出错，请稍后重试');
+        if (lastMessage) {
+          latestUpdateStatus(lastMessage.id, 'error');
+        }
+      }
     },
-    [expandedRoute, routeDetail, spotCache, handleExpandRoute, isMobile],
+    onError: () => {
+      setStreaming(false);
+      setIsChatStreaming(false);
+      setGuideText('连接错误，请稍后重试');
+    },
+    onClose: () => {
+      setStreaming(false);
+      setIsChatStreaming(false);
+    },
+  });
+
+  const askInline = useCallback(
+    (question: string) => {
+      if (!question.trim() || isStreaming || isChatStreaming) return;
+
+      const userMessage: Message = {
+        id: `msg_${Date.now()}`,
+        role: 'user',
+        content: question.trim(),
+        timestamp: Date.now(),
+        status: 'sent',
+      };
+      addMessage(userMessage);
+
+      const assistantMessage: Message = {
+        id: `msg_${Date.now() + 1}`,
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+        status: 'sending',
+      };
+      addMessage(assistantMessage);
+
+      setGuideText('小景正在思考…');
+      setIsChatStreaming(true);
+      setStreaming(true);
+      stop();
+
+      const sid = currentSessionId || `session_${Date.now()}`;
+      if (!currentSessionId) setCurrentSession(sid);
+
+      connect('/api/chat/stream', {
+        session_id: sid,
+        question: question.trim(),
+        stream: true,
+        history: getHistory(5),
+      });
+    },
+    [
+      isStreaming,
+      isChatStreaming,
+      currentSessionId,
+      addMessage,
+      setStreaming,
+      stop,
+      connect,
+      getHistory,
+      setCurrentSession,
+    ]
   );
+
+  const handleSendText = useCallback(() => {
+    if (!inputText.trim()) return;
+    askInline(inputText);
+    setInputText('');
+  }, [inputText, askInline]);
+
+  const handleKeyPress = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSendText();
+      }
+    },
+    [handleSendText]
+  );
+
+  const backToList = useCallback(() => {
+    setSelectedRouteId(null);
+    setCurrentSpotIndex(0);
+    setViewMode('list');
+    const topRecommendation = routeRecommendations[0];
+    narrate(
+      topRecommendation
+        ? `已回到路线列表。我继续按「${selectedPreferenceOption.label}」为你排序，当前首推「${topRecommendation.route.name}」。`
+        : WELCOME_TEXT,
+      { emotion: 'smile' }
+    );
+  }, [narrate, routeRecommendations, selectedPreferenceOption]);
+
+  const backToListRef = useRef(backToList);
+  backToListRef.current = backToList;
+
+  const selectRoute = useCallback((routeId: string) => {
+    setSelectedRouteId(routeId);
+    setCurrentSpotIndex(0);
+    setViewMode('overview');
+  }, []);
+
+  const handleSpotClick = useCallback((idx: number) => {
+    setCurrentSpotIndex(idx);
+    setViewMode('tour');
+  }, []);
+
+  const handleCloseScroll = useCallback(() => {
+    backToListRef.current();
+  }, []);
+
+  /* ---------- 路线列表态 ---------- */
+  useEffect(() => {
+    if (viewMode !== 'list') return;
+    const topRecommendation = routeRecommendations[0];
+    setDialogText(
+      topRecommendation
+        ? `我已按「${selectedPreferenceOption.label}」为你重排路线，首推「${topRecommendation.route.name}」。${topRecommendation.reason}。`
+        : DIALOG_PROMPTS.list
+    );
+    setDialogChoices(
+      routeRecommendations.map((item, index) => ({
+        id: item.route.id,
+        text: `${index === 0 ? '首推｜' : ''}${item.route.name} · ${item.route.duration}｜${item.reason}`,
+        onClick: () => selectRoute(item.route.id),
+      }))
+    );
+  }, [viewMode, routeRecommendations, selectRoute, selectedPreferenceOption]);
+
+  /* ---------- 路线概览态 ---------- */
+  useEffect(() => {
+    if (viewMode !== 'overview' || !selectedRoute) return;
+    setDialogText(DIALOG_PROMPTS.overview);
+    setDialogChoices([
+      { id: 'start', text: '开始游览', onClick: () => setViewMode('tour') },
+      { id: 'back', text: '返回路线列表', onClick: () => backToListRef.current() },
+    ]);
+    narrate(
+      selectedRouteRecommendation
+        ? `根据「${selectedPreferenceOption.label}」偏好，我推荐这条路线：${selectedRouteRecommendation.reason}。${selectedRoute.openingText}`
+        : selectedRoute.openingText,
+      { emotion: 'smile' }
+    );
+  }, [viewMode, selectedRoute, selectedRouteRecommendation, selectedPreferenceOption, narrate]);
+
+  /* ---------- 景点游览态 ---------- */
+  useEffect(() => {
+    if (viewMode !== 'tour' || !selectedRoute) return;
+    const spot = selectedRoute.spots[currentSpotIndex];
+    if (!spot) return;
+
+    setDialogText(DIALOG_PROMPTS.tour);
+    const choices: DialogChoice[] = [
+      {
+        id: 'prev',
+        text: '上一站',
+        onClick: () => setCurrentSpotIndex((i) => Math.max(i - 1, 0)),
+      },
+      {
+        id: 'next',
+        text: '下一站',
+        onClick: () => setCurrentSpotIndex((i) => Math.min(i + 1, selectedRoute.spots.length - 1)),
+      },
+      { id: 'overview', text: '路线概览', onClick: () => setViewMode('overview') },
+    ];
+    setDialogChoices(
+      choices.filter((c) => {
+        if (c.id === 'prev' && currentSpotIndex === 0) return false;
+        if (c.id === 'next' && currentSpotIndex >= selectedRoute.spots.length - 1) return false;
+        return true;
+      })
+    );
+    narrate(`${spot.name}到了。${spot.description}`, { emotion: 'neutral' });
+  }, [viewMode, selectedRoute, currentSpotIndex, narrate]);
+
+  /* ---------- 初始化 ---------- */
+  useEffect(() => {
+    narrate(WELCOME_TEXT, { emotion: 'smile' });
+    return () => {
+      stop();
+    };
+  }, []);
+
+  /* ---------- 清理 SSE ---------- */
+  const disconnectRef = useRef(disconnect);
+  disconnectRef.current = disconnect;
+  useEffect(() => {
+    return () => {
+      disconnectRef.current();
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <div
+        data-testid="recommend-page"
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: '#F7F5F0',
+        }}
+      >
+        小景正在准备路线…
+      </div>
+    );
+  }
 
   return (
     <div
       data-testid="recommend-page"
-      className="paper-texture"
       style={{
-        padding: isMobile ? '20px' : '32px',
-        maxWidth: '1100px',
-        margin: '0 auto',
-        paddingBottom: isMobile ? '80px' : '48px',
-        minHeight: 'calc(100vh - 120px)',
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+        overflow: 'hidden',
+        backgroundColor: '#F7F5F0',
       }}
     >
-      {/* 标题区 */}
-      <div style={{ textAlign: 'center', marginBottom: 40, padding: '24px 0' }}>
-        <div style={{
-          width: 200, height: 2,
-          background: 'linear-gradient(90deg, transparent, var(--color-primary), transparent)',
-          margin: '0 auto 20px',
-        }} />
-        <h2
-          style={{
-            margin: '0 0 12px 0',
-            fontSize: isMobile ? '28px' : '38px',
-            fontWeight: 700,
-            color: 'var(--text-primary)',
-            fontFamily: 'var(--font-calligraphy)',
-            letterSpacing: 6,
-          }}
-        >
-          个性化路线推荐
-        </h2>
-        <p style={{
-          margin: 0, color: 'var(--text-tertiary)', fontSize: '18px',
-          fontFamily: 'var(--font-serif)', letterSpacing: 2,
-        }}>
-          选择你的兴趣，AI 为你定制专属游览路线
-        </p>
-        <div style={{
-          width: 200, height: 2,
-          background: 'linear-gradient(90deg, transparent, var(--color-primary), transparent)',
-          margin: '16px auto 0',
-        }} />
-      </div>
-
-      {/* DNA Profile Section */}
-      {dnaProfile && (
-        <div className="section-card" style={{ marginBottom: '24px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600, color: 'var(--text-primary)' }}>
-              我的旅行DNA
-            </h3>
-            <DNATag dnaType={dnaProfile.dna_type} />
-          </div>
-          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: '20px', alignItems: 'center' }}>
-            <DNARadarChart scores={dnaProfile.dna_scores} size={isMobile ? 240 : 280} />
-            <div style={{ flex: 1 }}>
-              <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                DNA个性化推荐
-              </h4>
-              {dnaRecs?.recommendations && dnaRecs.recommendations.length > 0 ? (
-                <div>
-                  {dnaRecs.recommendations.map((rec) => (
-                    <div
-                      key={rec.rank}
-                      style={{
-                        padding: '10px 12px',
-                        marginBottom: '8px',
-                        border: '1px solid var(--border-light)',
-                        borderRadius: 'var(--radius-md)',
-                        backgroundColor: 'var(--surface-elevated)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text-primary)' }}>
-                          {rec.spot_name}
-                        </span>
-                        {rec.dna_similarity && (
-                          <span style={{ fontSize: '12px', color: 'var(--color-primary)', fontWeight: 500 }}>
-                            相似度 {Math.round(rec.dna_similarity * 100)}%
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                        {rec.reason}
-                      </div>
-                      <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
-                        建议时长: {rec.suggested_duration}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ color: 'var(--text-tertiary)', fontSize: '14px' }}>
-                  暂无DNA推荐数据
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {dnaLoading && (
-        <div className="section-card" style={{ marginBottom: '24px', padding: '20px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-          正在分析您的旅行DNA...
-        </div>
-      )}
-
-      {/* Interest tags */}
+      {/* 抽象墨卷路线图：游客先理解顺序与重点，实时导航降级为辅助入口 */}
       <div
-        className="scroll-tags"
-        data-testid="interest-tags"
         style={{
-          marginBottom: '24px',
-          flexWrap: isMobile ? 'nowrap' : 'wrap',
-          justifyContent: 'center',
+          position: 'absolute',
+          inset: 0,
+          background:
+            'radial-gradient(circle at 68% 38%, rgba(106,156,137,0.16), transparent 32%), linear-gradient(135deg, rgba(247,245,240,0.96), rgba(237,232,222,0.9))',
+          overflow: 'hidden',
         }}
       >
-        {INTEREST_OPTIONS.map((option) => {
-          const selected = selectedType === option.value;
-          return (
-            <button
-              key={option.value}
-              data-testid={`tag-${option.value || 'all'}`}
-              onClick={() => handleInterestChange(option.value)}
-              className={selected ? 'btn-pill active' : 'btn-pill'}
-              style={{
-                whiteSpace: 'nowrap',
-                flexShrink: 0,
-                borderColor: selected ? 'var(--color-primary)' : undefined,
-                backgroundColor: selected ? 'var(--color-primary-bg)' : undefined,
-                color: selected ? 'var(--color-primary)' : undefined,
-                fontWeight: selected ? 600 : undefined,
-                fontFamily: 'var(--font-serif)',
-                letterSpacing: 1,
-              }}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* AI Dynamic Recommendations Section */}
-      <div style={{ marginBottom: '24px' }}>
         <div
           style={{
-            fontSize: '16px', fontWeight: 700,
-            color: 'var(--text-primary)',
-            marginBottom: '12px',
-            display: 'flex', alignItems: 'center', gap: '8px',
-            fontFamily: 'var(--font-calligraphy)', letterSpacing: 1,
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: `var(--texture-paper)`,
+            opacity: 0.42,
+            mixBlendMode: 'multiply',
+            pointerEvents: 'none',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            top: 86,
+            right: 72,
+            zIndex: 4,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '9px 14px',
+            borderRadius: 999,
+            background: 'rgba(253,251,247,0.82)',
+            border: '1px solid rgba(180,160,130,0.28)',
+            boxShadow: '0 10px 24px rgba(42,37,32,0.08)',
+            color: '#6A6258',
+            fontSize: 12,
+            letterSpacing: '0.08em',
+            backdropFilter: 'blur(10px)',
           }}
         >
-          <div style={{ width: 3, height: 18, background: 'var(--color-accent)', borderRadius: 2 }} />
-          <CompassOutlined style={{ color: 'var(--color-accent)' }} />
-          AI 智能推荐
+          <span style={{ color: '#C8882E', fontWeight: 700 }}>导览卷轴</span>
+          <span>{previewRoute ? `${previewRoute.spots.length} 站 · ${previewRoute.duration}` : '路线加载中'}</span>
         </div>
-        <RecommendEngine
-          selectedInterest={selectedType}
-          onSelectRoute={handleSelectRec}
-          onRecommendations={handleRecommendations}
+        <GalgameRouteScroll
+          route={previewRoute}
+          currentSpotIndex={previewSpotIndex}
+          isVisible={Boolean(previewRoute)}
+          onSpotClick={handleRouteScrollSpotClick}
         />
       </div>
 
-      {/* Push to Room button — supports both AI recs and DNA recs */}
-      {(() => {
-        const pushable: RecommendationResult[] = aiRecs.length > 0
-          ? aiRecs
-          : (dnaRecs?.recommendations || []).map((d) => ({
-              route_id: d.spot_name,
-              route_name: d.spot_name,
-              score: d.dna_similarity || 0.8,
-              reason: d.reason,
-              matched_interests: d.tags,
-            }));
-        return roomId && pushable.length > 0 ? (
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
-            <RoutePushButton
-              roomId={roomId}
-              recommendations={pushable}
-              onPushComplete={(count) => {
-                message.success(`成功推送 ${count} 个推荐到房间`);
-              }}
-            />
-          </div>
-        ) : null;
-      })()}
+      {/* 柔和暗角，压住边缘杂讯，让视线落在路线卷轴上 */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background:
+            'linear-gradient(90deg, rgba(247,245,240,0.56) 0%, transparent 26%, transparent 76%, rgba(247,245,240,0.34) 100%)',
+          pointerEvents: 'none',
+        }}
+      />
 
-      {/* Static Route List */}
-      <div>
+      <div
+        data-testid="route-preference-panel"
+        style={{
+          position: 'absolute',
+          top: 24,
+          left: 24,
+          zIndex: 8,
+          width: 390,
+          maxWidth: 'calc(100vw - 48px)',
+          padding: '12px',
+          background: 'rgba(253,251,247,0.88)',
+          border: '1px solid rgba(106,156,137,0.20)',
+          borderRadius: 8,
+          boxShadow: '0 12px 28px rgba(42,37,32,0.10)',
+          backdropFilter: 'blur(16px) saturate(120%)',
+          WebkitBackdropFilter: 'blur(16px) saturate(120%)',
+        }}
+      >
         <div
           style={{
-            fontSize: '16px', fontWeight: 700,
-            color: 'var(--text-primary)',
-            marginBottom: '12px',
-            display: 'flex', alignItems: 'center', gap: '8px',
-            fontFamily: 'var(--font-calligraphy)', letterSpacing: 1,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 10,
+            marginBottom: 10,
           }}
         >
-          <div style={{ width: 3, height: 18, background: 'var(--color-primary)', borderRadius: 2 }} />
-          <CompassOutlined style={{ color: 'var(--color-primary)' }} />
-          预设路线
-        </div>
-        <div
-          data-testid="route-list"
-          style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 200ms' }}
-        >
-          {loading ? (
-            <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-serif)' }}>
-              墨韵渐染...
-            </div>
-          ) : routes.length > 0 ? (
-            routes.map((route, index) => renderRouteCard(route, index))
-          ) : (
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: '#2A2520',
+              fontFamily: "var(--font-calligraphy), 'KaiTi', serif",
+            }}
+          >
+            游览偏好
+          </div>
+          {routeRecommendations[0] && (
             <div
-              data-testid="empty-state"
-              className="animate-fade-in"
+              data-testid="route-recommendation-summary"
               style={{
-                textAlign: 'center', padding: '60px 20px',
-                color: 'var(--text-tertiary)', backgroundColor: 'var(--surface-card)',
-                borderRadius: 'var(--radius-lg)', border: '1px dashed var(--border-default)',
+                fontSize: 12,
+                color: '#6A6258',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }}
             >
-              <CompassOutlined style={{ fontSize: '40px', marginBottom: '12px', color: 'var(--gray-300)' }} />
-              <div style={{ fontSize: '15px', fontWeight: 500, fontFamily: 'var(--font-serif)' }}>
-                暂无匹配的推荐路线
-              </div>
+              首推 {routeRecommendations[0].route.name}
             </div>
           )}
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 8,
+          }}
+        >
+          {PREFERENCE_OPTIONS.map((option) => {
+            const active = option.id === selectedPreference;
+            return (
+              <button
+                key={option.id}
+                data-testid={`preference-${option.id}`}
+                aria-pressed={active}
+                onClick={() => handlePreferenceSelect(option.id)}
+                style={{
+                  minHeight: 68,
+                  padding: '9px 8px',
+                  borderRadius: 8,
+                  border: active ? '1px solid rgba(45,139,87,0.58)' : '1px solid rgba(42,37,32,0.08)',
+                  background: active ? 'rgba(106,156,137,0.16)' : 'rgba(255,255,255,0.68)',
+                  color: active ? '#2D5D4D' : '#3E3933',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 180ms ease',
+                  boxShadow: active ? 'inset 0 0 0 1px rgba(255,255,255,0.56)' : 'none',
+                }}
+              >
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    lineHeight: 1.2,
+                    marginBottom: 5,
+                  }}
+                >
+                  {option.label}
+                </span>
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: 11,
+                    lineHeight: 1.35,
+                    color: active ? 'rgba(45,93,77,0.82)' : 'rgba(62,57,51,0.58)',
+                  }}
+                >
+                  {option.subtitle}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 路线迷你时间线（overview/tour 态显示，置于右上角，不抢地图主体） */}
+      {(viewMode === 'overview' || viewMode === 'tour') && selectedRoute && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 24,
+            right: 24,
+            zIndex: 6,
+          }}
+        >
+          <MiniRouteTimeline
+            route={selectedRoute}
+            currentSpotIndex={currentSpotIndex}
+            onSpotClick={handleSpotClick}
+            onClose={handleCloseScroll}
+          />
+        </div>
+      )}
+
+      {/* 小景解说气泡 — 让位地图，定位左下，避开右上角时间线 */}
+      {!!guideText && (
+        <GuideBubble
+          key={bubbleKey}
+          speakerName="小景"
+          text={guideText}
+          isTyping={isTyping}
+          typingSpeed={22}
+          visible
+          onSkip={handleSkipSpeaking}
+          style={{
+            position: 'absolute',
+            left: 32,
+            bottom: 220,
+            maxWidth: 380,
+            zIndex: 110,
+          }}
+        />
+      )}
+
+      {/* 底部 Galgame 对话框 — 压扁为水平条让位地图 */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 200,
+          pointerEvents: 'none',
+        }}
+      >
+        <div style={{ pointerEvents: 'auto' }}>
+          <GalgameDialog
+            speakerName="小景"
+            text={dialogText}
+            isTypingEnabled={true}
+            typingSpeed={22}
+            choices={dialogChoices}
+            showChoices={dialogChoices.length > 0}
+            inputValue={inputText}
+            onInputChange={setInputText}
+            onSend={handleSendText}
+            onKeyPress={handleKeyPress}
+            disabled={isStreaming || isChatStreaming}
+            isMobile={false}
+            isSpeaking={isSpeaking}
+            variant="zen"
+            width={680}
+            maxWidth="56vw"
+            bottom={16}
+            minHeight={140}
+            maxHeight={210}
+            inputPlaceholder="随时向小景提问…"
+          />
         </div>
       </div>
     </div>
   );
 };
+
+function detectEmotion(text: string): Emotion {
+  if (!text) return 'neutral';
+  if (/[开心高兴棒好赞喜欢满意]/.test(text)) return 'smile';
+  if (/[抱歉遗憾难过不幸问题错]/.test(text)) return 'sorry';
+  if (/[？?什么为什么怎么]/.test(text)) return 'think';
+  if (/[！!哇厉害惊讶]/.test(text)) return 'surprise';
+  return 'neutral';
+}
 
 export default RecommendPage;

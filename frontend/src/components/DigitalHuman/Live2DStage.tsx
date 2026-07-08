@@ -4,30 +4,58 @@ import type * as PIXI from 'pixi.js';
 let Live2DModel: any = null;
 let MotionPreloadStrategy: any = null;
 let cubismLoaded = false;
-let pixiModule: any = null;
+const MODEL_LOAD_TIMEOUT_MS = 8000;
 
-// Guard against HMR re-patching: mark prototype methods after first patch
-const PATCH_MARKER = '__live2d_patched_v1';
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+  onTimeout?: () => void
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  return new Promise<T>((resolve, reject) => {
+    timer = setTimeout(() => {
+      onTimeout?.();
+      const error = new Error(message);
+      error.name = 'Live2DLoadTimeoutError';
+      reject(error);
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        if (timer) clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        if (timer) clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
 
 async function loadCubismRuntime() {
   if (cubismLoaded) return;
   try {
     const pixi = await import('pixi.js');
-    pixiModule = pixi;
     const live2d = await import('pixi-live2d-display/cubism4');
     Live2DModel = live2d.Live2DModel;
     MotionPreloadStrategy = live2d.MotionPreloadStrategy;
     (Live2DModel as any).registerTicker?.(pixi.Ticker);
 
+    // Patch PIXI v7 EventBoundary to avoid isInteractive crash with pixi-live2d-display
     const EventBoundary = (pixi as any).EventBoundary;
     const patchMethod = (methodName: string) => {
-      if (EventBoundary?.prototype?.[methodName] && !EventBoundary.prototype[PATCH_MARKER]) {
+      if (EventBoundary?.prototype?.[methodName]) {
         const original = EventBoundary.prototype[methodName];
         EventBoundary.prototype[methodName] = function (...args: any[]) {
           try {
             return original.apply(this, args);
           } catch (e: any) {
-            if (e?.message?.includes('isInteractive')) return null;
+            if (e?.message?.includes('isInteractive')) {
+              return null;
+            }
             throw e;
           }
         };
@@ -35,10 +63,10 @@ async function loadCubismRuntime() {
     };
     patchMethod('hitTestMoveRecursive');
     patchMethod('hitTestRecursive');
-    if (EventBoundary?.prototype) {
-      EventBoundary.prototype[PATCH_MARKER] = true;
-    }
 
+    // Fix: some GPUs (especially integrated) report MAX_TEXTURE_IMAGE_UNITS = 0,
+    // which causes checkMaxIfStatementsInShader(0, gl) to throw.
+    // Override BatchRenderer.prototype.contextChange with a safe version.
     const BatchRenderer = (pixi as any).BatchRenderer;
     if (BatchRenderer?.prototype?.contextChange && !(BatchRenderer.prototype.contextChange as any).__safe) {
       const settings = (pixi as any).settings;
@@ -48,14 +76,17 @@ async function loadCubismRuntime() {
 
       BatchRenderer.prototype.contextChange = function safeContextChange(this: any) {
         try {
+          // Try original first
           origContextChange.call(this);
         } catch {
+          // GPU returned 0 for MAX_TEXTURE_IMAGE_UNITS — build a minimal working state
           const gl = this.renderer?.gl;
           const maxTex = gl ? Math.max(gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) || 0, 1) : 1;
           this.maxTextures = settings?.PREFER_ENV === ENV?.WEBGL_LEGACY ? 1 : maxTex;
           try {
             if (checkMax) this.maxTextures = checkMax(this.maxTextures, gl);
           } catch {
+            // Even clamped value failed — use absolute minimum
             this.maxTextures = 1;
           }
           this._shader = this.shaderGenerator.generateShader(this.maxTextures);
@@ -86,8 +117,6 @@ export interface Live2DStageProps {
   modelPath: string;
   /** Optional costume texture PNG path. When changed, the model reloads with the new texture. */
   texturePath?: string;
-  /** Costume texture paths (2 files: texture_00 and texture_01). Takes precedence over texturePath. */
-  texturePaths?: [string, string];
   /** CSS filter applied to the canvas for costume visual variation. */
   cssFilter?: string;
   width?: number;
@@ -98,35 +127,12 @@ export interface Live2DStageProps {
   onModelLoaded?: (model: any) => void;
   onError?: (error: string) => void;
   onModelRef?: (actions: Live2DModelActions) => void;
-}
-
-const LAYOUT_TIMEOUT_MS = 3000;
-
-/** Parse a CSS filter string into a PIXI ColorMatrixFilter array. */
-function buildColorFilter(cssFilter?: string): any[] {
-  if (!cssFilter || cssFilter === 'none') return [];
-  if (!pixiModule?.ColorMatrixFilter) return [];
-
-  const cmf = new pixiModule.ColorMatrixFilter();
-  const hueMatch = cssFilter.match(/hue-rotate\(([^)]+)\)/);
-  const satMatch = cssFilter.match(/saturate\(([^)]+)\)/);
-  const briMatch = cssFilter.match(/brightness\(([^)]+)\)/);
-  const conMatch = cssFilter.match(/contrast\(([^)]+)\)/);
-  const sepMatch = cssFilter.match(/sepia\(([^)]+)\)/);
-
-  if (sepMatch) cmf.sepia(false);
-  if (hueMatch) cmf.hue(parseFloat(hueMatch[1]), false);
-  if (satMatch) cmf.saturate(parseFloat(satMatch[1]) - 1, false);
-  if (briMatch) cmf.brightness(parseFloat(briMatch[1]), false);
-  if (conMatch) cmf.contrast(parseFloat(conMatch[1]), false);
-
-  return [cmf];
+  transparentOverlay?: boolean;
 }
 
 const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
   modelPath,
   texturePath,
-  texturePaths,
   cssFilter,
   width = 300,
   height = 400,
@@ -136,17 +142,23 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
   onModelLoaded,
   onError,
   onModelRef,
+  transparentOverlay = false,
 }, ref) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const appRef = useRef<any>(null);
   const modelRef = useRef<any>(null);
   const roRef = useRef<ResizeObserver | null>(null);
-  const colorFilterRef = useRef<any[]>([]);
+  const tickerRef = useRef<(() => void) | null>(null);
   // Lip sync values applied via ticker (after idle motion) to avoid override
   const lipSyncValuesRef = useRef({ mouthOpenY: 0, mouthForm: 0, angleZ: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const initRef = useRef(false);
+  const overlayBackground = transparentOverlay ? 'rgba(8, 12, 12, 0.18)' : 'rgba(248, 246, 242, 0.9)';
+  const overlayTextColor = transparentOverlay ? 'rgba(255, 250, 240, 0.82)' : 'var(--text-tertiary)';
+  const errorOverlayBackground = transparentOverlay ? 'rgba(8, 12, 12, 0.30)' : 'rgba(248, 246, 242, 0.95)';
 
   // Expose model actions to parent
   useImperativeHandle(ref, () => ({
@@ -167,7 +179,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
       const model = modelRef.current;
       if (!model) return;
       try {
-        const pixi = pixiModule || await import('pixi.js');
+        const pixi = await import('pixi.js');
         const tex = await pixi.Assets.load(textureUrl);
         // pixi-live2d-display stores textures on the internal sprite
         const sprites = model.internalModel?.coreModel?._drawables;
@@ -203,10 +215,36 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
     }
   }, [onModelRef]);
 
-  // Update color filter ref when cssFilter changes (ticker applies it per-frame)
+  // Apply costume texture when texturePath changes (without full model reload)
   useEffect(() => {
-    colorFilterRef.current = buildColorFilter(cssFilter);
-  }, [cssFilter]);
+    if (!texturePath || !modelRef.current) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const pixi = await import('pixi.js');
+        const tex = await pixi.Assets.load(texturePath);
+        if (cancelled) return;
+        const core = modelRef.current?.internalModel?.coreModel;
+        if (!core) return;
+        // Cubism 4: iterate drawables, swap first texture-bearing slot
+        const count = core.getDrawableCount?.() ?? 0;
+        for (let i = 0; i < count; i++) {
+          const idx = core.getDrawableTextureIndex?.(i);
+          if (idx >= 0) {
+            // Swap via PIXI sprite if available
+            const sprites = modelRef.current.internalModel?.sprites;
+            if (sprites && sprites[i]) {
+              sprites[i].texture = tex;
+            }
+            break;
+          }
+        }
+      } catch {
+        // Texture file may not exist yet — silently ignore
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [texturePath]);
 
   // Click to trigger random motion
   const handleClick = useCallback(() => {
@@ -220,57 +258,84 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
     }
   }, []);
 
-  // Initialize PIXI app and load model — only re-runs when modelPath changes.
-  // Size/position changes are handled by ResizeObserver (no full reload).
+  // Cleanup function for all resources
+  const cleanup = useCallback(() => {
+    mountedRef.current = false;
+    initRef.current = false;
+
+    if (tickerRef.current && appRef.current?.ticker) {
+      appRef.current.ticker.remove(tickerRef.current);
+      tickerRef.current = null;
+    }
+
+    if (roRef.current) {
+      roRef.current.disconnect();
+      roRef.current = null;
+    }
+
+    if (modelRef.current) {
+      try {
+        modelRef.current.destroy();
+      } catch {
+        // Ignore destroy errors
+      }
+      modelRef.current = null;
+    }
+
+    if (appRef.current) {
+      try {
+        appRef.current.destroy(true, { children: true });
+      } catch {
+        // Ignore destroy errors
+      }
+      appRef.current = null;
+    }
+  }, []);
+
+  // Initialize PIXI app and load model
   useEffect(() => {
     if (!canvasRef.current || !modelPath) return;
+    // Prevent duplicate initialization
+    if (initRef.current) return;
+    initRef.current = true;
+    mountedRef.current = true;
 
     const canvas = canvasRef.current;
-    let destroyed = false;
-    let clickHandler: (() => void) | null = null;
-    let moveHandler: ((e: MouseEvent) => void) | null = null;
-    let visibilityHandler: (() => void) | null = null;
 
     const init = async () => {
       try {
         setIsLoading(true);
         setError(null);
 
-        if (appRef.current) {
-          appRef.current.destroy(true);
-          appRef.current = null;
-          modelRef.current = null;
-        }
-
+        // Dynamically load Cubism runtime + PIXI
         await loadCubismRuntime();
-        const pixi = pixiModule || await import('pixi.js');
-        (window as any).__pixi_module = pixi;
+        const pixi = await import('pixi.js');
 
-        // Wait for container dimensions with timeout fallback
+        // Wait for container to have real dimensions.
         const waitForLayout = () =>
           new Promise<void>((resolve) => {
-            let elapsed = 0;
-            const poll = () => {
-              if (destroyed) return resolve();
+            setTimeout(() => {
+              if (!mountedRef.current) return resolve();
               const rect = containerRef.current?.getBoundingClientRect();
               if (rect && rect.width > 0 && rect.height > 0) return resolve();
-              elapsed += 50;
-              if (elapsed >= LAYOUT_TIMEOUT_MS) return resolve();
-              setTimeout(poll, 50);
-            };
-            poll();
+              // One more frame as fallback
+              requestAnimationFrame(() => resolve());
+            }, 50);
           });
 
         await waitForLayout();
-        if (destroyed) return;
+        if (!mountedRef.current) return;
 
+        // Use actual rendered dimensions, fall back to props if container is zero-size
         const rect = containerRef.current!.getBoundingClientRect();
         const w = Math.max(Math.floor(rect.width) || width, 1);
         const h = Math.max(Math.floor(rect.height) || height, 1);
 
+        // Set canvas size explicitly before creating renderer
         canvas.width = w;
         canvas.height = h;
 
+        // Create PIXI Application with verified dimensions
         const app = new pixi.Application({
           view: canvas,
           width: w,
@@ -280,29 +345,48 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
           autoStart: true,
           eventMode: 'none',
           eventFeatures: { move: false, globalMove: false, click: false, wheel: false },
+          preference: 'webgl',
+          powerPreference: 'default',
+          failIfMajorPerformanceCaveat: false,
         } as any);
-
-        // Cap at 30fps — Live2D doesn't need 60fps, halves GPU/CPU load
-        if (app.ticker.maxFPS !== undefined) {
-          app.ticker.maxFPS = 30;
-        } else {
-          app.ticker.speed = 0.5;
-        }
 
         appRef.current = app;
 
-        const model = await Live2DModel.from(modelPath, {
+        // Load Live2D model
+        let modelLoadTimedOut = false;
+        const modelPromise = Live2DModel.from(modelPath, {
           motionPreload: MotionPreloadStrategy.IDLE,
           autoInteract: false,
-        });
+        }) as Promise<any>;
+        modelPromise
+          .then((lateModel: any) => {
+            if (modelLoadTimedOut || !mountedRef.current) {
+              try {
+                lateModel?.destroy?.();
+              } catch {
+                // Ignore late model cleanup errors
+              }
+            }
+          })
+          .catch(() => undefined);
+        const model = await withTimeout(
+          modelPromise,
+          MODEL_LOAD_TIMEOUT_MS,
+          '数字人模型加载超时，已切换为文字讲解模式',
+          () => {
+            modelLoadTimedOut = true;
+          }
+        );
 
-        if (destroyed) {
+        if (!mountedRef.current) {
           model.destroy();
+          cleanup();
           return;
         }
 
-        let lastFilterKey = '__init__';
-        app.ticker.add(() => {
+        // Register ticker callback to apply lip sync values AFTER idle motion updates
+        const tickerCallback = () => {
+          if (!mountedRef.current || !modelRef.current) return;
           const v = lipSyncValuesRef.current;
           const core = model.internalModel?.coreModel;
           if (!core) return;
@@ -311,20 +395,18 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
             core.setParameterValueById('ParamMouthForm', v.mouthForm);
           }
           core.setParameterValueById('ParamAngleZ', v.angleZ);
-          const cf = colorFilterRef.current;
-          const filterKey = cf.length > 0 ? 'filter' : 'none';
-          if (filterKey !== lastFilterKey) {
-            model.filters = cf.length > 0 ? cf : null;
-            lastFilterKey = filterKey;
-          }
-        });
+        };
+        tickerRef.current = tickerCallback;
+        app.ticker.add(tickerCallback);
 
-        // Auto-fit model to canvas
+        // Auto-fit: scale model to fit entirely within canvas
         model.scale.set(scale);
         const curW = model.width || 0;
         const curH = model.height || 0;
         if (curW > 0 && curH > 0) {
-          const fitScale = Math.min(w / (curW / scale), h / (curH / scale)) * 0.92;
+          const unscaledW = curW / scale;
+          const unscaledH = curH / scale;
+          const fitScale = Math.min(w / unscaledW, h / unscaledH) * 0.92;
           model.scale.set(fitScale);
         }
         model.anchor.set(0.5, 0.5);
@@ -334,30 +416,9 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         app.stage.addChild(model);
         modelRef.current = model;
 
-        // Set arms to natural hanging position and play idle motion
-        try {
-          const core = model.internalModel?.coreModel;
-          if (core) {
-            // Arms hanging down naturally
-            const armParams: Record<string, number> = {
-              'ParamArmLA': 0,
-              'ParamArmRA': 0,
-              'ParamArmLB': 0,
-              'ParamArmRB': 0,
-              'ParamHandL': 0,
-              'ParamHandR': 0,
-            };
-            for (const [id, val] of Object.entries(armParams)) {
-              try { core.setParameterValueById(id, val); } catch { /* param may not exist */ }
-            }
-          }
-          // Play idle motion to establish default pose
-          model.motion('Idle', 0);
-        } catch { /* ignore motion errors */ }
-
-        // ResizeObserver handles all size changes — no need to recreate the app
+        // ResizeObserver: keep renderer in sync with container size changes
         const ro = new ResizeObserver((entries) => {
-          if (destroyed || !appRef.current || !modelRef.current) return;
+          if (!mountedRef.current || !appRef.current || !modelRef.current) return;
           for (const entry of entries) {
             const { width: cw, height: ch } = entry.contentRect;
             if (cw > 0 && ch > 0) {
@@ -380,48 +441,39 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         }
         roRef.current = ro;
 
-        clickHandler = () => handleClick();
-        canvas.addEventListener('click', clickHandler);
-
-        let focusRafPending = false;
-        let lastMoveX = 0;
-        let lastMoveY = 0;
-        moveHandler = (e: MouseEvent) => {
+        // Use native DOM events instead of PIXI events to avoid
+        // isInteractive compatibility issues
+        const clickHandler = () => handleClick();
+        const moveHandler = (e: MouseEvent) => {
           if (!modelRef.current || !canvasRef.current) return;
           const rect = canvasRef.current.getBoundingClientRect();
-          lastMoveX = e.clientX - rect.left;
-          lastMoveY = e.clientY - rect.top;
-          if (!focusRafPending) {
-            focusRafPending = true;
-            requestAnimationFrame(() => {
-              focusRafPending = false;
-              if (modelRef.current) {
-                modelRef.current.focus(lastMoveX, lastMoveY);
-              }
-            });
-          }
+          const px = e.clientX - rect.left;
+          const py = e.clientY - rect.top;
+          modelRef.current.focus(px, py);
         };
+        canvas.addEventListener('click', clickHandler);
         canvas.addEventListener('mousemove', moveHandler);
-
-        colorFilterRef.current = buildColorFilter(cssFilter);
-
-        // Pause PIXI ticker when tab is hidden to save GPU/CPU
-        visibilityHandler = () => {
-          if (!appRef.current) return;
-          if (document.hidden) {
-            appRef.current.ticker.stop();
-          } else {
-            appRef.current.ticker.start();
-          }
-        };
-        document.addEventListener('visibilitychange', visibilityHandler);
 
         setIsLoading(false);
         onModelLoaded?.(model);
+
+        // Store cleanup for event listeners
+        return () => {
+          canvas.removeEventListener('click', clickHandler);
+          canvas.removeEventListener('mousemove', moveHandler);
+        };
       } catch (err: any) {
-        if (destroyed) return;
+        if (!mountedRef.current) return;
         const errMsg = err?.message || 'Failed to load Live2D model';
         console.error('[Live2DStage]', errMsg, err);
+        if (err?.name === 'Live2DLoadTimeoutError') {
+          try {
+            appRef.current?.destroy(true, { children: true });
+          } catch {
+            // Ignore timeout cleanup errors
+          }
+          appRef.current = null;
+        }
         setError(errMsg);
         setIsLoading(false);
         onError?.(errMsg);
@@ -431,28 +483,11 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
     init();
 
     return () => {
-      destroyed = true;
-      if (clickHandler && canvas) {
-        canvas.removeEventListener('click', clickHandler);
-      }
-      if (moveHandler && canvas) {
-        canvas.removeEventListener('mousemove', moveHandler);
-      }
-      if (visibilityHandler) {
-        document.removeEventListener('visibilitychange', visibilityHandler);
-      }
-      if (roRef.current) {
-        roRef.current.disconnect();
-        roRef.current = null;
-      }
-      if (appRef.current) {
-        appRef.current.ticker.stop();
-        appRef.current.destroy(true, { children: true });
-        appRef.current = null;
-        modelRef.current = null;
-      }
+      cleanup();
     };
-  }, [modelPath, handleClick]);
+    // Only re-initialize when modelPath changes — NOT on width/height/scale/x/y/handleClick
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelPath]);
 
   return (
     <div
@@ -462,6 +497,8 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
         position: 'relative',
         width,
         height,
+        filter: cssFilter && cssFilter !== 'none' ? cssFilter : undefined,
+        transition: 'filter 0.6s ease',
       }}
     >
       <canvas
@@ -488,8 +525,9 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: 'rgba(248, 246, 242, 0.9)',
-            backdropFilter: 'blur(4px)',
+            backgroundColor: overlayBackground,
+            backdropFilter: transparentOverlay ? 'blur(1px)' : 'blur(4px)',
+            borderRadius: transparentOverlay ? 999 : undefined,
           }}
         >
           <div style={{
@@ -506,7 +544,7 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
               borderRadius: '50%',
               animation: 'spin 0.8s linear infinite',
             }} />
-            <span style={{ fontSize: '13px', color: 'var(--text-tertiary)' }}>数字人加载中...</span>
+            <span style={{ fontSize: '13px', color: overlayTextColor }}>数字人加载中...</span>
           </div>
         </div>
       )}
@@ -523,14 +561,15 @@ const Live2DStage = forwardRef<Live2DModelActions, Live2DStageProps>(({
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: 'rgba(248, 246, 242, 0.95)',
+            backgroundColor: errorOverlayBackground,
+            borderRadius: transparentOverlay ? 24 : undefined,
             gap: '8px',
             padding: '20px',
           }}
         >
           <span style={{ fontSize: '28px' }}>:(</span>
-          <span style={{ color: '#DC4444', fontSize: '13px', textAlign: 'center' }}>{error}</span>
-          <span style={{ color: '#A8A198', fontSize: '12px', textAlign: 'center' }}>
+          <span style={{ color: transparentOverlay ? '#FFE0D6' : '#DC4444', fontSize: '13px', textAlign: 'center' }}>{error}</span>
+          <span style={{ color: transparentOverlay ? 'rgba(255,250,240,0.62)' : '#A8A198', fontSize: '12px', textAlign: 'center' }}>
             请确认模型文件已放置在 public/models/ 目录下
           </span>
         </div>

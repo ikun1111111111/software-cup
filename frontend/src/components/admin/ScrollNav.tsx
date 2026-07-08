@@ -3,13 +3,15 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   DashboardOutlined,
   DatabaseOutlined,
+  BarChartOutlined,
   UserOutlined,
   FileTextOutlined,
 } from '@ant-design/icons';
 
 const navItems = [
   { to: '/admin/dashboard', icon: <DashboardOutlined />, label: '数据大屏' },
-  { to: '/admin', icon: <DatabaseOutlined />, label: '知识库' },
+  { to: '/admin/knowledge', icon: <DatabaseOutlined />, label: '知识库' },
+  { to: '/admin/behavior', icon: <BarChartOutlined />, label: '洞察' },
   { to: '/admin/avatar', icon: <UserOutlined />, label: '数字人' },
   { to: '/admin/report', icon: <FileTextOutlined />, label: '报告' },
 ];
@@ -20,9 +22,6 @@ const ScrollNav: React.FC = () => {
   const location = useLocation();
 
   const isActive = (to: string) => {
-    if (to === '/admin') {
-      return location.pathname === '/admin' || location.pathname === '/admin/';
-    }
     return location.pathname === to;
   };
 

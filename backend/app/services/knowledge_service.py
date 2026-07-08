@@ -107,6 +107,7 @@ async def process_document(doc_id: int, db_session) -> list[KnowledgeChunk]:
         doc.chunk_count = len(chunks_text)
 
         # Store chunks in PostgreSQL
+        doc_topic = doc.topic
         db_chunks = []
         for i, txt in enumerate(chunks_text):
             chunk = KnowledgeChunk(
@@ -114,6 +115,7 @@ async def process_document(doc_id: int, db_session) -> list[KnowledgeChunk]:
                 chunk_index=i,
                 chunk_text=txt,
                 token_count=len(txt),
+                topic=doc_topic,
             )
             db_session.add(chunk)
             db_chunks.append(chunk)
@@ -134,10 +136,10 @@ async def process_document(doc_id: int, db_session) -> list[KnowledgeChunk]:
             store.ensure_collection()
 
             chunk_dicts = [
-                {"chunk_index": c.chunk_index, "chunk_text": c.chunk_text}
+                {"chunk_index": c.chunk_index, "chunk_text": c.chunk_text, "topic": c.topic}
                 for c in db_chunks
             ]
-            embedding_ids = store.insert_chunks(doc_id, chunk_dicts)
+            embedding_ids = store.insert_chunks(doc_id, chunk_dicts, topic=doc_topic)
 
             # Update embedding_id in PG
             for chunk, eid in zip(db_chunks, embedding_ids):
@@ -152,6 +154,7 @@ async def process_document(doc_id: int, db_session) -> list[KnowledgeChunk]:
                     "doc_id": c.doc_id,
                     "chunk_index": c.chunk_index,
                     "chunk_text": c.chunk_text,
+                    "topic": c.topic,
                 }
                 for c in db_chunks
             ])

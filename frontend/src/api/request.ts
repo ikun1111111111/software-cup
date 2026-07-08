@@ -11,7 +11,7 @@ export interface ApiResponse<T = any> {
 // 创建axios实例
 const createAxiosInstance = (): AxiosInstance => {
   const instance = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api',
+    baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
     timeout: 30000,
     headers: {
       'Content-Type': 'application/json',
@@ -82,9 +82,67 @@ const handleError = (error: any): void => {
 // 创建请求实例
 const request = createAxiosInstance();
 
+type CachedResponse = AxiosResponse<any>;
+
+const getResponseCache = new Map<string, { expiresAt: number; response: CachedResponse }>();
+const getInFlight = new Map<string, Promise<CachedResponse>>();
+
+const stableStringify = (value: any): string => {
+  if (!value || typeof value !== 'object') return JSON.stringify(value ?? null);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  return `{${Object.keys(value)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+    .join(',')}}`;
+};
+
+const getCacheKey = (url: string, params?: any) => `${url}?${stableStringify(params)}`;
+
 // 封装请求方法
 export const get = <T = any>(url: string, params?: any, config?: AxiosRequestConfig) => {
   return request.get<T>(url, { params, ...config });
+};
+
+export const getCached = <T = any>(
+  url: string,
+  params?: any,
+  ttlMs = 60000,
+  config?: AxiosRequestConfig,
+) => {
+  const key = getCacheKey(url, params);
+  const now = Date.now();
+  const cached = getResponseCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return Promise.resolve(cached.response as AxiosResponse<T>);
+  }
+
+  const inFlight = getInFlight.get(key);
+  if (inFlight) return inFlight as Promise<AxiosResponse<T>>;
+
+  const requestPromise = get<T>(url, params, config)
+    .then((response) => {
+      getResponseCache.set(key, { expiresAt: Date.now() + ttlMs, response });
+      return response;
+    })
+    .finally(() => {
+      getInFlight.delete(key);
+    });
+  getInFlight.set(key, requestPromise as Promise<CachedResponse>);
+  return requestPromise;
+};
+
+export const invalidateGetCache = (matcher?: (key: string) => boolean) => {
+  if (!matcher) {
+    getResponseCache.clear();
+    getInFlight.clear();
+    return;
+  }
+  [...getResponseCache.keys()].forEach((key) => {
+    if (matcher(key)) getResponseCache.delete(key);
+  });
+  [...getInFlight.keys()].forEach((key) => {
+    if (matcher(key)) getInFlight.delete(key);
+  });
 };
 
 export const post = <T = any>(url: string, data?: any, config?: AxiosRequestConfig) => {

@@ -3,8 +3,10 @@
 Covers: WS receive → base64 decode → ASR transcribe → chat pipeline → TTS synthesize → WS send.
 Mocks external ASR/TTS and internal chat dependencies, WS protocol stack runs real via TestClient.
 """
+import pytest
+import json
 import base64
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock
 
 from fastapi.testclient import TestClient
 from app.main import app
@@ -31,26 +33,6 @@ def _make_text_msg(session_id: str, question: str) -> dict:
     }
 
 
-def _mock_session_ctx():
-    mock_db = MagicMock()
-    mock_db.commit = AsyncMock()
-    mock_db.rollback = AsyncMock()
-    mock_session_ctx = MagicMock()
-    mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_db)
-    mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
-    return mock_session_ctx
-
-
-def _chat_result(answer: str, source: str = "rag") -> dict:
-    return {
-        "answer": answer,
-        "source": source,
-        "chunks": [{"text": "灵山大佛高88米", "score": 0.9}],
-        "sentiment_score": 0.8,
-        "sentiment_label": "positive",
-    }
-
-
 # ── Integration: text message through WebSocket ──────────────────────────────
 
 
@@ -58,9 +40,20 @@ def test_ws_text_full_pipeline(monkeypatch):
     """Integration: text question → chat pipeline → answer via WebSocket."""
     fake_answer = "灵山大佛高88米。"
 
-    monkeypatch.setattr("app.api.ws.process_chat", AsyncMock(return_value=_chat_result(fake_answer)))
-    monkeypatch.setattr("app.api.ws.finalize_chat", AsyncMock())
-    monkeypatch.setattr("app.api.ws.async_session", lambda: _mock_session_ctx())
+    # Patch the dependencies that ws._process_chat uses
+    monkeypatch.setattr("app.api.ws.search_faq", AsyncMock(return_value=None))
+    monkeypatch.setattr("app.api.ws.retrieve", AsyncMock(return_value=[
+        {"text": "灵山大佛高88米", "score": 0.9, "rerank_score": 0.95}
+    ]))
+    monkeypatch.setattr("app.api.ws.route", AsyncMock(return_value=fake_answer))
+    monkeypatch.setattr("app.core.llm.analyze_sentiment", AsyncMock(return_value=(0.8, "positive")))
+
+    # Patch DB session context manager used in ws.py
+    mock_db = AsyncMock()
+    mock_session_ctx = MagicMock()
+    mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.api.ws.async_session", lambda: mock_session_ctx)
 
     with client.websocket_connect("/ws/chat") as websocket:
         websocket.send_json(_make_text_msg("ws_text_1", "灵山大佛多高"))
@@ -84,8 +77,13 @@ def test_ws_voice_full_pipeline(monkeypatch):
     # Patch ASR
     monkeypatch.setattr("app.api.ws.transcribe", AsyncMock(return_value=fake_asr_text))
 
-    monkeypatch.setattr("app.api.ws.process_chat", AsyncMock(return_value=_chat_result(fake_answer)))
-    monkeypatch.setattr("app.api.ws.finalize_chat", AsyncMock())
+    # Patch chat dependencies
+    monkeypatch.setattr("app.api.ws.search_faq", AsyncMock(return_value=None))
+    monkeypatch.setattr("app.api.ws.retrieve", AsyncMock(return_value=[
+        {"text": "灵山大佛高88米", "score": 0.9, "rerank_score": 0.95}
+    ]))
+    monkeypatch.setattr("app.api.ws.route", AsyncMock(return_value=fake_answer))
+    monkeypatch.setattr("app.core.llm.analyze_sentiment", AsyncMock(return_value=(0.8, "positive")))
 
     # Patch TTS
     fake_tts_result = MagicMock()
@@ -93,7 +91,12 @@ def test_ws_voice_full_pipeline(monkeypatch):
     fake_tts_result.phoneme_timestamps = [{"phoneme": "灵", "start": 0.0, "end": 0.2}]
     monkeypatch.setattr("app.api.ws.synthesize_cached", AsyncMock(return_value=fake_tts_result))
 
-    monkeypatch.setattr("app.api.ws.async_session", lambda: _mock_session_ctx())
+    # Patch DB session
+    mock_db = AsyncMock()
+    mock_session_ctx = MagicMock()
+    mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.api.ws.async_session", lambda: mock_session_ctx)
 
     with client.websocket_connect("/ws/chat") as websocket:
         websocket.send_json(_make_voice_msg("voice_session_1", b"fake_audio_data"))
@@ -133,13 +136,19 @@ def test_ws_voice_tts_failure_graceful(monkeypatch):
     fake_answer = "你好，欢迎来到灵山胜境！"
 
     monkeypatch.setattr("app.api.ws.transcribe", AsyncMock(return_value=fake_asr_text))
-    monkeypatch.setattr("app.api.ws.process_chat", AsyncMock(return_value=_chat_result(fake_answer)))
-    monkeypatch.setattr("app.api.ws.finalize_chat", AsyncMock())
+    monkeypatch.setattr("app.api.ws.search_faq", AsyncMock(return_value=None))
+    monkeypatch.setattr("app.api.ws.retrieve", AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.api.ws.route", AsyncMock(return_value=fake_answer))
+    monkeypatch.setattr("app.core.llm.analyze_sentiment", AsyncMock(return_value=(0.5, "neutral")))
 
     # TTS raises exception
     monkeypatch.setattr("app.api.ws.synthesize_cached", AsyncMock(side_effect=RuntimeError("TTS down")))
 
-    monkeypatch.setattr("app.api.ws.async_session", lambda: _mock_session_ctx())
+    mock_db = AsyncMock()
+    mock_session_ctx = MagicMock()
+    mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_db)
+    mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.api.ws.async_session", lambda: mock_session_ctx)
 
     with client.websocket_connect("/ws/chat") as websocket:
         websocket.send_json(_make_voice_msg("voice_session_3", b"audio"))

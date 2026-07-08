@@ -21,8 +21,8 @@ class TestTTSStreaming:
     @pytest.mark.asyncio
     async def test_synthesize_stream_yields_audio(self):
         """Should yield audio chunks as base64."""
-        with patch("app.core.tts.synthesize", new_callable=AsyncMock) as mock_syn:
-            mock_syn.return_value = TTSResult(
+        with patch("app.core.tts._get_cached", new_callable=AsyncMock) as mock_cached:
+            mock_cached.return_value = TTSResult(
                 audio_bytes=b"\x00" * 8192,
                 phoneme_timestamps=[{"char": "测", "start_ms": 0, "end_ms": 100, "mouth_shape": "closed"}],
                 duration_ms=100,
@@ -44,8 +44,8 @@ class TestTTSStreaming:
     @pytest.mark.asyncio
     async def test_synthesize_stream_phonemes_schema(self):
         """Phonemes should match PLAN schema."""
-        with patch("app.core.tts.synthesize", new_callable=AsyncMock) as mock_syn:
-            mock_syn.return_value = TTSResult(
+        with patch("app.core.tts._get_cached", new_callable=AsyncMock) as mock_cached:
+            mock_cached.return_value = TTSResult(
                 audio_bytes=b"\x00" * 100,
                 phoneme_timestamps=[
                     {"char": "你", "start_ms": 0, "end_ms": 50, "mouth_shape": "closed"},
@@ -69,13 +69,9 @@ class TestTTSStreaming:
 
     @pytest.mark.asyncio
     async def test_synthesize_stream_no_audio(self):
-        """Should handle empty audio gracefully."""
-        with patch("app.core.tts.synthesize", new_callable=AsyncMock) as mock_syn:
-            mock_syn.return_value = TTSResult(
-                audio_bytes=b"",
-                phoneme_timestamps=[{"char": "测", "start_ms": 0, "end_ms": 100, "mouth_shape": "closed"}],
-                duration_ms=100,
-            )
+        """Should handle streaming TTS failure gracefully."""
+        with patch("app.core.tts._get_cached", new_callable=AsyncMock, return_value=None), \
+             patch("edge_tts.Communicate", side_effect=RuntimeError("TTS down")):
 
             chunks = []
             async for chunk in synthesize_stream("测试"):
@@ -83,4 +79,6 @@ class TestTTSStreaming:
 
             audio_chunks = [c for c in chunks if c["type"] == "audio"]
             assert len(audio_chunks) == 0
+            assert any(c["type"] == "tts_error" for c in chunks)
+            assert any(c["type"] == "phonemes" for c in chunks)
             assert any(c["type"] == "done" for c in chunks)

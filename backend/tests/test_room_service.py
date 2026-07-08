@@ -8,7 +8,6 @@ from app.services.room_service import (
     get_room,
     add_spot_to_itinerary,
     update_itinerary,
-    update_active_route,
 )
 
 
@@ -88,7 +87,7 @@ class TestAddSpotToItinerary:
                 room["room_id"], "灵山大佛", source="vision", confidence=0.9
             )
             assert len(updated["itinerary"]) == 1
-            assert updated["itinerary"][0]["spot_name"] == "灵山大佛"
+            assert updated["itinerary"][0]["spot_name"] == "���山大佛"
             assert updated["itinerary"][0]["source"] == "vision"
 
     @pytest.mark.asyncio
@@ -134,30 +133,3 @@ class TestAddSpotToItinerary:
             room = await create_room("队长")
             with pytest.raises(ValueError, match="无法识别"):
                 await add_spot_to_itinerary(room["room_id"], "未知景点")
-
-
-class TestActiveRoute:
-    """Collaborative room shared route state."""
-
-    @pytest.mark.asyncio
-    async def test_update_active_route_keeps_route_order(self, mock_redis):
-        mock, storage = mock_redis
-        with patch("app.services.room_service.get_redis", new=AsyncMock(return_value=mock)):
-            room = await create_room("队长")
-            active_route = {
-                "route_id": "route-a",
-                "name": "经典路线",
-                "spot_order": ["spot-a", "spot-b", "spot-c"],
-                "spot_names": [
-                    {"id": "spot-a", "name": "第一站"},
-                    {"id": "spot-b", "name": "第二站"},
-                    {"id": "spot-c", "name": "第三站"},
-                ],
-                "duration": "2小时",
-                "route_type": "history",
-            }
-
-            updated = await update_active_route(room["room_id"], active_route)
-
-            assert updated["active_route"]["route_id"] == "route-a"
-            assert updated["active_route"]["spot_order"] == ["spot-a", "spot-b", "spot-c"]

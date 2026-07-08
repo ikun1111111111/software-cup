@@ -17,14 +17,39 @@ const PaperPanel: React.FC<PaperPanelProps> = ({
     <div
       style={{
         position: 'relative',
-        backgroundColor: 'var(--bg-panel)',
+        background:
+          'linear-gradient(135deg, rgba(255,255,255,0.74), rgba(243,239,230,0.94)), var(--texture-paper)',
         borderRadius: withScrollHead ? '0 0 var(--radius-lg) var(--radius-lg)' : 'var(--radius-lg)',
         border: '1px solid var(--border-subtle)',
-        boxShadow: 'var(--shadow-medium)',
+        boxShadow: 'var(--shadow-medium), inset 0 1px 0 rgba(255,255,255,0.56)',
         overflow: 'hidden',
         ...style,
       }}
     >
+      <span
+        style={{
+          position: 'absolute',
+          top: 10,
+          right: 10,
+          width: 26,
+          height: 26,
+          borderTop: '1px solid rgba(201,169,110,0.36)',
+          borderRight: '1px solid rgba(201,169,110,0.36)',
+          pointerEvents: 'none',
+        }}
+      />
+      <span
+        style={{
+          position: 'absolute',
+          left: 10,
+          bottom: 10,
+          width: 22,
+          height: 22,
+          borderLeft: '1px solid rgba(106,156,137,0.26)',
+          borderBottom: '1px solid rgba(106,156,137,0.26)',
+          pointerEvents: 'none',
+        }}
+      />
       {withScrollHead && (
         <div style={{
           height: 28,

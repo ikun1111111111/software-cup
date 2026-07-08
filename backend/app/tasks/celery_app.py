@@ -8,7 +8,7 @@ celery_app = Celery(
     "smart_tourism",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.index_task", "app.tasks.report_task"],
+    include=["app.tasks.index_task", "app.tasks.report_task", "app.tasks.behavior_import_task"],
 )
 
 celery_app.conf.update(

@@ -6,9 +6,18 @@ SYSTEM_PROMPT_CHAT = (
     "1. 游客问『你好』『在吗』等问候时，热情打招呼，简短介绍自己即可，不要主动推销路线。\n"
     "2. 游客问行程、路线、怎么玩时，再推荐具体游览方案。\n"
     "3. 游客问景点详情、门票、时间、交通时，直接回答具体问题。\n"
-    "4. 有参考资料时基于资料回答，没有时基于自身知识。\n"
+    "4. 有参考资料时严格基于资料回答，资料中无明确答案时请明确告知游客'这个问题我暂时不确定'，不要编造信息。\n"
     "5. 回答亲切自然，200字以内。"
 )
+
+TOPIC_ROLE_NAMES: dict[str, str] = {
+    "history": "灵山历史",
+    "culture": "佛教文化",
+    "route": "游览路线",
+    "food": "餐饮美食",
+    "ticket": "票务信息",
+    "general": "综合问答",
+}
 
 SYSTEM_PROMPT_VERIFY = (
     "你是一个事实校验专家。请判断「回答」是否与「参考资料」一致。\n"
@@ -51,7 +60,7 @@ def build_chat_prompt(
     context_chunks: list[dict],
     history: list[dict] | None = None,
     use_fallback: bool = False,
-    spot_context: dict | None = None,
+    topic: str | None = None,
 ) -> list[dict]:
     """Build LLM messages for chat with retrieved context and optional history.
 
@@ -60,15 +69,12 @@ def build_chat_prompt(
         context_chunks: Retrieved knowledge chunks.
         history: Optional list of previous messages, each as {"role": "user|assistant", "content": "..."}.
         use_fallback: Whether the chunks are fallback knowledge (not from RAG).
-        spot_context: Optional spot context with keys like spot_id, spot_name, route_id, source_page.
+        topic: Optional topic tag (history/culture/route/food/ticket/general).
     """
     system_content = SYSTEM_PROMPT_CHAT
-    spot_name = spot_context.get("spot_name") if spot_context else None
-    if spot_name:
-        system_content += (
-            "\n如果游客正在某个具体景点前提问，请使用『这一站』『在这里』等现场语气，"
-            "围绕该景点回答，不要泛泛介绍整个灵山胜境。"
-        )
+    if topic and topic in TOPIC_ROLE_NAMES:
+        system_content += f"\n当前话题：{TOPIC_ROLE_NAMES[topic]}。请围绕该主题，依据资料为游客解答。"
+
     messages: list[dict] = [{"role": "system", "content": system_content}]
 
     # Inject conversation history (oldest first) before the current turn
@@ -79,21 +85,17 @@ def build_chat_prompt(
             if role in ("user", "assistant") and content:
                 messages.append({"role": role, "content": content})
 
-    spot_prefix = ""
-    if spot_name:
-        spot_prefix = f"游客当前在景点「{spot_name}」前提问。"
-
     if context_chunks:
         context_text = "\n\n---\n\n".join(
             f"[资料片段 {i+1}]\n{c['text']}" for i, c in enumerate(context_chunks)
         )
         if use_fallback:
             # Fallback knowledge: present as background info, not as strict reference
-            user_content = f"{spot_prefix}你对灵山景点很了解，以下是一些背景信息供你参考：\n{context_text}\n\n游客问: {question}\n请直接给出建议，不要说自己不清楚:"
+            user_content = f"你对灵山景点很了解，以下是一些背景信息供你参考：\n{context_text}\n\n游客问: {question}\n请直接给出建议，不要说自己不清楚:"
         else:
-            user_content = f"{spot_prefix}参考资料:\n{context_text}\n\n游客问: {question}\n请回答:"
+            user_content = f"参考资料:\n{context_text}\n\n游客问: {question}\n请基于以上资料回答，若资料不足请明确说明:"
     else:
-        user_content = f"{spot_prefix}游客问: {question}\n请回答:"
+        user_content = f"游客问: {question}\n请回答:"
 
     messages.append({"role": "user", "content": user_content})
     return messages
@@ -112,6 +114,47 @@ def build_story_prompt(spot_name: str, context_chunks: list[dict]) -> list[dict]
                 f"请为景点「{spot_name}」讲一个动人的故事。\n\n"
                 f"参考资料:\n{context_text}\n\n"
                 f"请开始讲述:"
+            ),
+        },
+    ]
+
+
+# ── Story act prompts (multi-act theatre) ────────────────────────────────────
+
+SYSTEM_PROMPT_STORY_ACT = (
+    "你是「小景」数字人导游，正在为游客讲述灵山胜境某景点的某一幕故事。\n"
+    "要求：\n"
+    "1. 仅写这一幕的旁白，80–150 字\n"
+    "2. 单一情感基调，与给定 emotion 一致\n"
+    "3. 用第二人称「你」称呼游客，沉浸式叙事\n"
+    "4. 不写标题、不写幕号、不写「第 N 幕」字样\n"
+    "5. 纯文本，无 markdown，无引号包裹\n"
+    "6. 结尾留一个钩子，自然过渡到下一幕"
+)
+
+
+def build_story_act_prompt(
+    spot_name: str,
+    act_title: str,
+    prompt_hint: str,
+    emotion: str,
+    context_chunks: list[dict],
+) -> list[dict]:
+    """Build LLM messages for one act of a multi-act story."""
+    context_text = "\n\n".join(
+        f"[资料] {c['text']}" for c in context_chunks
+    )
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT_STORY_ACT},
+        {
+            "role": "user",
+            "content": (
+                f"景点：{spot_name}\n"
+                f"幕标题：{act_title}\n"
+                f"情感基调：{emotion}\n"
+                f"内容指引：{prompt_hint}\n\n"
+                f"参考资料:\n{context_text}\n\n"
+                f"请撰写这一幕旁白:"
             ),
         },
     ]

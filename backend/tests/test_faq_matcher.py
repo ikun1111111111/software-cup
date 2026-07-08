@@ -9,12 +9,13 @@ from app.models.knowledge import FaqEntry
 class MockFaq:
     """Mock FAQ entry for testing."""
 
-    def __init__(self, id, question, answer, keywords=None, hit_count=0):
+    def __init__(self, id, question, answer, keywords=None, hit_count=0, category="general"):
         self.id = id
         self.question = question
         self.answer = answer
         self.keywords = keywords or ""
         self.hit_count = hit_count
+        self.category = category
         self.is_active = True
 
 
@@ -67,7 +68,7 @@ class TestSearchFaq:
         second_result.scalars.return_value.all.return_value = [mock_faq]
         mock_db.execute = AsyncMock(side_effect=[first_result, second_result])
 
-        result = await search_faq("门票价格是多少？", mock_db)
+        result = await search_faq("门票要多少钱？", mock_db)
         assert result is not None
         assert result["faq_id"] == 3
         assert result["source"] == "faq_fuzzy"
@@ -85,6 +86,33 @@ class TestSearchFaq:
 
         result = await search_faq("完全不相关的问题", mock_db)
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_broad_spot_intro_does_not_hit_route_duration_faq(self):
+        """A broad spot guide request should not match a route FAQ by one generic word."""
+        route_faq = MockFaq(
+            4,
+            "游览灵山胜境大概需要多长时间？",
+            "一般游览需半天到一天。",
+            keywords="游览,时间,路线",
+            category="route",
+        )
+        mock_db = MagicMock()
+        mock_db.commit = AsyncMock()
+        first_result = MagicMock()
+        first_result.scalar_one_or_none.return_value = None
+        second_result = MagicMock()
+        second_result.scalars.return_value.all.return_value = [route_faq]
+        mock_db.execute = AsyncMock(side_effect=[first_result, second_result])
+
+        result = await search_faq(
+            "当前互动大屏点位：灵山大佛。\n游客问题：请用游客容易听懂的方式，介绍一下灵山大佛的历史、看点和游览亮点。",
+            mock_db,
+            topic="route",
+        )
+
+        assert result is None
+        mock_db.commit.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_empty_input(self):

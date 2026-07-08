@@ -10,6 +10,7 @@ adding another dependency.
 """
 import json
 import logging
+import re
 import time
 from typing import TypedDict
 
@@ -23,11 +24,12 @@ settings = get_settings()
 
 # Lazy-loaded encoder
 _encoder = None
+_encoder_load_failed = False
 
 _CACHE_KEY_PREFIX = "semantic_cache"
 # Configurable via Settings
 _MAX_ENTRIES = getattr(settings, "semantic_cache_max_entries", 1000)
-_SIMILARITY_THRESHOLD = getattr(settings, "semantic_cache_similarity_threshold", 0.90)
+_SIMILARITY_THRESHOLD = getattr(settings, "semantic_cache_similarity_threshold", 0.97)
 _CACHE_TTL = getattr(settings, "semantic_cache_ttl", 3600)  # 1h
 
 
@@ -40,20 +42,24 @@ class CacheEntry(TypedDict):
 
 def _get_encoder():
     """Lazy-load the lightweight semantic encoder."""
-    global _encoder
-    if _encoder is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-            model_name = getattr(settings, "semantic_cache_model", "BAAI/bge-small-zh-v1.5")
-            logger.info("Loading semantic cache encoder: %s", model_name)
-            _encoder = SentenceTransformer(model_name, device="cpu")
-            logger.info("Semantic cache encoder loaded")
-        except Exception as e:
-            logger.error("Failed to load semantic cache encoder: %s", e)
-            raise RuntimeError(
-                "sentence-transformers not available. "
-                "Install it: pip install sentence-transformers"
-            ) from e
+    global _encoder, _encoder_load_failed
+    if _encoder_load_failed:
+        raise RuntimeError("Semantic cache encoder previously failed to load")
+    if _encoder is not None:
+        return _encoder
+    try:
+        from sentence_transformers import SentenceTransformer
+        model_name = getattr(settings, "semantic_cache_model", "BAAI/bge-small-zh-v1.5")
+        logger.info("Loading semantic cache encoder: %s", model_name)
+        _encoder = SentenceTransformer(model_name, device="cpu", local_files_only=True)
+        logger.info("Semantic cache encoder loaded")
+    except Exception as e:
+        _encoder_load_failed = True
+        logger.error("Failed to load semantic cache encoder: %s", e)
+        raise RuntimeError(
+            "sentence-transformers not available. "
+            "Install it: pip install sentence-transformers"
+        ) from e
     return _encoder
 
 
@@ -182,7 +188,31 @@ async def get_similar(question: str, threshold: float | None = None, max_scan: i
             except (json.JSONDecodeError, KeyError, ValueError):
                 continue
 
-        if best_score >= threshold:
+        # Guard against false hits on identical sentence patterns with different numbers
+        # e.g. "灵山一日游" vs "灵山五日游" -> same embedding but different intent
+        if best_score >= threshold and best_answer is not None:
+            # We need the cached question for the best entry — re-scan to find it
+            cached_question = ""
+            for raw in raw_entries:
+                if not raw:
+                    continue
+                try:
+                    entry: CacheEntry = json.loads(raw)
+                    cached_vec = _embedding_from_b64(entry["embedding"])
+                    score = _cosine_similarity(vec, cached_vec)
+                    if score == best_score:
+                        cached_question = entry["question"]
+                        break
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    continue
+
+            if cached_question and _has_critical_difference(question, cached_question):
+                logger.info(
+                    "Semantic cache blocked (score=%.3f): critical difference between '%s' and '%s'",
+                    best_score, question[:30], cached_question[:30],
+                )
+                return None
+
             logger.info(
                 "Semantic cache hit (score=%.3f, threshold=%.3f): %s...",
                 best_score, threshold, question[:30],
@@ -200,3 +230,29 @@ def _hash_question(question: str) -> str:
     """Stable hash for a question string (used as Redis hash field)."""
     import hashlib
     return hashlib.md5(question.encode("utf-8")).hexdigest()[:16]
+
+
+# --- Critical-difference guard ---
+_NUMBER_PATTERN = re.compile(r"(\d+)")
+_DAY_KEYWORDS = frozenset(["一日游", "两日游", "三日游", "四日游", "五日游", "六日游", "七日游", "半日游"])
+
+
+def _has_critical_difference(q1: str, q2: str) -> bool:
+    """Return True if q1 and q2 differ in key intent-bearing tokens (e.g., numbers, day-trip count)."""
+    s1, s2 = q1.strip(), q2.strip()
+    # Exact match should never happen here, but guard anyway
+    if s1 == s2:
+        return False
+
+    # Check for differing numbers (integers)
+    nums1 = _NUMBER_PATTERN.findall(s1)
+    nums2 = _NUMBER_PATTERN.findall(s2)
+    if nums1 != nums2:
+        return True
+
+    # Check for differing Chinese day-trip keywords
+    for kw in _DAY_KEYWORDS:
+        if (kw in s1) != (kw in s2):
+            return True
+
+    return False

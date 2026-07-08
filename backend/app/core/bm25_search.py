@@ -52,6 +52,7 @@ class BM25Index:
                 "doc_id": chunk.get("doc_id"),
                 "chunk_index": chunk.get("chunk_index"),
                 "chunk_id": chunk.get("id"),
+                "topic": chunk.get("topic"),
             })
 
         if self._tokenized:
@@ -76,17 +77,24 @@ class BM25Index:
                 "doc_id": doc_id,
                 "chunk_index": chunk.get("chunk_index"),
                 "chunk_id": chunk.get("id"),
+                "topic": chunk.get("topic"),
             })
 
         if self._tokenized:
             self._bm25 = BM25Okapi(self._tokenized)
             logger.info("BM25 index updated: %d total documents", len(self._corpus))
 
-    def search(self, query: str, top_k: int = 10) -> list[dict]:
+    def search(self, query: str, top_k: int = 10, topic: str | None = None) -> list[dict]:
         """Search BM25 index and return ranked results.
 
+        Args:
+            query: Search query.
+            top_k: Number of results to return.
+            topic: Optional topic filter. If provided, prefer results with matching
+                topic, falling back to general results if insufficient.
+
         Returns:
-            List of dicts with keys: text, score, doc_id, chunk_index, chunk_id
+            List of dicts with keys: text, score, doc_id, chunk_index, chunk_id, topic
         """
         import jieba
 
@@ -96,22 +104,35 @@ class BM25Index:
 
         tokenized_query = list(jieba.cut(query))
         scores = self._bm25.get_scores(tokenized_query)
-        ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)[:top_k]
+        ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
 
-        results = []
+        topic_results = []
+        other_results = []
         for idx, score in ranked:
             if score <= 0:
                 continue
             meta = self._meta[idx]
-            results.append({
+            result = {
                 "text": self._corpus[idx],
                 "score": float(score),
                 "doc_id": meta.get("doc_id"),
                 "chunk_index": meta.get("chunk_index"),
                 "chunk_id": meta.get("chunk_id"),
+                "topic": meta.get("topic"),
                 "source": "bm25",
-            })
-        return results
+            }
+            if topic and meta.get("topic") == topic:
+                topic_results.append(result)
+            else:
+                other_results.append(result)
+
+        if topic:
+            # Prefer same-topic results, but fall back if we don't have enough
+            if len(topic_results) >= top_k:
+                return topic_results[:top_k]
+            combined = topic_results + other_results
+            return combined[:top_k]
+        return other_results[:top_k]
 
     def clear(self):
         """Clear the index."""
@@ -145,6 +166,7 @@ async def rebuild_bm25_index_from_db():
                 "doc_id": c.doc_id,
                 "chunk_index": c.chunk_index,
                 "chunk_text": c.chunk_text,
+                "topic": c.topic,
             }
             for c in chunks
         ]

@@ -145,7 +145,7 @@ describe('AvatarAppearance', () => {
         outfit: 'outfit-1',
         accessories: ['acc-1'],
         costumeMode: 'auto' as const,
-        costumeId: 'festival-spring',
+        costumeId: 'daily-classic',
       };
       render(<AvatarAppearance config={config} onChange={onChange} />);
 
@@ -174,7 +174,7 @@ describe('AvatarAppearance', () => {
         outfit: 'outfit-2',
         accessories: ['acc-1', 'acc-2'],
         costumeMode: 'auto' as const,
-        costumeId: 'festival-spring',
+        costumeId: 'daily-classic',
       };
       render(<AvatarAppearance config={config} />);
 

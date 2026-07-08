@@ -1,0 +1,274 @@
+{
+  "dynasty": "song",
+  "dynastyName": "北宋灵山",
+  "welcomeText": "贵客来访，不胜荣幸。小景在此恭迎。此时我们已步入北宋灵山——自宋真宗大中祥符年间赐名「祥符禅院」以来，这片土地已悄然走过了百余年的光阴。真宗皇帝以年号赐名，既是皇恩浩荡，也是佛法昌明的见证。宣和年间升格禅寺，宋代丛林制度日臻完善，僧人的钟板号令、过堂坐香，井然有古风之致。更有无数文人墨客与此间相交，禅诗与佛法相映成趣。请随小景缓步前行，一同领略北宋祥符禅寺的风雅与清修。",
+  "hotspots": [
+    {
+      "id": "hot-song-01",
+      "name": "山门雨景",
+      "position": { "left": "8.00%", "top": "32.00%" },
+      "color": "#FF3B30",
+      "cardId": "song-01"
+    },
+    {
+      "id": "hot-song-02",
+      "name": "枯山水庭",
+      "position": { "left": "36.00%", "top": "56.00%" },
+      "color": "#FF9500",
+      "cardId": "song-02"
+    },
+    {
+      "id": "hot-song-03",
+      "name": "柳桥烟雨",
+      "position": { "left": "77.08%", "top": "70.37%" },
+      "color": "#00E676",
+      "cardId": "song-03"
+    },
+    {
+      "id": "hot-song-04",
+      "name": "禅房点茶",
+      "position": { "left": "63.02%", "top": "43.06%" },
+      "color": "#00B0FF",
+      "cardId": "song-04"
+    },
+    {
+      "id": "hot-song-05",
+      "name": "文人书法",
+      "position": { "left": "80.21%", "top": "24.54%" },
+      "color": "#D500F9",
+      "cardId": "song-05"
+    }
+  ],
+  "cards": [
+    {
+      "id": "song-01",
+      "title": "山门雨景 · 宋真宗赐名「祥符」",
+      "summary": "大中祥符年间，宋真宗推行全国赐名运动，小灵山寺获赐「祥符禅院」之名。",
+      "mainImage": "bg-song-01.jpg",
+      "auxImage": null,
+      "segments": [
+        {
+          "text": "雨中的山门透着一股清冷。站在这里，仿佛能听见千年前香客踏阶而上的脚步声。",
+          "emotion": "neutral",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-song-01-rain.jpg",
+            "caption": "雨中古寺山门",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "大中祥符年间，宋真宗以年号赐名，小灵山寺从此改称「祥符禅院」。「祥符」二字，寓意吉祥符瑞。",
+          "emotion": "think",
+          "duration": 5000,
+          "exhibit": {
+            "type": "calligraphy",
+            "asset": "exhibit-calligraphy-changjian.jpg",
+            "caption": "「祥符」年号书法",
+            "animation": "brushWrite",
+            "position": "center"
+          }
+        },
+        {
+          "text": "皇帝赐名，是皇权与佛法结合的象征。对一座寺院来说，这是极高的荣耀。",
+          "emotion": "smile",
+          "duration": 4500,
+          "exhibit": {
+            "type": "comparison",
+            "asset": "exhibit-offering-compare.jpg",
+            "caption": "宋真宗赐名诏书想象",
+            "animation": "crossfade",
+            "position": "full"
+          }
+        }
+      ],
+      "interactiveQuestion": "皇帝赐名和皇帝赐姓，哪个更荣耀？"
+    },
+    {
+      "id": "song-02",
+      "title": "枯山水庭 · 宣和四年升寺",
+      "summary": "宣和四年祥符禅院升格为禅寺，标志着寺院获得更高的官方地位与资源。",
+      "mainImage": "bg-song-02.jpg",
+      "auxImage": null,
+      "segments": [
+        {
+          "text": "这方枯山水庭院，一石一沙都藏着宋人的禅意。禅院升为禅寺，一字之差，地位却大不相同。",
+          "emotion": "neutral",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-song-02-rake.jpg",
+            "caption": "枯山水庭",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "宣和四年，祥符禅院正式升格为禅寺。升为禅寺意味着更多土地、更多僧额，也意味着官方的认可。",
+          "emotion": "think",
+          "duration": 5000,
+          "exhibit": {
+            "type": "map",
+            "asset": "exhibit-map-zen-spread.jpg",
+            "caption": "宋代禅寺布局示意",
+            "animation": "scrollRevealLeft",
+            "position": "full"
+          }
+        },
+        {
+          "text": "北宋朝廷对江南佛教的支持，让祥符禅寺迎来了新的发展阶段。",
+          "emotion": "smile",
+          "duration": 4000,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-song-02-garden.jpg",
+            "caption": "禅寺园林",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        }
+      ],
+      "interactiveQuestion": "你知道「寺」和「庙」有什么区别吗？"
+    },
+    {
+      "id": "song-03",
+      "title": "柳桥烟雨 · 宋代丛林生活",
+      "summary": "宋代禅寺有严格的日常作息制度，僧人简朴清修，丛林制度延续至今。",
+      "mainImage": "bg-song-03.jpg",
+      "auxImage": null,
+      "segments": [
+        {
+          "text": "柳桥边烟雨朦胧，香客往来不绝。宋代禅寺的生活，就在这钟板号令、过堂坐香中展开。",
+          "emotion": "neutral",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-song-03-bridge.jpg",
+            "caption": "柳桥烟雨",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "僧人一天只吃两顿饭，早粥午斋，过午不食。生活简朴清苦，却井然有序。",
+          "emotion": "think",
+          "duration": 5000,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-song-03-basket.jpg",
+            "caption": "宋代僧人生活器物",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "这些丛林制度很多一直延续到今天，是现代禅寺生活的源头。",
+          "emotion": "smile",
+          "duration": 4500,
+          "exhibit": {
+            "type": "comparison",
+            "asset": "exhibit-pilgrim-guide.jpg",
+            "caption": "古代与现代丛林制度对照",
+            "animation": "crossfade",
+            "position": "full"
+          }
+        }
+      ],
+      "interactiveQuestion": "宋代僧人一天只吃两顿饭，你能做到吗？"
+    },
+    {
+      "id": "song-04",
+      "title": "禅房点茶 · 北宋建筑遗意",
+      "summary": "宋代建筑风格精巧秀丽，斗拱精致、飞檐翘曲，展现出独特的书卷气质。",
+      "mainImage": "bg-song-04.jpg",
+      "auxImage": null,
+      "segments": [
+        {
+          "text": "禅房里一盏茶，窗外竹影婆娑。宋人爱茶，点茶是一门精妙的技艺。",
+          "emotion": "neutral",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-song-04-tearoom.jpg",
+            "caption": "禅房点茶",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "宋代建筑比唐代更加轻盈优雅，斗拱精致、飞檐翘曲，透着书卷气。",
+          "emotion": "think",
+          "duration": 5000,
+          "exhibit": {
+            "type": "image",
+            "asset": "exhibit-jianzhan.jpg",
+            "caption": "宋代建盏与建筑细部",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "点茶时茶汤上浮起的沫饽，恰似宋代建筑那精致的飞檐，层层叠叠，清雅之极。",
+          "emotion": "smile",
+          "duration": 5000,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-song-04-whisk.jpg",
+            "caption": "点茶茶筅",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        }
+      ],
+      "interactiveQuestion": "你觉得宋代建筑和唐代建筑，哪个更「秀气」？"
+    },
+    {
+      "id": "song-05",
+      "title": "文人书法 · 宋僧与士大夫",
+      "summary": "北宋文人好禅，士大夫与高僧交往密切，形成了独特的「士大夫禅学」。",
+      "mainImage": "bg-song-05.jpg",
+      "auxImage": null,
+      "segments": [
+        {
+          "text": "长廊上墨迹未干，一位文人刚题下诗句。北宋士大夫与高僧的交往，是这里最动人的风景。",
+          "emotion": "neutral",
+          "duration": 4500,
+          "exhibit": {
+            "type": "image",
+            "asset": "img-song-05-wall.jpg",
+            "caption": "书法长廊",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        },
+        {
+          "text": "杨时、李纲等无锡名士都与祥符禅院有过交往。苏轼虽未亲至，他的禅诗却影响了整个江南。",
+          "emotion": "think",
+          "duration": 5500,
+          "exhibit": {
+            "type": "calligraphy",
+            "asset": "exhibit-calligraphy-sushi.jpg",
+            "caption": "苏轼禅诗书法",
+            "animation": "brushWrite",
+            "position": "center"
+          }
+        },
+        {
+          "text": "禅诗与佛法相映成趣，形成了独特的「士大夫禅学」。这是北宋灵山独有的风雅。",
+          "emotion": "smile",
+          "duration": 5000,
+          "exhibit": {
+            "type": "image",
+            "asset": "exhibit-su-shi-travels.jpg",
+            "caption": "苏轼行迹与江南禅文化",
+            "animation": "fadeSlideIn",
+            "position": "full"
+          }
+        }
+      ],
+      "interactiveQuestion": "苏轼没来过无锡，但他的禅诗影响了整个江南——你读过他的禅诗吗？"
+    }
+  ]
+}

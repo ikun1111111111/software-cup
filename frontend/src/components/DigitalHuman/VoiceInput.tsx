@@ -199,23 +199,7 @@ const VoiceInput: React.FC<VoiceInputProps> = ({
         </div>
       )}
 
-      {/* Real-time transcript display */}
-      {isRecording && transcript && (
-        <div data-testid="transcript-display" style={{
-          fontSize: 12,
-          color: 'var(--text-secondary)',
-          maxWidth: 200,
-          textAlign: 'center',
-          padding: '2px 8px',
-          backgroundColor: '#F0F4FF',
-          borderRadius: 6,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}>
-          {transcript}
-        </div>
-      )}
+      {/* TODO ASR: Real-time transcript display — wire up onTranscript from ASR module */}
 
       {isRecording && (
         <div data-testid="recording-indicator" style={{

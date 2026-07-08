@@ -24,6 +24,7 @@ export async function synthesizeSpeech(
   text: string,
   voiceId?: string,
   onChunk?: (chunk: string) => void,
+  onPhonemes?: (phonemes: PhonemeTimestamp[]) => void,
 ): Promise<TTSResult> {
   const audioChunks: string[] = [];
   let phonemes: PhonemeTimestamp[] = [];
@@ -44,6 +45,7 @@ export async function synthesizeSpeech(
 
   const decoder = new TextDecoder();
   let buffer = '';
+  let currentEvent = '';
 
   while (true) {
     const { done, value } = await reader.read();
@@ -53,8 +55,11 @@ export async function synthesizeSpeech(
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
 
-    let currentEvent = '';
     for (const line of lines) {
+      if (line === '' || line === '\r') {
+        currentEvent = '';
+        continue;
+      }
       if (line.startsWith('event: ')) {
         currentEvent = line.slice(7).trim();
       } else if (line.startsWith('data: ')) {
@@ -66,13 +71,15 @@ export async function synthesizeSpeech(
             onChunk?.(parsed.data);
           } else if (currentEvent === 'phonemes' && parsed.data) {
             phonemes = parsed.data;
+            onPhonemes?.(phonemes);
           } else if (currentEvent === 'done') {
             durationMs = parsed.duration_ms || 0;
+          } else if (currentEvent === 'error' || currentEvent === 'tts_error') {
+            console.warn('[tts] stream unavailable', parsed.error);
           }
         } catch {
           // ignore parse errors
         }
-        currentEvent = '';
       }
     }
   }

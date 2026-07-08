@@ -1,19 +1,18 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { SaveOutlined, CheckOutlined, LoadingOutlined } from '@ant-design/icons';
+import { SaveOutlined, CheckOutlined, LoadingOutlined, DesktopOutlined, MobileOutlined } from '@ant-design/icons';
 import { message } from 'antd';
-import AvatarAppearance from '../../components/admin/AvatarAppearance';
-import { COSTUMES } from '../../config/costumeMap';
+import AvatarAppearance, { MODELS, SKINS, HAIRS, OUTFITS } from '../../components/admin/AvatarAppearance';
 import VoiceSelector from '../../components/admin/VoiceSelector';
 import WelcomeEditor from '../../components/admin/WelcomeEditor';
 import DigitalHuman from '../../components/DigitalHuman/DigitalHuman';
 import PaperPanel from '../../components/admin/PaperPanel';
 import PageTransition from '../../components/admin/PageTransition';
-import { getExpressionForAppearance } from '../../config/avatarModels';
+import { getModelPath, getExpressionForAppearance } from '../../config/avatarModels';
 import { getCostume } from '../../config/costumeMap';
-import { useCostume } from '../../hooks/useCostume';
 import { previewVoice } from '../../api/tts';
 import {
   getActiveAvatar,
+  getAvatars,
   createAvatar,
   updateAvatar,
   activateAvatar,
@@ -44,8 +43,7 @@ const DEFAULT_CONFIG: LocalConfig = {
     outfit: 'outfit-1',
     accessories: [],
     costumeMode: 'auto' as const,
-    costumeId: 'festival-spring',
-    expressionId: 'f00',
+    costumeId: 'daily-classic',
   },
   voiceId: 'voice-1',
   welcomeMessage: '你好！欢迎来到灵山景区，我是你的数字人导游，有什么可以帮你的吗？',
@@ -63,30 +61,19 @@ const mapBackendToLocal = (backend: Awaited<ReturnType<typeof getActiveAvatar>>)
           ? backend.appearanceJson.accessories
           : DEFAULT_CONFIG.appearance.accessories,
         costumeMode: (backend.appearanceJson.costumeMode as 'auto' | 'manual') || 'auto',
-        costumeId: backend.appearanceJson.costumeId || 'festival-spring',
-        expressionId: backend.appearanceJson.expressionId || 'f00',
+        costumeId: backend.appearanceJson.costumeId || 'daily-classic',
       }
     : DEFAULT_CONFIG.appearance,
   voiceId: backend.voiceId || DEFAULT_CONFIG.voiceId,
   welcomeMessage: backend.welcomeMessage || DEFAULT_CONFIG.welcomeMessage,
 });
 
-const STORAGE_KEY = 'avatar-local-config';
-
 const AvatarPage: React.FC = () => {
-  const { costumeId: liveCostumeId, mode: liveCostumeMode, selectCostume, resetToAuto } = useCostume();
-  const [config, setConfig] = useState<LocalConfig>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try { return JSON.parse(saved); } catch { /* ignore */ }
-    }
-    return DEFAULT_CONFIG;
-  });
+  const [config, setConfig] = useState<LocalConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
-  const [backendConnected, setBackendConnected] = useState(true);
   const isMobile = false;
 
   useEffect(() => {
@@ -95,9 +82,17 @@ const AvatarPage: React.FC = () => {
       try {
         const active = await getActiveAvatar();
         setConfig(mapBackendToLocal(active));
-        setBackendConnected(true);
-      } catch {
-        setBackendConnected(false);
+      } catch (err: any) {
+        try {
+          const list = await getAvatars({ page: 1, pageSize: 1 });
+          if (list.data.length > 0) {
+            setConfig(mapBackendToLocal(list.data[0]));
+          } else {
+            setConfig(DEFAULT_CONFIG);
+          }
+        } catch (listErr: any) {
+          message.error('加载数字人配置失败: ' + (listErr?.message || '未知错误'));
+        }
       } finally {
         setLoading(false);
       }
@@ -124,57 +119,57 @@ const AvatarPage: React.FC = () => {
   const handleSave = useCallback(async () => {
     setSaving(true);
     setSaved(false);
-    const payload = {
-      name: '默认数字人',
-      appearanceJson: {
-        model: config.appearance.model,
-        skin: config.appearance.skin,
-        hair: config.appearance.hair,
-        outfit: config.appearance.outfit,
-        accessories: config.appearance.accessories,
-        costumeMode: config.appearance.costumeMode,
-        costumeId: config.appearance.costumeId,
-        expressionId: config.appearance.expressionId || 'f00',
-      },
-      voiceId: config.voiceId,
-      welcomeMessage: config.welcomeMessage,
-    };
+    try {
+      const payload = {
+        name: '默认数字人',
+        modelPath: getModelPath(config.appearance.model),
+        appearanceJson: {
+          model: config.appearance.model,
+          skin: config.appearance.skin,
+          hair: config.appearance.hair,
+          outfit: config.appearance.outfit,
+          accessories: config.appearance.accessories,
+          costumeMode: config.appearance.costumeMode,
+          costumeId: config.appearance.costumeId,
+        },
+        voiceId: config.voiceId,
+        welcomeMessage: config.welcomeMessage,
+      };
 
-    if (backendConnected) {
-      try {
-        let backendId = config.backendId;
-        if (backendId) {
-          await updateAvatar(backendId, payload);
-        } else {
-          const created = await createAvatar(payload);
-          backendId = created.id;
-          setConfig((prev) => ({ ...prev, backendId }));
-        }
-        if (backendId) {
-          await activateAvatar(backendId);
-        }
-        message.success('配置已保存并生效');
-        setSaved(true);
-      } catch {
-        setBackendConnected(false);
+      let backendId = config.backendId;
+      if (backendId) {
+        await updateAvatar(backendId, payload);
+      } else {
+        const created = await createAvatar(payload);
+        backendId = created.id;
+        setConfig((prev) => ({ ...prev, backendId }));
       }
-    }
 
-    if (!backendConnected) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-      message.info('后端未连接，配置已保存到本地');
+      if (backendId) {
+        await activateAvatar(backendId);
+      }
+
+      message.success('配置已保存并生效');
       setSaved(true);
+    } catch (err: any) {
+      message.error('保存失败: ' + (err?.message || '未知错误'));
+    } finally {
+      setSaving(false);
     }
-
-    setSaving(false);
-  }, [config, backendConnected]);
+  }, [config]);
 
   const tabs = ['外观', '声音', '欢迎语'];
 
   const selectedVoiceName = DEFAULT_VOICES.find((v) => v.id === config.voiceId)?.name || config.voiceId;
+  const selectedModelName = MODELS.find((m) => m.id === config.appearance.model)?.name || config.appearance.model;
+  const selectedSkinName = SKINS.find((s) => s.id === config.appearance.skin)?.name || config.appearance.skin;
+  const selectedHairName = HAIRS.find((h) => h.id === config.appearance.hair)?.name || config.appearance.hair;
+  const selectedOutfitName = OUTFITS.find((o) => o.id === config.appearance.outfit)?.name || config.appearance.outfit;
 
   // Derive costume properties from config (single source of truth)
   const costumeDef = getCostume(config.appearance.costumeId);
+  const costumeTexturePath = costumeDef.texturePath;
+  const costumeCssFilter = costumeDef.cssFilter;
   const previewKey = `${config.appearance.model}-${config.appearance.skin}-${config.appearance.hair}-${config.appearance.outfit}-${config.appearance.costumeId}`;
 
   return (
@@ -192,30 +187,16 @@ const AvatarPage: React.FC = () => {
           flexWrap: 'wrap',
           gap: '12px',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <h1 style={{
-              margin: 0,
-              fontSize: isMobile ? '20px' : '26px',
-              fontWeight: 600,
-              color: 'var(--text-primary)',
-              letterSpacing: '0.5px',
-              fontFamily: 'var(--font-serif)',
-            }}>
-              数字人配置
-            </h1>
-            {!backendConnected && (
-              <span style={{
-                fontSize: '11px',
-                color: '#B8860B',
-                backgroundColor: 'rgba(184, 134, 11, 0.1)',
-                padding: '2px 8px',
-                borderRadius: '10px',
-                fontWeight: 500,
-              }}>
-                本地模式
-              </span>
-            )}
-          </div>
+          <h1 style={{
+            margin: 0,
+            fontSize: isMobile ? '20px' : '26px',
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            letterSpacing: '0.5px',
+            fontFamily: 'var(--font-serif)',
+          }}>
+            数字人配置
+          </h1>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             {saved && (
               <span data-testid="saved-msg" style={{
@@ -229,36 +210,6 @@ const AvatarPage: React.FC = () => {
                 <CheckOutlined /> 已保存
               </span>
             )}
-            <button
-              onClick={() => {
-                setConfig(DEFAULT_CONFIG);
-                localStorage.removeItem(STORAGE_KEY);
-                setSaved(false);
-              }}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: 'transparent',
-                color: 'var(--text-secondary)',
-                border: '1px solid var(--border-light)',
-                borderRadius: 'var(--radius-sm)',
-                cursor: 'pointer',
-                fontSize: '13px',
-                fontWeight: 500,
-                transition: 'all 200ms',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(168, 56, 40, 0.05)';
-                e.currentTarget.style.borderColor = 'var(--vermilion)';
-                e.currentTarget.style.color = 'var(--vermilion)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.borderColor = 'var(--border-light)';
-                e.currentTarget.style.color = 'var(--text-secondary)';
-              }}
-            >
-              恢复默认
-            </button>
             <button
               data-testid="save-btn"
               onClick={handleSave}
@@ -299,6 +250,24 @@ const AvatarPage: React.FC = () => {
             </button>
           </div>
         </div>
+
+        <PaperPanel title="双端数字人服务" withScrollHead style={{ marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 14 }}>
+            {[
+              { icon: <DesktopOutlined />, label: 'Web 大屏', value: '现场讲解互动', hint: '问我、讲讲这里、历史穿越统一使用当前形象策略' },
+              { icon: <MobileOutlined />, label: '移动端', value: '路线随身导览', hint: '移动端语音讲解复用同一音色与讲解风格' },
+              { icon: <CheckOutlined />, label: '当前配置', value: config.voiceId, hint: `模型 ${config.appearance.model} · 服饰 ${config.appearance.costumeId}` },
+            ].map((item) => (
+              <div key={item.label} style={{ padding: 14, borderRadius: 16, border: '1px solid rgba(184,115,51,0.12)', background: 'rgba(255,253,247,0.62)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--mountain-mid)', fontSize: 13, fontWeight: 700 }}>
+                  {item.icon}{item.label}
+                </div>
+                <strong style={{ display: 'block', marginTop: 8, color: 'var(--text-primary)', fontFamily: 'var(--font-serif)', fontSize: 21 }}>{item.value}</strong>
+                <small style={{ display: 'block', marginTop: 5, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>{item.hint}</small>
+              </div>
+            ))}
+          </div>
+        </PaperPanel>
 
         {loading ? (
           <div style={{
@@ -346,7 +315,7 @@ const AvatarPage: React.FC = () => {
           }}>
             {/* 左侧：实时预览区域 */}
             <div style={{
-              flex: isMobile ? 'auto' : '0 0 400px',
+              flex: isMobile ? 'auto' : '0 0 340px',
               display: 'flex',
               flexDirection: 'column',
               gap: '16px',
@@ -433,18 +402,20 @@ const AvatarPage: React.FC = () => {
                     style={{
                       borderRadius: '50% / 42%',
                       overflow: 'hidden',
-                      width: isMobile ? 220 : 340,
-                      height: isMobile ? 300 : 440,
+                      width: isMobile ? 200 : 280,
+                      height: isMobile ? 280 : 380,
                       position: 'relative',
                       zIndex: 1,
                     }}
                   >
                     <DigitalHuman
-                      width={isMobile ? 220 : 340}
-                      height={isMobile ? 300 : 440}
+                      modelPath={getModelPath(config.appearance.model)}
+                      width={isMobile ? 200 : 280}
+                      height={isMobile ? 280 : 380}
                       emotion="neutral"
-                      expression={config.appearance.expressionId || 'f00'}
-                      costumeId={config.appearance.costumeId}
+                      expression={getExpressionForAppearance(config.appearance)}
+                      texturePath={costumeTexturePath}
+                      cssFilter={costumeCssFilter}
                       onReady={() => console.log('[AvatarPage] Preview ready')}
                     />
                   </div>
@@ -453,25 +424,41 @@ const AvatarPage: React.FC = () => {
                 {/* 当前配置摘要 */}
                 <div style={{
                   marginTop: 14,
-                  padding: '10px 14px',
+                  padding: '12px 14px',
                   backgroundColor: 'rgba(247, 245, 240, 0.6)',
                   borderRadius: 'var(--radius-md)',
                   border: '1px dashed var(--border-light)',
                 }}>
                   <div style={{
-                    display: 'flex',
-                    gap: '16px',
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '8px 12px',
                     fontSize: 12,
                     color: 'var(--text-secondary)',
-                    lineHeight: 1.8,
+                    lineHeight: 1.6,
                   }}>
                     <div>
-                      <span style={{ color: 'var(--text-tertiary)' }}>当前服装</span>
-                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>
-                        {config.appearance.costumeId ? COSTUMES[config.appearance.costumeId]?.name || config.appearance.costumeId : '自动匹配'}
-                      </span>
+                      <span style={{ color: 'var(--text-tertiary)' }}>模型</span>
+                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedModelName}</span>
                     </div>
                     <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>肤色</span>
+                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedSkinName}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>发型</span>
+                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedHairName}</span>
+                    </div>
+                    <div>
+                      <span style={{ color: 'var(--text-tertiary)' }}>服装</span>
+                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedOutfitName}</span>
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <span style={{ color: 'var(--text-tertiary)' }}>服装</span>
+                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{costumeDef.name}</span>
+                      <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-tertiary)' }}>{costumeDef.description}</span>
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
                       <span style={{ color: 'var(--text-tertiary)' }}>声音</span>
                       <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedVoiceName}</span>
                     </div>
@@ -528,14 +515,7 @@ const AvatarPage: React.FC = () => {
               <PaperPanel>
                 {activeTab === 0 && (
                   <div data-testid="appearance-section">
-                    <AvatarAppearance
-                      config={config.appearance}
-                      onChange={handleAppearanceChange}
-                      activeCostumeId={liveCostumeId}
-                      activeCostumeMode={liveCostumeMode}
-                      onCostumeSelect={selectCostume}
-                      onCostumeAutoToggle={() => liveCostumeMode === 'auto' ? selectCostume(liveCostumeId) : resetToAuto()}
-                    />
+                    <AvatarAppearance config={config.appearance} onChange={handleAppearanceChange} />
                   </div>
                 )}
                 {activeTab === 1 && (

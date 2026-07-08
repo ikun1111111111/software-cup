@@ -53,11 +53,11 @@ def _normalize(value: float, min_val: float, max_val: float) -> float:
 
 def _rule_based_scores(behaviors: list[TouristBehavior]) -> dict[str, Any]:
     """Fallback rule-based scoring when insufficient data for clustering."""
-    avg_cost = _safe_mean([b.costs for b in behaviors])
-    avg_stay = _safe_mean([b.stay_duration_minutes for b in behaviors])
+    avg_cost = _safe_mean([b.total_cost for b in behaviors])
+    avg_stay = _safe_mean([b.stay_duration for b in behaviors])
     visit_count = len(behaviors)
-    avg_companion = _safe_mean([b.companion_count for b in behaviors])
-    avg_satisfaction = _safe_mean([b.satisfaction_score for b in behaviors])
+    avg_companion = _safe_mean([b.group_size for b in behaviors])
+    avg_satisfaction = _safe_mean([b.satisfaction for b in behaviors])
     unique_attractions = len({b.attraction_name for b in behaviors if b.attraction_name})
 
     culture = min(1.0, (avg_satisfaction / 5) * 0.4 + (avg_stay / 300) * 0.3 + min(visit_count / 20, 1.0) * 0.3)
@@ -88,10 +88,10 @@ def _build_features(behaviors: list[TouristBehavior]) -> list[list[float]]:
     features = []
     for b in behaviors:
         features.append([
-            float(b.costs or 0),
-            float(b.stay_duration_minutes or 0),
-            float(b.companion_count or 0),
-            float(b.satisfaction_score or 0),
+            float(b.total_cost or 0),
+            float(b.stay_duration or 0),
+            float(b.group_size or 0),
+            float(b.satisfaction or 0),
             float(len(b.attraction_name or "")),  # proxy for attraction info richness
         ])
     return features
@@ -123,11 +123,11 @@ def _kmeans_clustering(all_behaviors: list[TouristBehavior], target_id: str) -> 
     feature_matrix = []
     for tid, tbehaviors in tourist_behaviors.items():
         tourist_ids.append(tid)
-        avg_cost = _safe_mean([b.costs for b in tbehaviors])
-        avg_stay = _safe_mean([b.stay_duration_minutes for b in tbehaviors])
+        avg_cost = _safe_mean([b.total_cost for b in tbehaviors])
+        avg_stay = _safe_mean([b.stay_duration for b in tbehaviors])
         visit_count = len(tbehaviors)
-        avg_companion = _safe_mean([b.companion_count for b in tbehaviors])
-        avg_satisfaction = _safe_mean([b.satisfaction_score for b in tbehaviors])
+        avg_companion = _safe_mean([b.group_size for b in tbehaviors])
+        avg_satisfaction = _safe_mean([b.satisfaction for b in tbehaviors])
         unique_attractions = len({b.attraction_name for b in tbehaviors if b.attraction_name})
 
         feature_matrix.append([

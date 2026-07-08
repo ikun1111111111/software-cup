@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   COSTUMES,
+  DAILY_COSTUME_IDS,
   FESTIVAL_COSTUME_IDS,
   getCostume,
   type CostumeDef,
@@ -47,7 +48,7 @@ function isFestivalActive(
 
 /**
  * Auto-detect the active costume based on current date.
- * Checks festivals in order; falls back to first festival costume.
+ * Priority: festival > daily rotation (by day of week).
  */
 function detectAutoCostumeId(): string {
   const now = new Date();
@@ -64,14 +65,15 @@ function detectAutoCostumeId(): string {
     }
   }
 
-  // Fall back to first festival costume
-  return FESTIVAL_COSTUME_IDS[0];
+  // Fall back to daily rotation by day of week (0=Sun → 2, 1=Mon → 0, ...)
+  const dayIndex = now.getDay() % DAILY_COSTUME_IDS.length;
+  return DAILY_COSTUME_IDS[dayIndex];
 }
 
 /**
  * Hook: manages costume selection with auto-detection and manual override.
  *
- * - Auto mode: detects festival by date, falls back to first festival costume
+ * - Auto mode: detects festival by date, falls back to daily rotation
  * - Manual mode: user-selected costume, persisted in localStorage
  */
 export function useCostume() {
@@ -134,8 +136,10 @@ export function useCostume() {
 
   return {
     ...state,
-    /** VRM model path for the current costume */
-    modelPath: state.costume.modelPath,
+    /** CSS filter string for the current costume */
+    cssFilter: state.costume.cssFilter,
+    /** Texture PNG path for the current costume */
+    texturePath: state.costume.texturePath,
     selectCostume,
     resetToAuto,
     /** Whether current costume is a festival costume */

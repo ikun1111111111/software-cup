@@ -21,7 +21,7 @@ export interface SSEReturn {
   error: any;
 }
 
-const SSE_TIMEOUT_MS = 30000; // 30s timeout
+const SSE_TIMEOUT_MS = 60000; // 60s timeout
 
 /**
  * SSE流式接收Hook
@@ -64,6 +64,9 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
     disconnect();
     doneReceivedRef.current = false;
 
+    const requestStart = performance.now();
+    console.log('[sse] request start', { url, body });
+
     // 如果 URL 是相对路径，保持相对路径让浏览器自动使用当前域名
     // vite dev server proxy 会转发 /api 和 /ws 到后端
     const fullUrl = url;
@@ -83,19 +86,31 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
         setIsConnected(false);
       }, SSE_TIMEOUT_MS);
 
+      // 过滤 body 中的 undefined 值，避免 JSON.stringify 把它们变成 null 导致后端 422
+      const cleanBody = body
+        ? JSON.stringify(
+            Object.fromEntries(
+              Object.entries(body).filter(([, v]) => v !== undefined)
+            )
+          )
+        : undefined;
+
       const response = await fetch(fullUrl, {
         method: body ? 'POST' : 'GET',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
         },
-        body: body ? JSON.stringify(body) : undefined,
+        body: cleanBody,
         signal: abortController.signal,
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
       }
+
+      console.log('[sse] response connected', { elapsedMs: Math.round(performance.now() - requestStart) });
 
       const reader = response.body?.getReader();
       if (!reader) {
@@ -104,6 +119,7 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
 
       const decoder = new TextDecoder();
       let buffer = '';
+      let firstTokenLogged = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -114,29 +130,39 @@ export const useSSE = (options: SSEOptions = {}): SSEReturn => {
 
         buffer += decoder.decode(value, { stream: true });
 
-        // 解析SSE事件
+        // 解析SSE事件（兼容 \n 和 \r\n 行尾）
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
         let currentEvent = '';
-        for (const line of lines) {
+        for (const rawLine of lines) {
+          const line = rawLine.replace(/\r$/, '');
+          if (line === '') continue;
           if (line.startsWith('event: ')) {
             currentEvent = line.slice(7).trim();
           } else if (line.startsWith('data: ')) {
             const rawData = line.slice(6);
             if (rawData === '[DONE]') {
               doneReceivedRef.current = true;
+              onMessage?.({ event: 'done', data: {} });
               disconnect();
               return;
             }
             let parsedData: any = rawData;
             try {
-              parsedData = JSON.parse(rawData);
+              parsedData = JSON.parse(rawData.trim());
             } catch {
               // 保持原始字符串
             }
             if (currentEvent === 'done' || currentEvent === 'faq_hit' || currentEvent === 'error') {
               doneReceivedRef.current = true;
+            }
+            if ((currentEvent === 'token' || currentEvent === 'faq_hit') && !firstTokenLogged) {
+              firstTokenLogged = true;
+              console.log('[sse] first token', {
+                event: currentEvent,
+                elapsedMs: Math.round(performance.now() - requestStart),
+              });
             }
             onMessage?.({ event: currentEvent || 'message', data: parsedData });
             // Reset event after data line so next data without event uses default

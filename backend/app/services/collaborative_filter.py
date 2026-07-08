@@ -34,7 +34,7 @@ async def collaborative_filter_recommend(
     user_ratings: dict[str, dict[str, float]] = defaultdict(dict)
     for b in all_behaviors:
         if b.attraction_name:
-            user_ratings[b.tourist_id][b.attraction_name] = b.satisfaction_score or 3.0
+            user_ratings[b.tourist_id][b.attraction_name] = b.satisfaction or 3.0
 
     if tourist_id not in user_ratings:
         return []

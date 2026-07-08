@@ -1,84 +1,45 @@
-import React, { useCallback, useState, useRef } from 'react';
-import VRMStage from '../VRM/VRMStage';
-import type { DemoExpression, OutfitPreset } from '../VRM/VRMStage';
+import React, { useCallback, useRef, useState, useEffect } from 'react';
+import Live2DStage, { Live2DModelActions } from './Live2DStage';
 import EmotionController, { Emotion } from './EmotionController';
 import LipSync, { type Phoneme } from './LipSync';
 import AudioSync from './AudioSync';
-import SpeakingExpressionController from './SpeakingExpressionController';
-import SpeakingGestureController from './SpeakingGestureController';
-import type { BoneTargets } from './SpeakingGestureController';
+import { useIdleAnimation } from '../../hooks/useIdleAnimation';
+import { motionForEmotion } from '../../utils/emotion';
 
 export interface DigitalHumanProps {
   modelPath?: string;
+  /** Costume texture path from useCostume hook. */
   texturePath?: string;
-  texturePaths?: [string, string];
+  /** CSS filter for costume visual variation. */
   cssFilter?: string;
   width?: number;
   height?: number;
   emotion?: Emotion;
+  /** Direct Live2D expression name (e.g. 'f00', 'f01'). Takes precedence over emotion when set. */
   expression?: string | null;
   audioUrl?: string;
+  /** Streaming audio chunks as base64 (from TTS SSE). */
   audioChunks?: string[];
+  /** Phoneme timestamps for lip-sync. */
   phonemes?: Phoneme[] | null;
   isSpeaking?: boolean;
-  /** Text being spoken (for expression generation) */
-  speakingText?: string;
   onReady?: () => void;
-  costumeId?: string;
+  /** Remove background frame, shadow, and rounded corners. Useful when layering over a custom background. */
+  transparentBg?: boolean;
+  /** Live2D head horizontal angle in degrees. Positive = facing right, negative = facing left. */
+  headAngleX?: number;
+  /** Called when streamed audio playback ends. */
+  onAudioEnded?: () => void;
+  /** Called when the Live2D model fails to load. */
+  onError?: (message: string) => void;
 }
 
-const COSTUME_TO_VRM: Record<string, OutfitPreset> = {
-  'festival-spring': 'festive',
-  'festival-lantern': 'lantern',
-  'festival-qingming': 'spring',
-  'festival-dragon': 'festive',
-  'festival-midautumn': 'moonlight',
-  'festival-national': 'festive',
-};
-
-const COSTUME_TO_MODEL: Record<string, string> = {
-  'festival-spring': '/models/8024308560058477433.vrm',
-  'festival-lantern': '/models/4353238926149796085.vrm',
-  'festival-qingming': '/models/5186055420774500970.vrm',
-  'festival-dragon': '/models/4104272907947728185.vrm',
-  'festival-midautumn': '/models/5784779633385764689.vrm',
-  'festival-national': '/models/8511002460770470367.vrm',
-};
-
-const COSTUME_STAGE_CONFIG: Record<string, { cameraDistance?: number; modelOffsetY?: number }> = {
-  'festival-spring':    { cameraDistance: 2.5, modelOffsetY: -0.04 },
-  'festival-lantern':   { cameraDistance: 2.35 },
-  'festival-qingming':  { cameraDistance: 2.5, modelOffsetY: -0.06 },
-  'festival-dragon':    { cameraDistance: 2.35 },
-  'festival-midautumn': { cameraDistance: 2.5, modelOffsetY: -0.06 },
-  'festival-national':  { cameraDistance: 2.35, modelOffsetY: 0.05 },
-};
-
-const EXPRESSION_TO_VRM: Record<string, DemoExpression> = {
-  f00: 'neutral',
-  f01: 'happy',
-  f02: 'relaxed',
-  f03: 'surprised',
-  f04: 'happy',
-  f05: 'relaxed',
-  f06: 'angry',
-  f07: 'sad',
-  smile: 'happy',
-  happy: 'happy',
-  think: 'relaxed',
-  thinking: 'relaxed',
-  sorry: 'sad',
-  sad: 'sad',
-  surprise: 'surprised',
-  surprised: 'surprised',
-  neutral: 'neutral',
-  default: 'neutral',
-};
-
-const DEFAULT_VRM_URL = '/models/8024308560058477433.vrm';
+const DEFAULT_MODEL = '/models/haru/haru_greeter_t03.model3.json';
 
 const DigitalHuman: React.FC<DigitalHumanProps> = ({
-  modelPath,
+  modelPath = DEFAULT_MODEL,
+  texturePath,
+  cssFilter,
   width = 280,
   height = 380,
   emotion = 'neutral',
@@ -87,112 +48,173 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
   audioChunks,
   phonemes,
   isSpeaking = false,
-  speakingText = '',
   onReady,
-  costumeId = 'festival-spring',
+  transparentBg = false,
+  headAngleX,
+  onAudioEnded,
+  onError,
 }) => {
-  const [currentTimeMs, setCurrentTimeMs] = useState(0);
-  const [mouthOpen, setMouthOpen] = useState(0);
-  const [lookAtX, setLookAtX] = useState(0);
-  const [audioDurationSec, setAudioDurationSec] = useState(0);
-  const [speakingExpression, setSpeakingExpression] = useState<string>('neutral');
-  const [gestureTargets, setGestureTargets] = useState<BoneTargets | null>(null);
+  const actionsRef = useRef<Live2DModelActions | null>(null);
+  const [audioData, setAudioData] = useState<Float32Array | null>(null);
+  const currentTimeMsRef = useRef(0);
+  const mouthValueRef = useRef(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const mountedRef = useRef(true);
 
-  React.useEffect(() => {
+  // Idle animations (blinking + breathing)
+  const setParam = useCallback((id: string, value: number) => {
+    actionsRef.current?.setParameter(id, value);
+  }, []);
+
+  useIdleAnimation(setParam, { enabled: !isSpeaking });
+
+  // Handle model loaded
+  const handleModelLoaded = useCallback((model: any) => {
     onReady?.();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [onReady]);
 
-  const handleExpressionChange = useCallback((_expr: string) => {}, []);
+  // Store model actions from Live2DStage
+  const handleModelRef = useCallback((actions: Live2DModelActions) => {
+    actionsRef.current = actions;
+  }, []);
 
+  // Head angle control
+  useEffect(() => {
+    if (actionsRef.current && headAngleX !== undefined) {
+      actionsRef.current.setParameter('ParamAngleX', headAngleX);
+    }
+  }, [headAngleX]);
+
+  // Direct expression control
+  useEffect(() => {
+    if (expression && actionsRef.current) {
+      actionsRef.current.setExpression(expression);
+    }
+  }, [expression]);
+
+  // Trigger motion when emotion changes
+  useEffect(() => {
+    const motionGroup = motionForEmotion(emotion);
+    if (motionGroup && actionsRef.current) {
+      try {
+        actionsRef.current.motion(motionGroup);
+      } catch {
+        // Model may not have this motion group
+      }
+    }
+  }, [emotion]);
+
+  // Expression change from EmotionController
+  const handleExpressionChange = useCallback((expression: string) => {
+    actionsRef.current?.setExpression(expression);
+  }, []);
+
+  // Lip sync parameter change — also track mouth value for debugging
   const handleLipParamChange = useCallback((paramId: string, value: number) => {
+    actionsRef.current?.setParameter(paramId, value);
     if (paramId === 'ParamMouthOpenY') {
-      setMouthOpen(value);
-    } else if (paramId === 'ParamAngleZ') {
-      setLookAtX(value / 30);
+      mouthValueRef.current = value;
     }
   }, []);
 
+  // Update current time in ms for phoneme matching and text-audio sync
   const handleTimeUpdateMs = useCallback((ms: number) => {
-    setCurrentTimeMs(ms);
+    currentTimeMsRef.current = ms;
   }, []);
 
-  const handleTimeUpdate = useCallback((_time: number, duration: number) => {
-    setAudioDurationSec(duration);
-  }, []);
+  // Fallback audio data generation when no phonemes available
+  // Use a single low-frequency interval to avoid flooding React state updates.
+  useEffect(() => {
+    mountedRef.current = true;
 
-  React.useEffect(() => {
-    if (!isSpeaking) {
-      setMouthOpen(0);
-      setLookAtX(0);
-      setCurrentTimeMs(0);
+    if (isSpeaking && !phonemes?.length) {
+      intervalRef.current = setInterval(() => {
+        if (!mountedRef.current) return;
+        const simulated = new Float32Array(128);
+        const t = Date.now() / 100;
+        for (let i = 0; i < 128; i++) {
+          simulated[i] = (Math.random() * 0.5 + 0.2) * Math.sin(t);
+        }
+        setAudioData(simulated);
+      }, 120);
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = undefined;
+        }
+      };
+    } else {
+      setAudioData(null);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = undefined;
+      }
     }
-  }, [isSpeaking]);
+  }, [isSpeaking, phonemes]);
 
-  // Silent mode fallback: advance time when no audio source is driving currentTimeMs
-  const silentStartRef = useRef(0);
-  React.useEffect(() => {
-    if (!isSpeaking || audioUrl || audioChunks?.length) return;
-    silentStartRef.current = performance.now();
-    const id = setInterval(() => {
-      setCurrentTimeMs(performance.now() - silentStartRef.current);
-    }, 50);
-    return () => clearInterval(id);
-  }, [isSpeaking, audioUrl, audioChunks]);
-
-  const vrmPreset: OutfitPreset = COSTUME_TO_VRM[costumeId] || 'modern';
-  const vrmUrl = modelPath || COSTUME_TO_MODEL[costumeId] || DEFAULT_VRM_URL;
-  // Use speaking expression when speaking, otherwise use manual expression or emotion
-  const activeExpression = isSpeaking ? speakingExpression : (expression || emotion);
-  const vrmExpression: DemoExpression = EXPRESSION_TO_VRM[activeExpression] || 'neutral';
-  const stageConfig = COSTUME_STAGE_CONFIG[costumeId] || {};
-  const frameWidth = Math.round(width * 1.12);
-  const frameHeight = Math.round(height * 1.1);
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = undefined;
+      }
+    };
+  }, []);
 
   return (
     <div
       data-testid="digital-human"
       style={{
         position: 'relative',
-        width: frameWidth,
-        height: frameHeight,
-        borderRadius: '16px',
-        background: 'transparent',
-        overflow: 'hidden',
+        width,
+        height,
+        borderRadius: transparentBg ? 0 : '16px',
+        background: transparentBg ? 'transparent' : 'linear-gradient(180deg, rgba(247,245,240,0.9) 0%, rgba(237,232,222,0.85) 60%, rgba(222,214,200,0.7) 100%)',
+        overflow: transparentBg ? 'visible' : 'hidden',
       }}
     >
-      <div style={{ position: 'relative', zIndex: 2, width: '100%', height: '100%' }}>
-        <VRMStage
-          url={vrmUrl}
-          expression={vrmExpression}
-          mouthOpen={mouthOpen}
-          outfitPreset={vrmPreset}
-          lookAt={{ x: lookAtX, y: 0 }}
-          cameraDistance={stageConfig.cameraDistance}
-          modelOffsetY={stageConfig.modelOffsetY}
-          isSpeaking={isSpeaking}
-          gestureTargets={gestureTargets}
-          style={{ width: '100%', height: '100%' }}
-        />
-      </div>
-
-      {/* Speaking expression controller - changes expressions during speech */}
-      <SpeakingExpressionController
-        isSpeaking={isSpeaking}
-        audioTimeSec={currentTimeMs / 1000}
-        audioDurationSec={audioDurationSec}
-        text={speakingText}
-        onExpressionChange={setSpeakingExpression}
+      {!transparentBg && (
+        <>
+          {/* 宣纸纹理 overlay */}
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            opacity: 0.35,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='120' height='120' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.6' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E")`,
+            pointerEvents: 'none',
+            zIndex: 1,
+          }} />
+          {/* 淡墨山水装饰 - 底部远山轮廓 */}
+          <div style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: '35%',
+            background: 'linear-gradient(180deg, transparent 0%, rgba(168,156,140,0.08) 40%, rgba(140,128,112,0.15) 100%)',
+            borderRadius: '0 0 16px 16px',
+            pointerEvents: 'none',
+            zIndex: 1,
+          }} />
+        </>
+      )}
+      {/* Live2D Model */}
+      <Live2DStage
+        modelPath={modelPath}
+        texturePath={texturePath}
+        cssFilter={cssFilter}
+        width={width}
+        height={height}
+        scale={0.18}
+        onModelLoaded={handleModelLoaded}
+        onModelRef={handleModelRef}
+        onError={onError}
+        transparentOverlay={transparentBg}
       />
 
-      {/* Speaking gesture controller - semantic-based arm gestures */}
-      <SpeakingGestureController
-        isSpeaking={isSpeaking}
-        audioTimeSec={currentTimeMs / 1000}
-        audioDurationSec={audioDurationSec}
-        text={speakingText}
-        onGestureChange={setGestureTargets}
-      />
-
+      {/* Emotion Controller */}
       <EmotionController
         emotion={expression ? 'neutral' : emotion}
         onExpressionChange={expression ? undefined : handleExpressionChange}
@@ -200,22 +222,25 @@ const DigitalHuman: React.FC<DigitalHumanProps> = ({
         resetDelay={5000}
       />
 
+      {/* Lip Sync */}
       <LipSync
-        audioData={null}
+        audioData={audioData}
         phonemes={phonemes}
-        currentTimeMs={currentTimeMs}
+        currentTimeMsRef={currentTimeMsRef}
         onParameterChange={handleLipParamChange}
         enabled={isSpeaking}
       />
 
+      {/* Audio Sync */}
       <AudioSync
         audioUrl={audioUrl}
         audioChunks={audioChunks}
         autoPlay={isSpeaking}
         onTimeUpdateMs={handleTimeUpdateMs}
-        onTimeUpdate={handleTimeUpdate}
+        onEnded={onAudioEnded}
       />
 
+      {/* Speaking indicator */}
       {isSpeaking && (
         <div style={{
           position: 'absolute',

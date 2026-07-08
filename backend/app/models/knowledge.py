@@ -24,6 +24,8 @@ class KnowledgeDoc(Base):
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
     version: Mapped[int] = mapped_column(Integer, default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    topic: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    topic_tags: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -37,6 +39,7 @@ class KnowledgeChunk(Base):
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
     embedding_id: Mapped[str | None] = mapped_column(String(200))  # Milvus primary key
     token_count: Mapped[int] = mapped_column(Integer, default=0)
+    topic: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

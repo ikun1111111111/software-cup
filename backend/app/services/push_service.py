@@ -14,10 +14,10 @@ logger = logging.getLogger(__name__)
 DEDUP_TTL = 1800  # 30 minutes
 
 SCENIC_SPOTS = [
-    {"spot_name": "灵山大佛", "lat": 31.4303, "lng": 120.0959, "radius_m": 200, "trigger": "location"},
-    {"spot_name": "梵宫", "lat": 31.4283, "lng": 120.0975, "radius_m": 150, "trigger": "location"},
-    {"spot_name": "九龙灌浴", "lat": 31.4267, "lng": 120.0955, "radius_m": 100, "trigger": "location"},
-    {"spot_name": "五印坛城", "lat": 31.4266, "lng": 120.0970, "radius_m": 150, "trigger": "location"},
+    {"spot_name": "灵山大佛", "lat": 31.4281, "lng": 120.0947, "radius_m": 200, "trigger": "location"},
+    {"spot_name": "梵宫", "lat": 31.4265, "lng": 120.0935, "radius_m": 150, "trigger": "location"},
+    {"spot_name": "九龙灌浴", "lat": 31.4275, "lng": 120.0955, "radius_m": 100, "trigger": "location"},
+    {"spot_name": "五印坛城", "lat": 31.4258, "lng": 120.0920, "radius_m": 150, "trigger": "location"},
 ]
 
 

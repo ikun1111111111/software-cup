@@ -1,7 +1,7 @@
 """Tests for WebSocket chat API."""
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from starlette.testclient import TestClient
 
 from app.main import app
@@ -10,35 +10,13 @@ from app.main import app
 client = TestClient(app)
 
 
-def _mock_session_ctx():
-    mock_db = MagicMock()
-    mock_db.commit = AsyncMock()
-    mock_db.rollback = AsyncMock()
-    mock_session_ctx = MagicMock()
-    mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_db)
-    mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
-    return mock_session_ctx
-
-
-def _chat_result(answer: str, source: str = "rag") -> dict:
-    return {
-        "answer": answer,
-        "source": source,
-        "chunks": [{"text": answer, "score": 0.95}],
-        "sentiment_score": 0.9,
-        "sentiment_label": "positive",
-    }
-
-
 class TestWebSocketChat:
     """Test WebSocket /ws/chat endpoint."""
 
     def test_ws_faq_hit(self):
         """Should return answer via WebSocket when FAQ matches."""
-        with patch("app.api.ws.process_chat", new_callable=AsyncMock) as mock_chat, \
-             patch("app.api.ws.finalize_chat", new_callable=AsyncMock), \
-             patch("app.api.ws.async_session", return_value=_mock_session_ctx()):
-            mock_chat.return_value = _chat_result("门票210元", source="faq")
+        with patch("app.api.ws.search_faq", new_callable=AsyncMock) as mock_faq:
+            mock_faq.return_value = {"answer": "门票210元", "faq_id": 5}
 
             with client.websocket_connect("/ws/chat") as websocket:
                 websocket.send_json({
@@ -54,10 +32,14 @@ class TestWebSocketChat:
 
     def test_ws_rag_answer(self):
         """Should return RAG-based answer via WebSocket."""
-        with patch("app.api.ws.process_chat", new_callable=AsyncMock) as mock_chat, \
-             patch("app.api.ws.finalize_chat", new_callable=AsyncMock), \
-             patch("app.api.ws.async_session", return_value=_mock_session_ctx()):
-            mock_chat.return_value = _chat_result("88米高", source="rag")
+        with patch("app.api.ws.search_faq", new_callable=AsyncMock, return_value=None), \
+             patch("app.api.ws.retrieve", new_callable=AsyncMock) as mock_retrieve, \
+             patch("app.api.ws.route", new_callable=AsyncMock, return_value="88米高"), \
+             patch("app.core.llm.analyze_sentiment", new_callable=AsyncMock, return_value=(0.9, "positive")):
+
+            mock_retrieve.return_value = [
+                {"text": "灵山大佛高88米", "score": 0.95, "rerank_score": 0.98},
+            ]
 
             with client.websocket_connect("/ws/chat") as websocket:
                 websocket.send_json({
@@ -92,8 +74,9 @@ class TestWebSocketChat:
 
     def test_ws_llm_failure(self):
         """Should return error when LLM fails."""
-        with patch("app.api.ws.process_chat", new_callable=AsyncMock, return_value={"answer": ""}), \
-             patch("app.api.ws.async_session", return_value=_mock_session_ctx()):
+        with patch("app.api.ws.search_faq", new_callable=AsyncMock, return_value=None), \
+             patch("app.api.ws.retrieve", new_callable=AsyncMock, return_value=[]), \
+             patch("app.api.ws.route", new_callable=AsyncMock, side_effect=RuntimeError("down")):
 
             with client.websocket_connect("/ws/chat") as websocket:
                 websocket.send_json({

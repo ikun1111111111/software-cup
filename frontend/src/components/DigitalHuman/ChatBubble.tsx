@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Message } from '../../stores/chatStore';
+import type { Message } from '../../stores/chatStore';
 import {
   LikeOutlined,
   DislikeOutlined,
@@ -9,19 +9,15 @@ import {
   SyncOutlined,
   RobotOutlined,
 } from '@ant-design/icons';
-// Brush write hook available from remote — can be integrated later
-// import { useBrushWrite } from '../../hooks/useBrushWrite';
+import { renderSmartContent } from '../../utils/chatTextRenderer';
 
 export interface ChatBubbleProps {
   message: Message;
   isUser: boolean;
   source?: 'faq' | 'rag' | 'cache' | 'offline';
   showSource?: boolean;
+  sessionId?: string;
 }
-
-/* ================================================================
-   工具函数
-   ================================================================ */
 
 const formatTime = (timestamp: number): string => {
   const date = new Date(timestamp);
@@ -37,7 +33,6 @@ const formatDate = (timestamp: number): string => {
   return `${month}月${day}日`;
 };
 
-/** 判断是否为同一天 */
 export const isSameDay = (a: number, b: number): boolean => {
   const da = new Date(a);
   const db = new Date(b);
@@ -46,320 +41,6 @@ export const isSameDay = (a: number, b: number): boolean => {
     da.getMonth() === db.getMonth() &&
     da.getDate() === db.getDate()
   );
-};
-
-/* ================================================================
-   智能文本渲染引擎
-   ================================================================ */
-
-// 景区相关关键词，用于高亮
-const SPOT_KEYWORDS = [
-  '灵山大佛', '梵宫', '九龙灌浴', '五印坛城', '曼飞龙塔',
-  '天下第一掌', '百子戏弥勒', '灵山吉祥颂', '太湖观景台',
-  '灵山胜境', '灵山风景区', '灵山', '太湖',
-];
-
-// 价格模式
-const PRICE_PATTERN = /(\d+元|\d+\.?\d*元|\d+元\/人|\d+元\/张|\d+元\/位)/g;
-// 时间模式
-const TIME_PATTERN = /(\d{1,2}:\d{2}|\d{1,2}点|\d{1,2}:\d{2}-\d{1,2}:\d{2}|全年开放|夏季|冬季)/g;
-// 数字+单位模式（高度、距离等）
-const NUMBER_PATTERN = /(\d+\.?\d*\s*(米|公里|km|m|吨|公顷|亩|平方米|立方米))/gi;
-
-interface TextSegment {
-  type: 'text' | 'spot' | 'price' | 'time' | 'number' | 'quote';
-  content: string;
-}
-
-/** 将一行文本切分为高亮片段 */
-const segmentLine = (line: string): TextSegment[] => {
-  const segments: TextSegment[] = [];
-  let remaining = line;
-
-  // 先处理引用块（以「」包裹）
-  const quoteRegex = /「([^」]+)」/g;
-  let quoteMatch: RegExpExecArray | null;
-  const quoteRanges: [number, number, string][] = [];
-  while ((quoteMatch = quoteRegex.exec(line)) !== null) {
-    quoteRanges.push([quoteMatch.index, quoteMatch.index + quoteMatch[0].length, quoteMatch[1]]);
-  }
-
-  // 再处理景点名称
-  const spotRanges: [number, number, string][] = [];
-  for (const spot of SPOT_KEYWORDS) {
-    let idx = remaining.indexOf(spot);
-    while (idx !== -1) {
-      // 检查是否被引用范围覆盖
-      const inQuote = quoteRanges.some(
-        ([start, end]) => idx >= start && idx + spot.length <= end
-      );
-      if (!inQuote) {
-        spotRanges.push([idx, idx + spot.length, spot]);
-      }
-      idx = remaining.indexOf(spot, idx + 1);
-    }
-  }
-
-  // 合并所有范围并按位置排序
-  const allRanges: { start: number; end: number; type: TextSegment['type']; content: string }[] = [
-    ...quoteRanges.map(([s, e, c]) => ({ start: s, end: e, type: 'quote' as const, content: c })),
-    ...spotRanges.map(([s, e, c]) => ({ start: s, end: e, type: 'spot' as const, content: c })),
-  ];
-
-  // 价格
-  let m: RegExpExecArray | null;
-  const priceRegex = new RegExp(PRICE_PATTERN.source, 'g');
-  while ((m = priceRegex.exec(line)) !== null) {
-    allRanges.push({ start: m.index, end: m.index + m[0].length, type: 'price', content: m[0] });
-  }
-
-  // 时间
-  const timeRegex = new RegExp(TIME_PATTERN.source, 'g');
-  while ((m = timeRegex.exec(line)) !== null) {
-    allRanges.push({ start: m.index, end: m.index + m[0].length, type: 'time', content: m[0] });
-  }
-
-  // 数字+单位
-  const numRegex = new RegExp(NUMBER_PATTERN.source, 'gi');
-  while ((m = numRegex.exec(line)) !== null) {
-    // 避免和已有范围重叠
-    const overlap = allRanges.some(
-      (r) => (m!.index >= r.start && m!.index < r.end) || (m!.index + m![0].length > r.start && m!.index + m![0].length <= r.end)
-    );
-    if (!overlap) {
-      allRanges.push({ start: m.index, end: m.index + m[0].length, type: 'number', content: m[0] });
-    }
-  }
-
-  // 按位置排序，去重（优先保留前面的）
-  allRanges.sort((a, b) => a.start - b.start);
-  const deduped: typeof allRanges = [];
-  for (const r of allRanges) {
-    const overlap = deduped.some(
-      (d) => (r.start >= d.start && r.start < d.end) || (r.end > d.start && r.end <= d.end)
-    );
-    if (!overlap) deduped.push(r);
-  }
-
-  // 构建片段
-  let pos = 0;
-  for (const r of deduped) {
-    if (r.start > pos) {
-      segments.push({ type: 'text', content: remaining.slice(pos, r.start) });
-    }
-    segments.push({ type: r.type, content: r.content });
-    pos = r.end;
-  }
-  if (pos < remaining.length) {
-    segments.push({ type: 'text', content: remaining.slice(pos) });
-  }
-
-  if (segments.length === 0) {
-    segments.push({ type: 'text', content: line });
-  }
-
-  return segments;
-};
-
-/** 渲染一个高亮片段 */
-const renderSegment = (seg: TextSegment, idx: number): React.ReactNode => {
-  switch (seg.type) {
-    case 'spot':
-      return (
-        <span
-          key={idx}
-          style={{
-            color: '#4A7A68',
-            fontWeight: 600,
-            backgroundColor: 'rgba(106, 156, 137, 0.08)',
-            padding: '0 4px',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            transition: 'background-color 150ms',
-          }}
-          onMouseEnter={(e) => {
-            (e.target as HTMLElement).style.backgroundColor = 'rgba(106, 156, 137, 0.15)';
-          }}
-          onMouseLeave={(e) => {
-            (e.target as HTMLElement).style.backgroundColor = 'rgba(106, 156, 137, 0.08)';
-          }}
-        >
-          {seg.content}
-        </span>
-      );
-    case 'price':
-      return (
-        <span
-          key={idx}
-          style={{
-            color: '#C8882E',
-            fontWeight: 600,
-            backgroundColor: 'rgba(200, 136, 46, 0.08)',
-            padding: '0 4px',
-            borderRadius: '4px',
-          }}
-        >
-          {seg.content}
-        </span>
-      );
-    case 'time':
-      return (
-        <span
-          key={idx}
-          style={{
-            color: '#2D8B57',
-            fontWeight: 500,
-            backgroundColor: 'rgba(45, 139, 87, 0.08)',
-            padding: '0 4px',
-            borderRadius: '4px',
-          }}
-        >
-          {seg.content}
-        </span>
-      );
-    case 'number':
-      return (
-        <span
-          key={idx}
-          style={{
-            color: '#8B5CF6',
-            fontWeight: 600,
-            fontFamily: 'var(--font-mono)',
-          }}
-        >
-          {seg.content}
-        </span>
-      );
-    case 'quote':
-      return (
-        <span
-          key={idx}
-          style={{
-            color: '#5C554C',
-            fontStyle: 'italic',
-            borderLeft: '2px solid var(--color-accent)',
-            paddingLeft: '6px',
-            marginLeft: '2px',
-          }}
-        >
-          「{seg.content}」
-        </span>
-      );
-    default:
-      return <span key={idx}>{seg.content}</span>;
-  }
-};
-
-/** 判断一行是否为列表项 */
-const isListItem = (line: string): { type: 'ordered' | 'unordered'; content: string } | null => {
-  const ordered = /^\s*(\d+[\.、])\s*(.+)$/.exec(line);
-  if (ordered) {
-    return { type: 'ordered', content: ordered[2] };
-  }
-  const unordered = /^\s*([-\*•])\s*(.+)$/.exec(line);
-  if (unordered) {
-    return { type: 'unordered', content: unordered[2] };
-  }
-  return null;
-};
-
-/** 智能渲染消息内容 */
-const renderSmartContent = (content: string): React.ReactNode[] => {
-  if (!content) return [];
-
-  const lines = content.split('\n');
-  const result: React.ReactNode[] = [];
-  let listBuffer: { type: 'ordered' | 'unordered'; items: string[] } | null = null;
-  let keyIdx = 0;
-
-  const flushList = () => {
-    if (!listBuffer || listBuffer.items.length === 0) return;
-    const isOrdered = listBuffer.type === 'ordered';
-    result.push(
-      <ul
-        key={`list-${keyIdx++}`}
-        style={{
-          margin: '8px 0',
-          paddingLeft: isOrdered ? '20px' : '16px',
-          listStyle: isOrdered ? 'decimal' : 'none',
-        }}
-      >
-        {listBuffer.items.map((item, i) => (
-          <li
-            key={i}
-            style={{
-              marginBottom: '6px',
-              lineHeight: 1.7,
-              position: 'relative',
-              ...(isOrdered
-                ? {}
-                : {
-                    paddingLeft: '14px',
-                  }),
-            }}
-          >
-            {!isOrdered && (
-              <span
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  top: '8px',
-                  width: '5px',
-                  height: '5px',
-                  borderRadius: '50%',
-                  backgroundColor: 'var(--color-primary)',
-                }}
-              />
-            )}
-            {segmentLine(item).map((seg, si) => renderSegment(seg, si))}
-          </li>
-        ))}
-      </ul>
-    );
-    listBuffer = null;
-  };
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // 空行：结束列表，添加段落间距
-    if (!trimmed) {
-      flushList();
-      continue;
-    }
-
-    // 列表项
-    const listInfo = isListItem(line);
-    if (listInfo) {
-      if (!listBuffer) {
-        listBuffer = { type: listInfo.type, items: [] };
-      } else if (listBuffer.type !== listInfo.type) {
-        flushList();
-        listBuffer = { type: listInfo.type, items: [] };
-      }
-      listBuffer.items.push(listInfo.content);
-      continue;
-    }
-
-    // 普通段落
-    flushList();
-    const segments = segmentLine(line);
-    result.push(
-      <p
-        key={`p-${keyIdx++}`}
-        style={{
-          margin: '0 0 10px 0',
-          lineHeight: 1.75,
-          wordBreak: 'break-word',
-        }}
-      >
-        {segments.map((seg, si) => renderSegment(seg, si))}
-      </p>
-    );
-  }
-
-  flushList();
-  return result;
 };
 
 /* ================================================================
@@ -423,13 +104,25 @@ const SourceTag: React.FC<{ source?: string }> = ({ source }) => {
    反馈按钮组件
    ================================================================ */
 
-const FeedbackButtons: React.FC<{ messageId: string }> = ({ messageId }) => {
+const FeedbackButtons: React.FC<{ messageId: string; sessionId?: string }> = ({ messageId, sessionId }) => {
   const [feedback, setFeedback] = useState<'like' | 'dislike' | null>(null);
+
+  const handleFeedback = (rating: 'like' | 'dislike') => {
+    const next = feedback === rating ? null : rating;
+    setFeedback(next);
+    if (next && sessionId) {
+      fetch('/api/chat/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, message_id: messageId, rating: next }),
+      }).catch(() => {});
+    }
+  };
 
   return (
     <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
       <button
-        onClick={() => setFeedback(feedback === 'like' ? null : 'like')}
+        onClick={() => handleFeedback('like')}
         style={{
           padding: '3px 8px',
           border: 'none',
@@ -448,7 +141,7 @@ const FeedbackButtons: React.FC<{ messageId: string }> = ({ messageId }) => {
         <LikeOutlined />
       </button>
       <button
-        onClick={() => setFeedback(feedback === 'dislike' ? null : 'dislike')}
+        onClick={() => handleFeedback('dislike')}
         style={{
           padding: '3px 8px',
           border: 'none',
@@ -474,7 +167,7 @@ const FeedbackButtons: React.FC<{ messageId: string }> = ({ messageId }) => {
    主组件：ChatBubble
    ================================================================ */
 
-const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isUser, source, showSource = true }) => {
+const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isUser, source, showSource = true, sessionId }) => {
   const [visible, setVisible] = useState(false);
   const [displayContent, setDisplayContent] = useState('');
   const indexRef = useRef(0);
@@ -516,7 +209,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isUser, source, showSo
         clearInterval(interval);
       }
       setDisplayContent(message.content.slice(0, indexRef.current));
-    }, 35); // 每个字 35ms，比原来稍快
+    }, 20); // 每个字 20ms，响应更迅速
 
     return () => clearInterval(interval);
   }, [message.content, message.status, isUser]);
@@ -709,7 +402,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, isUser, source, showSo
           {!isUser && showSource && source && <SourceTag source={source} />}
 
           {!isUser && message.status === 'sent' && (
-            <FeedbackButtons messageId={message.id} />
+            <FeedbackButtons messageId={message.id} sessionId={sessionId} />
           )}
 
           {message.status && message.status !== 'sent' && (

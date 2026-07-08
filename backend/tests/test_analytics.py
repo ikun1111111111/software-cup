@@ -288,3 +288,69 @@ class TestAnalyticsAPI:
             }
             response = client.get("/api/analytics/overview?start_date=invalid")
             assert response.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_record_mobile_event_accepts_queued_shape(self):
+        """Mobile queued event shape should be normalized into MobileTourEvent."""
+        from app.api.analytics import MobileTourEventRequest, record_mobile_tour_event
+
+        mock_db = MagicMock()
+        async def flush_with_id():
+            mock_db.add.call_args.args[0].id = 99
+
+        mock_db.flush = AsyncMock(side_effect=flush_with_id)
+        mock_db.commit = AsyncMock()
+        mock_db.rollback = AsyncMock()
+
+        payload = MobileTourEventRequest(
+            id="client-event-1",
+            name="spot_arrived",
+            session_id="mobile-session-1",
+            timestamp="2026-07-02T10:00:00.000Z",
+            fields={
+                "spotId": "ling-shan-da-fo",
+                "spotName": "灵山大佛",
+                "sourcePage": "route-detail",
+                "durationMs": 1200,
+                "completed": True,
+            },
+        )
+
+        response = await record_mobile_tour_event(payload, db=mock_db)
+        event = mock_db.add.call_args.args[0]
+
+        assert response.status == "ok"
+        assert event.event_name == "spot_arrived"
+        assert event.spot_id == "ling-shan-da-fo"
+        assert event.spot_name == "灵山大佛"
+        assert event.source_page == "route-detail"
+        assert event.duration_ms == 1200
+        assert event.completed is True
+        assert event.metadata_json["client_event_id"] == "client-event-1"
+
+    @pytest.mark.asyncio
+    async def test_record_mobile_event_batch_skips_invalid_rows(self):
+        """Batch upload should persist valid rows and report invalid rows."""
+        from app.api.analytics import MobileTourEventRequest, record_mobile_tour_events_batch
+
+        mock_db = MagicMock()
+        async def flush_with_ids():
+            for index, call in enumerate(mock_db.add.call_args_list, start=1):
+                call.args[0].id = index
+
+        mock_db.flush = AsyncMock(side_effect=flush_with_ids)
+        mock_db.commit = AsyncMock()
+        mock_db.rollback = AsyncMock()
+
+        response = await record_mobile_tour_events_batch(
+            [
+                MobileTourEventRequest(name="tour_started", session_id="s1"),
+                MobileTourEventRequest(session_id="s1"),
+            ],
+            db=mock_db,
+        )
+
+        assert response.status == "partial"
+        assert response.inserted == 1
+        assert response.skipped == 1
+        assert response.errors[0]["index"] == 1

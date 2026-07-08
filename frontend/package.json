@@ -12,11 +12,7 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "@amap/amap-jsapi-loader": "^1.0.1",
     "@ant-design/icons": "^5.5.0",
-    "@pixiv/three-vrm": "^3.5.3",
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.6.1",
     "antd": "^5.22.0",
     "axios": "^1.7.9",
     "dayjs": "^1.11.13",
@@ -25,14 +21,13 @@
     "echarts-for-react": "^3.0.2",
     "echarts-wordcloud": "^2.1.0",
     "file-saver": "^2.0.5",
-    "html-to-image": "^1.11.13",
     "html5-qrcode": "^2.3.8",
     "pixi-live2d-display": "^0.4.0",
     "pixi.js": "^7.4.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",
-    "three": "^0.184.0",
+    "three": "^0.185.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
@@ -42,9 +37,11 @@
     "@types/file-saver": "^2.0.7",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.185.0",
     "@vitejs/plugin-react": "^4.3.4",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^25.0.1",
+    "sharp": "^0.34.5",
     "typescript": "^5.7.2",
     "vite": "^6.0.0",
     "vitest": "^2.1.8"

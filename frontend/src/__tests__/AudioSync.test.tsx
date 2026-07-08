@@ -4,16 +4,36 @@ import AudioSync from '../components/DigitalHuman/AudioSync';
 
 // Mock Audio class
 const mockAudioInstances: any[] = [];
+let blobUrlCounter = 0;
 
 class MockAudio {
   src = '';
   currentTime = 0;
   duration = 10;
   paused = true;
-  addEventListener = vi.fn();
-  removeEventListener = vi.fn();
-  play = vi.fn(() => Promise.resolve());
-  pause = vi.fn();
+  ended = false;
+  private _listeners: Record<string, Function[]> = {};
+
+  addEventListener = vi.fn((event: string, cb: Function) => {
+    if (!this._listeners[event]) this._listeners[event] = [];
+    this._listeners[event].push(cb);
+  });
+  removeEventListener = vi.fn((event: string, cb: Function) => {
+    if (this._listeners[event]) {
+      this._listeners[event] = this._listeners[event].filter((l) => l !== cb);
+    }
+  });
+  play = vi.fn(() => {
+    this.paused = false;
+    this._listeners.play?.forEach((cb) => cb());
+    return Promise.resolve();
+  });
+  pause = vi.fn(() => {
+    this.paused = true;
+  });
+  dispatchEvent = vi.fn((event: string) => {
+    this._listeners[event]?.forEach((cb) => cb());
+  });
 
   constructor(src?: string) {
     this.src = src || '';
@@ -24,18 +44,21 @@ class MockAudio {
 beforeEach(() => {
   vi.useFakeTimers();
   mockAudioInstances.length = 0;
+  blobUrlCounter = 0;
   (global as any).Audio = MockAudio;
   // Mock atob for base64 decoding in tests
   if (!(global as any).atob) {
     (global as any).atob = (str: string) => Buffer.from(str, 'base64').toString('binary');
   }
   // Mock URL.createObjectURL for blob handling
-  if (!(global as any).URL.createObjectURL) {
-    (global as any).URL.createObjectURL = vi.fn(() => 'blob:mock');
+  if (!(global as any).URL) {
+    (global as any).URL = {};
   }
-  if (!(global as any).URL.revokeObjectURL) {
-    (global as any).URL.revokeObjectURL = vi.fn();
-  }
+  (global as any).URL.createObjectURL = vi.fn(() => {
+    blobUrlCounter += 1;
+    return `blob:mock-${blobUrlCounter}`;
+  });
+  (global as any).URL.revokeObjectURL = vi.fn();
 });
 
 afterEach(() => {
@@ -196,7 +219,7 @@ describe('AudioSync', () => {
       expect(mockAudioInstances.length).toBe(1);
     });
 
-    it('audioChunks变化时应该创建新Audio实例', () => {
+    it('audioChunks追加时不应该重建Audio实例', () => {
       const bytes1 = new Uint8Array([0x52, 0x49, 0x46, 0x46]);
       const b64_1 = btoa(String.fromCharCode(...bytes1));
       const bytes2 = new Uint8Array([0x49, 0x44, 0x33, 0x03]);
@@ -204,9 +227,11 @@ describe('AudioSync', () => {
 
       const { rerender } = render(<AudioSync audioChunks={[b64_1]} />);
       expect(mockAudioInstances.length).toBe(1);
+      const firstSrc = mockAudioInstances[0].src;
 
       rerender(<AudioSync audioChunks={[b64_1, b64_2]} />);
-      expect(mockAudioInstances.length).toBe(2);
+      expect(mockAudioInstances.length).toBe(1);
+      expect(mockAudioInstances[0].src).not.toBe(firstSrc);
     });
   });
 
@@ -232,11 +257,11 @@ describe('AudioSync', () => {
     it('audioUrl模式autoPlay时应该启动polling更新currentTime', () => {
       const onTimeUpdateMs = vi.fn();
       render(<AudioSync audioUrl="/audio/test.mp3" onTimeUpdateMs={onTimeUpdateMs} autoPlay />);
-      // Simulate audio playing (mock starts paused, but autoPlay should trigger play)
       const audio = mockAudioInstances[0];
-      audio.paused = false;
-      // Advance fake timers past the 50ms polling interval
-      vi.advanceTimersByTime(100);
+      expect(audio.play).toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
       expect(onTimeUpdateMs).toHaveBeenCalled();
     });
   });

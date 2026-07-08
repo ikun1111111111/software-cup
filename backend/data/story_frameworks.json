@@ -1,0 +1,62 @@
+{
+  "ling-shan-da-fo": {
+    "name": "灵山大佛",
+    "description": "世界第一高青铜立佛",
+    "acts": [
+      {"id": "origin",       "title": "缘起", "emotion": "think",    "prompt_hint": "为何选址灵山；唐宋以来此处佛教渊源；玄奘法师与灵山法会；唐玄奘命名小灵山的典故"},
+      {"id": "construction", "title": "铸造", "emotion": "surprise", "prompt_hint": "1997年落成；通高88米，佛体79米；青铜铸造工艺；工程规模与难度；世界第一高青铜立佛"},
+      {"id": "legend",       "title": "传说", "emotion": "smile",    "prompt_hint": "民间关于大佛显灵、护佑一方的传说；抱佛脚祈福的由来；与玄奘西行取经的渊源"},
+      {"id": "today",        "title": "今日", "emotion": "neutral",  "prompt_hint": "今日朝拜盛况；游客抱佛脚体验；大佛作为灵山胜境精神象征的文化意义"}
+    ]
+  },
+  "jiu-long-guan-yu": {
+    "name": "九龙灌浴",
+    "description": "佛陀诞生神圣场景",
+    "acts": [
+      {"id": "origin",    "title": "由来", "emotion": "think",    "prompt_hint": "典故源于佛诞传说：九龙吐水为太子沐浴；释迦牟尼降生时天地祥瑞"},
+      {"id": "today",     "title": "盛景", "emotion": "surprise", "prompt_hint": "每日定时表演；莲花开启、太子佛像冉冉升起、九龙喷水、音乐喷泉的视觉震撼"},
+      {"id": "legend",    "title": "典故", "emotion": "smile",    "prompt_hint": "佛诞传说背后『天上地下，唯我独尊』一手指天一手指地的象征；佛教艺术表现"},
+      {"id": "family",    "title": "亲子", "emotion": "neutral",  "prompt_hint": "亲子家庭体验；接福水仪式；感受生命与新生；游客朝拜互动"}
+    ]
+  },
+  "fan-gong": {
+    "name": "灵山梵宫",
+    "description": "东方艺术殿堂",
+    "acts": [
+      {"id": "origin",       "title": "缘起", "emotion": "think",    "prompt_hint": "梵宫建造初衷；2008年世界佛教论坛主会场；东西方佛教艺术交融的文化定位"},
+      {"id": "art",          "title": "艺境", "emotion": "surprise", "prompt_hint": "穹顶壁画《天象图》；华塔金顶；东阳木雕、敦煌彩绘、景泰蓝、琉璃等集大成工艺"},
+      {"id": "treasure",    "title": "献供", "emotion": "smile",    "prompt_hint": "梵宫内每日《吉祥颂》演出；声光电影与佛教仪轨融合的艺术呈现"},
+      {"id": "today",        "title": "今日", "emotion": "neutral",  "prompt_hint": "今日作为东方艺术殿堂的参观体验；游客感受宗教艺术庄严的文化意义"}
+    ]
+  },
+  "xiang-fu-chan-si": {
+    "name": "祥符禅寺",
+    "description": "千年古刹",
+    "acts": [
+      {"id": "history",   "title": "古刹", "emotion": "think",    "prompt_hint": "祥符禅寺千年历史；始建于唐代；历代修缮；与灵山胜境的渊源"},
+      {"id": "master",    "title": "钟声", "emotion": "surprise", "prompt_hint": "千年古钟；晨钟暮鼓；钟声悠远的禅意；钟楼建筑特色"},
+      {"id": "zen",       "title": "高僧", "emotion": "smile",    "prompt_hint": "历代高僧驻锡；禅宗传承；关于古刹的民间传说与护法故事"},
+      {"id": "today",     "title": "今日", "emotion": "neutral",  "prompt_hint": "今日朝拜与禅修体验；游客礼佛、烧香、抄经、静心的日常"}
+    ]
+  },
+  "wu-yin-tan-cheng": {
+    "name": "五印坛城",
+    "description": "藏传佛教圣地",
+    "acts": [
+      {"id": "mystery",   "title": "圣城", "emotion": "think",    "prompt_hint": "五印坛城建造渊源；藏传佛教艺术东传；仿布达拉宫风格的建筑特色"},
+      {"id": "art",       "title": "艺境", "emotion": "surprise", "prompt_hint": "藏式唐卡、酥油花、坛城沙画；五彩经幡、转经筒的视觉冲击"},
+      {"id": "symbol",    "title": "坛城", "emotion": "smile",    "prompt_hint": "坛城（曼陀罗）的密宗象征意义；五方佛与五印的对应；修行观想境界"},
+      {"id": "pilgrimage","title": "今日", "emotion": "neutral",  "prompt_hint": "今日游客转经、朝拜、体验藏传佛教文化的庄严与神秘"}
+    ]
+  },
+  "fo-shou-guang-chang": {
+    "name": "佛手广场",
+    "description": "天下第一掌",
+    "acts": [
+      {"id": "origin",     "title": "缘起", "emotion": "think",    "prompt_hint": "佛手广场与灵山大佛的对应关系；天下第一掌的建造初衷；佛手印的宗教象征"},
+      {"id": "legend",     "title": "巨掌", "emotion": "surprise", "prompt_hint": "佛手规模；与灵山大佛比例对照；铜铸工艺；世界第一掌的工程奇观"},
+      {"id": "blessing",   "title": "印契", "emotion": "smile",    "prompt_hint": "施无畏印的佛教含义；佛手庇佑众生的传说；摸佛手得福气的民俗"},
+      {"id": "today",      "title": "今日", "emotion": "neutral",  "prompt_hint": "今日游客『摸佛手、沾福气』的体验；广场作为朝圣终点的文化意义"}
+    ]
+  }
+}

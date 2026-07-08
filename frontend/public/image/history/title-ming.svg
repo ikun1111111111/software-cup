@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 140" width="512" height="140">
+  <defs>
+    <linearGradient id="grad-ming" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFF0E0"/>
+      <stop offset="30%" stop-color="#F0A878"/>
+      <stop offset="70%" stop-color="#C84B31"/>
+      <stop offset="100%" stop-color="#8B2E1E"/>
+    </linearGradient>
+  </defs>
+  <!-- 外发光层 1 -->
+  <text x="256" y="105" text-anchor="middle"
+        font-family="'KaiTi','STKaiti','serif'" font-size="110" font-weight="bold"
+        fill="#F0A878" opacity="0.25" style="letter-spacing: 18px;"
+        transform="translate(256,105) scale(1.08) translate(-256,-105)">大明</text>
+  <!-- 外发光层 2 -->
+  <text x="256" y="105" text-anchor="middle"
+        font-family="'KaiTi','STKaiti','serif'" font-size="110" font-weight="bold"
+        fill="#F0A878" opacity="0.45" style="letter-spacing: 18px;"
+        transform="translate(256,105) scale(1.04) translate(-256,-105)">大明</text>
+  <!-- 描边层 -->
+  <text x="256" y="105" text-anchor="middle"
+        font-family="'KaiTi','STKaiti','serif'" font-size="110" font-weight="bold"
+        fill="none" stroke="#C8A951" stroke-width="5" style="letter-spacing: 18px;">大明</text>
+  <!-- 主文字 -->
+  <text x="256" y="105" text-anchor="middle"
+        font-family="'KaiTi','STKaiti','serif'" font-size="110" font-weight="bold"
+        fill="url(#grad-ming)" style="letter-spacing: 18px;">大明</text>
+</svg>

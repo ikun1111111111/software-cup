@@ -39,6 +39,7 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("import", help="Import scenic data from docs/")
+    subparsers.add_parser("import-official", help="Import official Lingshan DOCX materials")
     subparsers.add_parser("init-db", help="Initialize database tables")
     subparsers.add_parser("test-accuracy", help="Run accuracy benchmark (to be implemented by 队员1)")
 
@@ -46,6 +47,9 @@ def main():
 
     if args.command == "import":
         asyncio.run(run_import())
+    elif args.command == "import-official":
+        from app.cli.import_official_data import main as import_main
+        import_main()
     elif args.command == "init-db":
         asyncio.run(run_init_db())
     elif args.command == "test-accuracy":

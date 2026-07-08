@@ -1,6 +1,6 @@
 # Costume Textures
 
-Place costume texture PNGs here. File names must match the `texturePath` values in `software/web/src/config/costumeMap.ts`.
+Place costume texture PNGs here. File names must match the `texturePath` values in `frontend/src/config/costumeMap.ts`.
 
 ## Daily Costumes
 

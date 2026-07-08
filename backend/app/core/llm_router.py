@@ -1,6 +1,7 @@
 """Unified LLM router with multi-key rotation and automatic fallback."""
 import logging
 import random
+import time
 from enum import Enum
 from typing import Any
 
@@ -91,6 +92,7 @@ async def _call_deepseek_stream(messages: list[dict], **kwargs):
         raise RuntimeError("No DeepSeek API key available")
 
     client = AsyncOpenAI(api_key=key, base_url=settings.deepseek_base_url)
+    api_start = time.time()
     response = await client.chat.completions.create(
         model=settings.llm_default_model,
         messages=messages,
@@ -98,9 +100,13 @@ async def _call_deepseek_stream(messages: list[dict], **kwargs):
         temperature=kwargs.get("temperature", 0.7),
         max_tokens=kwargs.get("max_tokens", 2048),
     )
+    first_token = True
     async for chunk in response:
         delta = chunk.choices[0].delta.content if chunk.choices else ""
         if delta:
+            if first_token:
+                logger.info("[llm_router] deepseek_first_token elapsed=%.3fs", time.time() - api_start)
+                first_token = False
             yield delta
 
 
@@ -177,6 +183,7 @@ async def _call_doubao_stream(messages: list[dict], **kwargs):
         raise RuntimeError("No Doubao API key available")
 
     client = AsyncOpenAI(api_key=settings.doubao_api_key, base_url=settings.doubao_base_url)
+    api_start = time.time()
     response = await client.chat.completions.create(
         model=settings.llm_sentiment_model,
         messages=messages,
@@ -184,9 +191,13 @@ async def _call_doubao_stream(messages: list[dict], **kwargs):
         temperature=kwargs.get("temperature", 0.7),
         max_tokens=kwargs.get("max_tokens", 2048),
     )
+    first_token = True
     async for chunk in response:
         delta = chunk.choices[0].delta.content if chunk.choices else ""
         if delta:
+            if first_token:
+                logger.info("[llm_router] doubao_first_token elapsed=%.3fs", time.time() - api_start)
+                first_token = False
             yield delta
 
 
@@ -198,6 +209,7 @@ async def _call_qwen_stream(messages: list[dict], **kwargs):
         raise RuntimeError("No Qwen API key available")
 
     client = AsyncOpenAI(api_key=settings.qwen_api_key, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
+    api_start = time.time()
     response = await client.chat.completions.create(
         model=settings.llm_summary_model,
         messages=messages,
@@ -205,9 +217,13 @@ async def _call_qwen_stream(messages: list[dict], **kwargs):
         temperature=kwargs.get("temperature", 0.7),
         max_tokens=kwargs.get("max_tokens", 2048),
     )
+    first_token = True
     async for chunk in response:
         delta = chunk.choices[0].delta.content if chunk.choices else ""
         if delta:
+            if first_token:
+                logger.info("[llm_router] qwen_first_token elapsed=%.3fs", time.time() - api_start)
+                first_token = False
             yield delta
 
 
@@ -298,17 +314,19 @@ async def route_stream(
 
     for provider in providers:
         try:
+            provider_start = time.time()
             stream_name = _STREAM_CALLER_NAMES.get(provider, "_call_deepseek_stream")
             stream_caller = globals()[stream_name]
             # stream_caller is an async generator function; calling it returns the async generator
             gen = stream_caller(messages, **kwargs)
             async for token in gen:
                 yield token
+            logger.info("[llm_router] provider=%s stream_success elapsed=%.3fs", provider, time.time() - provider_start)
             return
         except Exception as e:
             last_error = e
-            logger.warning("Provider %s stream failed: %s", provider, e)
+            logger.warning("[llm_router] provider=%s stream failed: %s", provider, e)
             continue
 
-    logger.error("All providers failed for streaming chat")
+    logger.error("[llm_router] All providers failed for streaming chat")
     raise RuntimeError(f"All providers failed for streaming. Last error: {last_error}")

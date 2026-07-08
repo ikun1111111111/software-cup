@@ -1,0 +1,35 @@
+{
+  "id": "lingshan-scene",
+  "name": "Lingshan holographic operations sandbox",
+  "version": "0.3.0",
+  "model": "/models/lingshan/lingshan-scene.glb",
+  "mode": "holographic-blueprint-operations-sandbox",
+  "target": {
+    "fileSizeMb": [1, 15],
+    "triangles": [50000, 120000],
+    "widthUnits": [8, 12],
+    "style": "refined-holographic-blueprint-datav-sandbox"
+  },
+  "materials": {
+    "terrain": "transparent deep blue body with cyan emissive edge",
+    "edge": "cyan blueprint line",
+    "building": "transparent cyan body with amber core landmark",
+    "water": "translucent holographic cyan",
+    "dataOverlay": "cyan route, amber hotspot, vertical POI beacon",
+    "detailPass": "refined landmark plinths, eaves, rings, grove volumes and water ripples"
+  },
+  "anchors": [
+    { "id": "ling-shan-da-zhao-bi", "label": "Lingshan entrance wall", "objectName": "spot_ling_shan_da_zhao_bi", "level": "minor" },
+    { "id": "fo-shou-guang-chang", "label": "Buddha Hand Plaza", "objectName": "spot_fo_shou_guang_chang", "level": "major" },
+    { "id": "bai-zi-xi-mi-le", "label": "Baizi Ximi Le", "objectName": "spot_bai_zi_xi_mi_le", "level": "major" },
+    { "id": "xiang-fu-chan-si", "label": "Xiangfu Temple", "objectName": "spot_xiang_fu_chan_si", "level": "major" },
+    { "id": "fan-gong", "label": "Brahma Palace", "objectName": "spot_fan_gong", "level": "core" },
+    { "id": "pu-ti-da-dao", "label": "Bodhi Avenue", "objectName": "spot_pu_ti_da_dao", "level": "minor" },
+    { "id": "ling-shan-da-fo", "label": "Grand Buddha", "objectName": "spot_ling_shan_da_fo", "level": "core" },
+    { "id": "wu-yin-tan-cheng", "label": "Five Mudra Mandala", "objectName": "spot_wu_yin_tan_cheng", "level": "core" },
+    { "id": "jiu-long-guan-yu", "label": "Nine Dragons Bathing", "objectName": "spot_jiu_long_guan_yu", "level": "core" },
+    { "id": "san-sheng-dian", "label": "Sansheng Hall", "objectName": "spot_san_sheng_dian", "level": "major" },
+    { "id": "man-fei-long-ta", "label": "Manfeilong Pagoda", "objectName": "spot_man_fei_long_ta", "level": "major" },
+    { "id": "ling-shan-jing-she", "label": "Lingshan Retreat", "objectName": "spot_ling_shan_jing_she", "level": "major" }
+  ]
+}

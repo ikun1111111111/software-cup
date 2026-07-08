@@ -1,8 +1,11 @@
 """Analytics Dashboard API endpoints."""
 import logging
+from datetime import datetime, timedelta
+from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -14,10 +17,9 @@ from app.core.analytics import (
     knowledge_stats,
     realtime_logs,
     heatmap_stats,
-    mobile_tour_summary,
 )
 from app.models.mobile_event import MobileTourEvent
-from app.tasks.report_task import generate_report_task, get_report_status
+from app.tasks.report_task import generate_report_inline, get_report_status
 from app.services.crowd_predict import get_crowd_prediction, get_best_time, get_crowd_alerts
 from app.services.report_archive_service import (
     REPORT_TYPE_SENTIMENT,
@@ -118,62 +120,6 @@ class HeatmapResponse(BaseModel):
     data: list[HeatmapItem]
 
 
-class MobileTourEventRequest(BaseModel):
-    session_id: str = Field(..., min_length=1, max_length=100)
-    event_name: str = Field(..., min_length=1, max_length=80)
-    route_id: str | None = None
-    route_name: str | None = None
-    spot_id: str | None = None
-    spot_name: str | None = None
-    source_page: str | None = None
-    duration_ms: int | None = Field(None, ge=0)
-    latency_ms: int | None = Field(None, ge=0)
-    completed: bool = False
-    preferences: dict | None = None
-    metadata: dict | None = None
-
-
-class MobileTourEventResponse(BaseModel):
-    id: int
-    status: str
-
-
-class MobileRouteSummaryItem(BaseModel):
-    route_id: str
-    route_name: str
-    starts: int
-    completions: int
-    completion_rate: float
-
-
-class MobileSpotSummaryItem(BaseModel):
-    spot_id: str
-    spot_name: str
-    event_count: int
-
-
-class MobileRecentEventItem(BaseModel):
-    session_id: str
-    event_name: str
-    route_name: str | None = None
-    spot_name: str | None = None
-    source_page: str | None = None
-    created_at: str | None = None
-
-
-class MobileTourSummaryResponse(BaseModel):
-    days: int
-    total_events: int
-    active_sessions: int
-    route_starts: int
-    route_completions: int
-    route_completion_rate: float
-    routes: list[MobileRouteSummaryItem]
-    hot_spots: list[MobileSpotSummaryItem]
-    preference_distribution: dict[str, int]
-    recent_events: list[MobileRecentEventItem]
-
-
 class ReportTriggerResponse(BaseModel):
     task_id: str
     report_id: int | None = None
@@ -202,6 +148,153 @@ class ReportArchiveGenerateResponse(BaseModel):
     task_id: str
     status: str
     message: str
+
+
+class MobileTourEventRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    session_id: str | None = Field(None, max_length=100)
+    event_name: str | None = Field(None, max_length=80)
+    name: str | None = Field(None, max_length=80)
+    id: str | None = Field(None, max_length=120)
+    timestamp: str | None = None
+    fields: dict | None = None
+    route_id: str | None = None
+    route_name: str | None = None
+    spot_id: str | None = None
+    spot_name: str | None = None
+    source_page: str | None = None
+    duration_ms: int | None = Field(None, ge=0)
+    latency_ms: int | None = Field(None, ge=0)
+    completed: bool | None = None
+    preferences: dict | None = None
+    metadata: dict | None = None
+
+
+class MobileTourEventResponse(BaseModel):
+    id: int
+    status: str
+
+
+class MobileTourBatchRequest(BaseModel):
+    events: list[MobileTourEventRequest] = Field(default_factory=list)
+
+
+class MobileTourBatchResponse(BaseModel):
+    status: str
+    inserted: int
+    skipped: int
+    ids: list[int]
+    errors: list[dict]
+
+
+class MobileTourSummaryResponse(BaseModel):
+    days: int
+    total_events: int
+    event_counts: list[dict]
+    top_routes: list[dict]
+    top_spots: list[dict]
+
+
+class MobileTourRecentEvent(BaseModel):
+    id: int
+    session_id: str
+    event_name: str
+    route_id: str | None = None
+    route_name: str | None = None
+    spot_id: str | None = None
+    spot_name: str | None = None
+    source_page: str | None = None
+    duration_ms: int | None = None
+    latency_ms: int | None = None
+    completed: bool
+    created_at: str | None = None
+
+
+class MobileTourRecentResponse(BaseModel):
+    recent: list[MobileTourRecentEvent]
+
+
+def _clean_text(value: object, max_length: int) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text[:max_length]
+
+
+def _clean_int(value: object) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(float(str(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _clean_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on", "done", "completed"}
+    return bool(value)
+
+
+def _payload_value(payload: MobileTourEventRequest, *keys: str) -> object | None:
+    data = payload.model_dump(exclude_none=True)
+    extra = payload.model_extra or {}
+    fields = payload.fields if isinstance(payload.fields, dict) else {}
+    for source in (data, extra, fields):
+        for key in keys:
+            value = source.get(key)
+            if value is not None and value != "":
+                return value
+    return None
+
+
+def _payload_dict_value(payload: MobileTourEventRequest, *keys: str) -> dict | None:
+    value = _payload_value(payload, *keys)
+    return value if isinstance(value, dict) else None
+
+
+def _build_mobile_tour_event(payload: MobileTourEventRequest) -> MobileTourEvent:
+    event_name = _clean_text(
+        _payload_value(payload, "event_name", "eventName", "name", "event", "type"),
+        80,
+    )
+    if not event_name:
+        raise ValueError("event_name/name is required")
+
+    session_id = _clean_text(
+        _payload_value(payload, "session_id", "sessionId", "sid", "anonymous_id", "device_id"),
+        100,
+    ) or "mobile-app-session"
+    fields = payload.fields if isinstance(payload.fields, dict) else {}
+    metadata = dict(fields)
+    metadata.update(_payload_dict_value(payload, "metadata", "meta") or {})
+    if payload.id:
+        metadata.setdefault("client_event_id", payload.id)
+    if payload.timestamp:
+        metadata.setdefault("client_timestamp", payload.timestamp)
+    metadata.setdefault("ingest_source", "mobile")
+
+    return MobileTourEvent(
+        session_id=session_id,
+        event_name=event_name,
+        route_id=_clean_text(_payload_value(payload, "route_id", "routeId"), 100),
+        route_name=_clean_text(_payload_value(payload, "route_name", "routeName"), 200),
+        spot_id=_clean_text(_payload_value(payload, "spot_id", "spotId"), 100),
+        spot_name=_clean_text(_payload_value(payload, "spot_name", "spotName"), 200),
+        source_page=_clean_text(_payload_value(payload, "source_page", "sourcePage", "page"), 100),
+        duration_ms=_clean_int(_payload_value(payload, "duration_ms", "durationMs", "duration")),
+        latency_ms=_clean_int(_payload_value(payload, "latency_ms", "latencyMs", "latency")),
+        completed=_clean_bool(_payload_value(payload, "completed", "isCompleted", "done")),
+        preferences_json=_payload_dict_value(payload, "preferences", "prefs"),
+        metadata_json=metadata,
+    )
 
 
 # ── Crowd Prediction endpoints (M12) ─────────────────────────────────────────
@@ -240,6 +333,165 @@ class CrowdAlertResponse(BaseModel):
     threshold: int
     alerts: list[CrowdAlertItem]
     total_alerts: int
+
+
+@router.post("/mobile-events", response_model=MobileTourEventResponse)
+async def record_mobile_tour_event(
+    payload: MobileTourEventRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Record raw mobile tourist behavior events for admin analytics."""
+    try:
+        event = _build_mobile_tour_event(payload)
+        db.add(event)
+        await db.flush()
+        event_id = event.id
+        await db.commit()
+        return MobileTourEventResponse(id=event_id, status="ok")
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("Failed to record mobile tour event: %s", exc)
+        raise HTTPException(status_code=500, detail="mobile event record failed")
+
+
+@router.post("/mobile-events/batch", response_model=MobileTourBatchResponse)
+async def record_mobile_tour_events_batch(
+    payload: MobileTourBatchRequest | list[MobileTourEventRequest] = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Record queued mobile events in one request; invalid rows are skipped."""
+    items = payload if isinstance(payload, list) else payload.events
+    events: list[MobileTourEvent] = []
+    errors: list[dict] = []
+
+    for index, item in enumerate(items):
+        try:
+            event = _build_mobile_tour_event(item)
+        except ValueError as exc:
+            errors.append({"index": index, "message": str(exc)})
+            continue
+        db.add(event)
+        events.append(event)
+
+    try:
+        if events:
+            await db.flush()
+        ids = [event.id for event in events if event.id is not None]
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("Failed to record mobile event batch: %s", exc)
+        raise HTTPException(status_code=500, detail="mobile event batch record failed")
+
+    return MobileTourBatchResponse(
+        status="ok" if not errors else "partial",
+        inserted=len(events),
+        skipped=len(errors),
+        ids=ids,
+        errors=errors,
+    )
+
+
+@router.get("/mobile-tour-summary", response_model=MobileTourSummaryResponse)
+async def get_mobile_tour_summary(
+    days: int = Query(7, ge=1, le=90, description="统计天数"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Summarize mobile-side route, spot and interaction events for admin screens."""
+    since = datetime.utcnow() - timedelta(days=days)
+    filters = [MobileTourEvent.created_at >= since]
+
+    total_result = await db.execute(
+        select(func.count(MobileTourEvent.id)).where(*filters)
+    )
+    total_events = int(total_result.scalar() or 0)
+
+    event_count_expr = func.count(MobileTourEvent.id)
+    event_rows = await db.execute(
+        select(MobileTourEvent.event_name, event_count_expr.label("count"))
+        .where(*filters)
+        .group_by(MobileTourEvent.event_name)
+        .order_by(event_count_expr.desc())
+    )
+
+    route_count_expr = func.count(MobileTourEvent.id)
+    route_rows = await db.execute(
+        select(
+            MobileTourEvent.route_id,
+            MobileTourEvent.route_name,
+            route_count_expr.label("count"),
+        )
+        .where(*filters, MobileTourEvent.route_id.is_not(None))
+        .group_by(MobileTourEvent.route_id, MobileTourEvent.route_name)
+        .order_by(route_count_expr.desc())
+        .limit(10)
+    )
+
+    spot_count_expr = func.count(MobileTourEvent.id)
+    spot_rows = await db.execute(
+        select(
+            MobileTourEvent.spot_id,
+            MobileTourEvent.spot_name,
+            spot_count_expr.label("count"),
+        )
+        .where(*filters, MobileTourEvent.spot_id.is_not(None))
+        .group_by(MobileTourEvent.spot_id, MobileTourEvent.spot_name)
+        .order_by(spot_count_expr.desc())
+        .limit(10)
+    )
+
+    return MobileTourSummaryResponse(
+        days=days,
+        total_events=total_events,
+        event_counts=[
+            {"event_name": event_name, "count": count}
+            for event_name, count in event_rows.all()
+        ],
+        top_routes=[
+            {"route_id": route_id, "route_name": route_name, "count": count}
+            for route_id, route_name, count in route_rows.all()
+        ],
+        top_spots=[
+            {"spot_id": spot_id, "spot_name": spot_name, "count": count}
+            for spot_id, spot_name, count in spot_rows.all()
+        ],
+    )
+
+
+@router.get("/mobile-events/recent", response_model=MobileTourRecentResponse)
+async def get_recent_mobile_tour_events(
+    limit: int = Query(20, ge=1, le=100, description="返回数量"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return recent mobile tourist events for the dual-terminal admin console."""
+    result = await db.execute(
+        select(MobileTourEvent)
+        .order_by(MobileTourEvent.created_at.desc())
+        .limit(limit)
+    )
+    rows = result.scalars().all()
+    return MobileTourRecentResponse(
+        recent=[
+            MobileTourRecentEvent(
+                id=row.id,
+                session_id=row.session_id,
+                event_name=row.event_name,
+                route_id=row.route_id,
+                route_name=row.route_name,
+                spot_id=row.spot_id,
+                spot_name=row.spot_name,
+                source_page=row.source_page,
+                duration_ms=row.duration_ms,
+                latency_ms=row.latency_ms,
+                completed=row.completed,
+                created_at=row.created_at.isoformat() if row.created_at else None,
+            )
+            for row in rows
+        ]
+    )
 
 
 @router.get("/crowd", response_model=CrowdPredictionResponse)
@@ -364,33 +616,36 @@ async def get_realtime(
 
 @router.post("/report", response_model=ReportTriggerResponse)
 async def trigger_report(
-    start_date: str | None = Query(None, description="Start date YYYY-MM-DD"),
-    end_date: str | None = Query(None, description="End date YYYY-MM-DD"),
-    days: int = Query(7, ge=1, le=90, description="Look-back days"),
-    report_type: str = Query(REPORT_TYPE_SENTIMENT, description="sentiment or marketing"),
+    background_tasks: BackgroundTasks,
+    start_date: str | None = Query(None, description="开始日期 YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="结束日期 YYYY-MM-DD"),
+    days: int = Query(7, ge=1, le=90, description="默认回溯天数"),
+    report_type: str = Query(REPORT_TYPE_SENTIMENT, pattern="^(sentiment|marketing)$"),
 ):
-    """Trigger an async analytics report generation via Celery.
+    """Trigger an async analytics report generation.
 
     Use `/api/analytics/report/status/{task_id}` to poll for results.
-    New DB-backed clients should use `/api/analytics/reports/generate`.
     """
-    task = generate_report_task.delay(
+    task_id = f"local-{uuid4().hex}"
+    background_tasks.add_task(
+        generate_report_inline,
+        task_id=task_id,
         start_date=start_date,
         end_date=end_date,
         days=days,
         report_type=report_type,
     )
     return ReportTriggerResponse(
-        task_id=task.id,
+        task_id=task_id,
         status="queued",
-        message="Report generation task queued; poll the status endpoint for results.",
+        message="报告生成任务已提交，请通过 status 接口查询结果",
     )
 
 
 @router.post("/reports/generate", response_model=ReportArchiveGenerateResponse)
 async def generate_report_archive(
     background_tasks: BackgroundTasks,
-    report_type: str = Query(REPORT_TYPE_SENTIMENT, description="sentiment or marketing"),
+    report_type: str = Query(REPORT_TYPE_SENTIMENT, pattern="^(sentiment|marketing)$"),
     start_date: str | None = Query(None, description="YYYY-MM-DD"),
     end_date: str | None = Query(None, description="YYYY-MM-DD"),
     days: int = Query(7, ge=1, le=90),
@@ -420,7 +675,7 @@ async def generate_report_archive(
 
 @router.get("/reports/latest")
 async def get_latest_report(
-    report_type: str = Query(REPORT_TYPE_SENTIMENT, description="sentiment or marketing"),
+    report_type: str = Query(REPORT_TYPE_SENTIMENT, pattern="^(sentiment|marketing)$"),
     db: AsyncSession = Depends(get_db),
 ):
     """Return the latest completed DB-backed report archive."""
@@ -432,8 +687,8 @@ async def get_latest_report(
 
 @router.get("/reports", response_model=ReportArchiveListResponse)
 async def list_reports(
-    report_type: str | None = Query(None, description="sentiment or marketing"),
-    status: str | None = Query(None, description="queued, running, done or failed"),
+    report_type: str | None = Query(None, pattern="^(sentiment|marketing)$"),
+    status: str | None = Query(None, pattern="^(queued|running|done|failed)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -471,7 +726,7 @@ async def get_report_archive_status(
     report_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """Return DB-backed report generation status."""
+    """Return report generation status from DB."""
     archive = await get_report_archive_record(db, report_id)
     if not archive:
         raise HTTPException(status_code=404, detail="report not found")
@@ -503,39 +758,3 @@ async def get_heatmap(
     """Interaction heatmap by day-of-week and hour."""
     result = await heatmap_stats(db)
     return HeatmapResponse(data=result["data"])
-
-
-@router.post("/mobile-events", response_model=MobileTourEventResponse)
-async def create_mobile_tour_event(
-    request: MobileTourEventRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    """Record mobile guide lifecycle events for operations analytics."""
-    event = MobileTourEvent(
-        session_id=request.session_id,
-        event_name=request.event_name,
-        route_id=request.route_id,
-        route_name=request.route_name,
-        spot_id=request.spot_id,
-        spot_name=request.spot_name,
-        source_page=request.source_page,
-        duration_ms=request.duration_ms,
-        latency_ms=request.latency_ms,
-        completed=request.completed,
-        preferences_json=request.preferences,
-        metadata_json=request.metadata,
-    )
-    db.add(event)
-    await db.commit()
-    await db.refresh(event)
-    return {"id": event.id, "status": "ok"}
-
-
-@router.get("/mobile-tour-summary", response_model=MobileTourSummaryResponse)
-async def get_mobile_tour_summary(
-    days: int = Query(7, ge=1, le=90, description="统计天数"),
-    limit: int = Query(8, ge=1, le=50, description="榜单数量"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Mobile guide operation summary: routes, hot spots and preferences."""
-    return await mobile_tour_summary(db, days=days, limit=limit)

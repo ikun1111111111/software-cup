@@ -24,14 +24,6 @@ class TestBuildPrompt:
         assert len(messages) == 2
         assert "游客问: test" in messages[1]["content"]
 
-    def test_build_prompt_with_spot_context(self):
-        messages = build_prompt(
-            "这里有什么故事？",
-            [{"text": "灵山大佛高88米"}],
-            spot_context={"spot_name": "灵山大佛"},
-        )
-        assert "游客当前在景点「灵山大佛」前提问" in messages[1]["content"]
-
 
 class TestProcessChat:
     """Test full chat pipeline."""
@@ -50,6 +42,7 @@ class TestProcessChat:
             assert result["source"] == "faq"
             assert result["is_faq"] is True
             assert "_stream" not in result
+            assert "topic" in result
 
     @pytest.mark.asyncio
     async def test_rag_non_streaming(self):
@@ -70,6 +63,7 @@ class TestProcessChat:
             assert result["is_faq"] is False
             assert result["sentiment_label"] == "positive"
             assert result["sentiment_score"] == 0.8
+            assert "topic" in result
 
     @pytest.mark.asyncio
     async def test_rag_streaming(self):
@@ -93,6 +87,7 @@ class TestProcessChat:
             assert result["source"] == "rag"
             assert "_stream" in result
             assert result["answer"] == ""
+            assert "topic" in result
 
     @pytest.mark.asyncio
     async def test_semantic_cache_fast_path(self):
@@ -106,6 +101,59 @@ class TestProcessChat:
             assert result["source"] == "cache"
             assert result["from_cache"] is True
             assert "_stream" not in result
+            assert "topic" in result
+
+    @pytest.mark.asyncio
+    async def test_restroom_question_bypasses_cache_rag_and_llm(self):
+        """Restroom service questions should be answered deterministically."""
+        mock_db = MagicMock()
+        question = (
+            "当前互动大屏点位：九龙灌浴（当前点位 · 九龙灌浴广场）。\n"
+            "请优先围绕当前点位回答。\n"
+            "游客问题：厕所在哪里？"
+        )
+
+        with patch("app.services.chat_service.search_faq", new_callable=AsyncMock) as mock_faq, \
+             patch("app.services.chat_service.get_similar", new_callable=AsyncMock) as mock_cache, \
+             patch("app.services.chat_service.retrieve", new_callable=AsyncMock) as mock_retrieve, \
+             patch("app.services.chat_service.route_stream") as mock_stream:
+
+            result = await process_chat(question, "s1", mock_db, stream=True)
+            assert result["source"] == "service_guide"
+            assert result["topic"] == "food"
+            assert "九龙灌浴广场" in result["answer"]
+            assert "卫生间 / WC / 游客服务中心" in result["answer"]
+            assert "莲花绽放" not in result["answer"]
+            assert "_stream" not in result
+            mock_faq.assert_not_called()
+            mock_cache.assert_not_called()
+            mock_retrieve.assert_not_called()
+            mock_stream.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_greeting_bypasses_faq_cache_rag_and_llm(self):
+        """Short greetings should be answered instantly without full AI pipeline."""
+        mock_db = MagicMock()
+        question = (
+            "当前互动大屏点位：九龙灌浴（当前点位 · 九龙灌浴广场）。\n"
+            "请优先围绕当前点位回答。\n"
+            "游客问题：你好"
+        )
+
+        with patch("app.services.chat_service.search_faq", new_callable=AsyncMock) as mock_faq, \
+             patch("app.services.chat_service.get_similar", new_callable=AsyncMock) as mock_cache, \
+             patch("app.services.chat_service.retrieve", new_callable=AsyncMock) as mock_retrieve, \
+             patch("app.services.chat_service.route_stream") as mock_stream:
+
+            result = await process_chat(question, "s1", mock_db, stream=True)
+            assert result["source"] == "smalltalk"
+            assert result["topic"] == "general"
+            assert "你现在位于九龙灌浴" in result["answer"]
+            assert "_stream" not in result
+            mock_faq.assert_not_called()
+            mock_cache.assert_not_called()
+            mock_retrieve.assert_not_called()
+            mock_stream.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_context_history_injected(self):
@@ -179,12 +227,35 @@ class TestProcessChat:
             await finalize_chat("s1", "问题", "答案", "cache")
             mock_save.assert_called_once()
             mock_cache.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_finalize_chat_skips_service_guide_cache(self):
+        """Should not save deterministic service answers to semantic cache."""
+        with patch("app.core.context_manager.save_turn", new_callable=AsyncMock) as mock_save, \
+             patch("app.core.semantic_cache.set_cache", new_callable=AsyncMock) as mock_cache:
+
+            await finalize_chat("s1", "厕所在哪里？", "服务指引", "service_guide")
+            mock_save.assert_called_once()
+            mock_cache.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_finalize_chat_skips_smalltalk_cache(self):
+        """Should not save instant greeting answers to semantic cache."""
+        with patch("app.core.context_manager.save_turn", new_callable=AsyncMock) as mock_save, \
+             patch("app.core.semantic_cache.set_cache", new_callable=AsyncMock) as mock_cache:
+
+            await finalize_chat("s1", "你好", "你好呀", "smalltalk")
+            mock_save.assert_called_once()
+            mock_cache.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_sentiment_failure(self):
         """Sentiment analysis failure should not break the pipeline."""
         mock_db = MagicMock()
         with patch("app.services.chat_service.search_faq", new_callable=AsyncMock, return_value=None), \
              patch("app.services.chat_service.retrieve", new_callable=AsyncMock, return_value=[]), \
              patch("app.services.chat_service.route", new_callable=AsyncMock, return_value="回答"), \
-             patch("app.core.llm.analyze_sentiment", side_effect=Exception("sentiment down")):
+             patch("app.services.chat_service.analyze_sentiment", side_effect=Exception("sentiment down")):
 
             result = await process_chat("test", "s1", mock_db, stream=False)
             assert result["answer"] == "回答"

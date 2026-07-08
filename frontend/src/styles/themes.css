@@ -2,8 +2,6 @@
    四时主题系统 — 沉浸式意境
    ============================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600&family=Noto+Sans+SC:wght@400;500&family=Roboto+Mono&display=swap');
-
 /* ── 晨雾 Dawn (默认 06:00-10:00) ── */
 :root[data-theme="dawn"],
 :root {
@@ -82,15 +80,15 @@ body {
 
 /* ── 字体覆盖 ── */
 .font-serif {
-  font-family: 'Noto Serif SC', 'Songti SC', serif;
+  font-family: 'Songti SC', 'STSong', 'SimSun', serif;
 }
 
 .font-sans {
-  font-family: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-family: 'PingFang SC', 'Microsoft YaHei', 'Heiti SC', sans-serif;
 }
 
 .font-mono-data {
-  font-family: 'Roboto Mono', 'DM Mono', monospace;
+  font-family: 'Cascadia Mono', 'Consolas', monospace;
   font-variant-numeric: tabular-nums;
 }
 

@@ -90,4 +90,55 @@ export const useVoiceRecord = (): VoiceRecordReturn => {
   };
 };
 
+/**
+ * Convert an audio Blob (e.g. WebM/Opus from MediaRecorder) to a 16kHz mono WAV Blob.
+ * The ASR endpoint expects 16kHz 16bit mono WAV.
+ */
+export async function convertBlobToWav(blob: Blob): Promise<Blob> {
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioCtx = new AudioContext();
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  await audioCtx.close();
+
+  const targetSampleRate = 16000;
+  const numFrames = Math.max(1, Math.round(audioBuffer.duration * targetSampleRate));
+  const offlineCtx = new OfflineAudioContext(1, numFrames, targetSampleRate);
+  const source = offlineCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(offlineCtx.destination);
+  source.start();
+  const rendered = await offlineCtx.startRendering();
+
+  const channelData = rendered.getChannelData(0);
+  const wavBuffer = new ArrayBuffer(44 + channelData.length * 2);
+  const view = new DataView(wavBuffer);
+
+  const writeString = (offset: number, string: string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + channelData.length * 2, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, targetSampleRate, true);
+  view.setUint32(28, targetSampleRate * 2, true); // byte rate
+  view.setUint16(32, 2, true); // block align
+  view.setUint16(34, 16, true); // bits per sample
+  writeString(36, 'data');
+  view.setUint32(40, channelData.length * 2, true);
+
+  for (let i = 0; i < channelData.length; i++) {
+    const s = Math.max(-1, Math.min(1, channelData[i]));
+    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+
+  return new Blob([wavBuffer], { type: 'audio/wav' });
+}
+
 export default useVoiceRecord;

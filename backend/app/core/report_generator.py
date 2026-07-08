@@ -3,18 +3,21 @@
 Aggregates interaction data and produces a natural-language report
 via Qwen-Long (or fallback to DeepSeek).
 """
+import asyncio
+import copy
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Sequence
+from typing import Sequence
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.analytics import mobile_tour_summary
 from app.core.llm_router import LLMTask, route
 from app.models.interaction import InteractionLog
+from app.services.behavior_analytics import marketing_analysis
 
 logger = logging.getLogger(__name__)
+REPORT_LLM_TIMEOUT_SECONDS = 20
 
 
 # ── Data aggregation helpers ─────────────────────────────────────────────────
@@ -144,81 +147,6 @@ def _build_report_prompt(stats: dict, sample_interactions: list[dict]) -> list[d
 # ── Public API ───────────────────────────────────────────────────────────────
 
 
-def _format_marketing_list(items: list[dict[str, Any]], name_key: str, metric_key: str) -> str:
-    lines = []
-    for index, item in enumerate(items[:8], 1):
-        name = item.get(name_key) or item.get("route_id") or item.get("spot_id") or "unknown"
-        metric = item.get(metric_key, 0)
-        lines.append(f"{index}. {name} ({metric_key}: {metric})")
-    return "\n".join(lines) if lines else "No data"
-
-
-def _build_marketing_report_prompt(stats: dict[str, Any]) -> list[dict]:
-    routes_text = _format_marketing_list(stats.get("routes", []), "route_name", "starts")
-    spots_text = _format_marketing_list(stats.get("hot_spots", []), "spot_name", "event_count")
-    preferences = stats.get("preference_distribution") or {}
-    pref_text = "\n".join(f"- {key}: {value}" for key, value in preferences.items()) or "No data"
-
-    system_msg = (
-        "You are a tourism operations analyst. Create a concise marketing decision "
-        "report from mobile guide usage data. Include: 1) demand signal, "
-        "2) high-potential routes or spots, 3) user preference insight, "
-        "4) 2-3 actionable campaign suggestions. Keep it practical."
-    )
-    user_msg = f"""Mobile guide operation summary:
-- Period: last {stats.get('days', 7)} days
-- Total events: {stats.get('total_events', 0)}
-- Active sessions: {stats.get('active_sessions', 0)}
-- Route starts: {stats.get('route_starts', 0)}
-- Route completions: {stats.get('route_completions', 0)}
-- Route completion rate: {stats.get('route_completion_rate', 0):.1%}
-
-Top routes:
-{routes_text}
-
-Hot spots:
-{spots_text}
-
-Preference distribution:
-{pref_text}
-"""
-    return [
-        {"role": "system", "content": system_msg},
-        {"role": "user", "content": user_msg},
-    ]
-
-
-async def generate_marketing_report(
-    db: AsyncSession,
-    days: int = 7,
-) -> dict:
-    """Generate a mobile-guide marketing decision report."""
-    now = datetime.utcnow()
-    stats = await mobile_tour_summary(db, days=days, limit=8)
-    messages = _build_marketing_report_prompt(stats)
-
-    try:
-        report_text = await route(LLMTask.summary, messages=messages)
-    except Exception as e:
-        logger.error("LLM marketing report generation failed: %s", e)
-        report_text = (
-            "## Marketing Decision Report\n\n"
-            f"- Period: last {stats.get('days', days)} days\n"
-            f"- Active sessions: {stats.get('active_sessions', 0)}\n"
-            f"- Route starts: {stats.get('route_starts', 0)}\n"
-            f"- Route completions: {stats.get('route_completions', 0)}\n"
-            f"- Completion rate: {stats.get('route_completion_rate', 0):.1%}\n\n"
-            "LLM summary unavailable; use the attached operation stats for decisions."
-        )
-
-    return {
-        "content": report_text.strip(),
-        "stats": stats,
-        "generated_at": now.isoformat(),
-        "period": f"last {stats.get('days', days)} days",
-    }
-
-
 async def generate_report(
     db: AsyncSession,
     start_date: datetime | None = None,
@@ -261,7 +189,21 @@ async def generate_report(
     # 3. Build prompt and call LLM
     messages = _build_report_prompt(stats, sample_data)
     try:
-        report_text = await route(LLMTask.summary, messages=messages)
+        report_text = await asyncio.wait_for(
+            route(LLMTask.summary, messages=messages),
+            timeout=REPORT_LLM_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("LLM report generation timed out after %s seconds", REPORT_LLM_TIMEOUT_SECONDS)
+        report_text = (
+            f"## 游客感受度报告（自动生成）\n\n"
+            f"**统计周期**: {start_date.date()} ~ {end_date.date()}\n\n"
+            f"**总交互次数**: {stats['total_interactions']}\n"
+            f"**FAQ 命中率**: {stats['faq_hit_rate']:.1%}\n"
+            f"**平均情感得分**: {stats['avg_sentiment_score']:.2f}\n"
+            f"**平均响应延迟**: {stats['avg_latency_ms']:.0f} ms\n\n"
+            f"_AI 总结超时，已切换为本地统计摘要。_"
+        )
     except Exception as e:
         logger.error("LLM report generation failed: %s", e)
         # Fallback: return a structured template with stats only
@@ -281,4 +223,42 @@ async def generate_report(
         "stats": stats,
         "generated_at": now.isoformat(),
         "period": period_str,
+    }
+
+
+async def generate_marketing_report(db: AsyncSession, marketing: dict | None = None) -> dict:
+    now = datetime.utcnow()
+    if marketing is None:
+        marketing = await marketing_analysis(db)
+    stats = copy.deepcopy(marketing)
+    stats.pop("report", None)
+    persona = marketing["persona"]
+    route = marketing.get("recommended_route")
+    risk_spots = marketing.get("risk_spots", [])
+    suggestions = marketing.get("suggestions", [])
+
+    route_text = "暂无足够路线流转样本"
+    if route:
+        route_text = f"{route['source']} → {route['target']}（样本 {route['value']} 次）"
+
+    risk_text = "暂无明显低满意度风险点"
+    if risk_spots:
+        risk_text = "、".join(f"{item['name']}({item['avg_satisfaction']})" for item in risk_spots[:5])
+
+    content = "\n".join(
+        [
+            "## 游客营销决策建议",
+            "",
+            f"- 核心客群：{persona['label']}，人均消费 {persona['avg_cost']} 元，平均停留 {persona['avg_stay_duration']} 分钟。",
+            f"- 推荐动线：{route_text}。",
+            f"- 风险景点：{risk_text}。",
+            *[f"- {item}" for item in suggestions],
+        ]
+    )
+
+    return {
+        "content": content,
+        "stats": stats,
+        "generated_at": now.isoformat(),
+        "period": "全部行为数据",
     }

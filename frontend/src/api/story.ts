@@ -1,18 +1,26 @@
 import request from './request';
+import type { Emotion } from '../components/DigitalHuman/EmotionController';
 
-export interface StoryResult {
-  spot_name: string;
-  story: string;
-  emotion: string;
-  knowledge_chunks: { text: string; score: number }[];
+export interface StoryAct {
+  id: string;
+  title: string;
+  narration: string;
+  emotion: Emotion;
+  act_image?: string;
+  prompt_hint?: string;
 }
 
-/**
- * Get a storytelling narration for a scenic spot.
- */
-export async function getStory(spotName: string): Promise<StoryResult> {
+export interface StoryResult {
+  spot_id: string;
+  spot_name: string;
+  description: string;
+  acts: StoryAct[];
+}
+
+export async function getStory(spotId: string, options?: { timeoutMs?: number }): Promise<StoryResult> {
   const response = await request.get<StoryResult>(
-    `/story/${encodeURIComponent(spotName)}`,
+    `/story/${encodeURIComponent(spotId)}`,
+    { timeout: options?.timeoutMs ?? 10000 },
   );
   return (response as any).data;
 }

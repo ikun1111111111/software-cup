@@ -3,13 +3,12 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select, desc, cast, Date, Integer, case
+from sqlalchemy import func, select, desc, cast, Date, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.interaction import InteractionLog
 from app.models.knowledge import KnowledgeDoc, FaqEntry, DocStatus
 from app.models.tourist import TouristProfile
-from app.models.mobile_event import MobileTourEvent
 
 logger = logging.getLogger(__name__)
 
@@ -147,8 +146,6 @@ async def trend_stats(db: AsyncSession, days: int = 7) -> dict:
         # Build sentiment ratio map: date -> {positive, neutral, negative}
         sentiment_map: dict[str, dict[str, int]] = {}
         for row in sentiment_rows:
-            if not hasattr(row, "sentiment_label"):
-                continue
             d = str(row.date)
             if d not in sentiment_map:
                 sentiment_map[d] = {"positive": 0, "neutral": 0, "negative": 0}
@@ -384,150 +381,3 @@ async def realtime_logs(db: AsyncSession, limit: int = 20) -> dict:
     except Exception as e:
         logger.warning("realtime_logs failed: %s", e)
         return {"recent": []}
-
-
-async def mobile_tour_summary(db: AsyncSession, days: int = 7, limit: int = 8) -> dict:
-    """Return tour-operation aggregates from mobile-side guide events."""
-    try:
-        since = datetime.utcnow() - timedelta(days=days)
-
-        total_result = await db.execute(
-            select(func.count(MobileTourEvent.id)).where(MobileTourEvent.created_at >= since)
-        )
-        total_events = total_result.scalar() or 0
-
-        session_result = await db.execute(
-            select(func.count(func.distinct(MobileTourEvent.session_id))).where(
-                MobileTourEvent.created_at >= since
-            )
-        )
-        active_sessions = session_result.scalar() or 0
-
-        start_result = await db.execute(
-            select(func.count(func.distinct(MobileTourEvent.session_id))).where(
-                MobileTourEvent.created_at >= since,
-                MobileTourEvent.event_name == "tour_started",
-            )
-        )
-        route_starts = start_result.scalar() or 0
-
-        complete_result = await db.execute(
-            select(func.count(func.distinct(MobileTourEvent.session_id))).where(
-                MobileTourEvent.created_at >= since,
-                MobileTourEvent.event_name == "route_completed",
-            )
-        )
-        route_completions = complete_result.scalar() or 0
-        route_completion_rate = round(route_completions / route_starts, 4) if route_starts else 0.0
-
-        route_stmt = (
-            select(
-                MobileTourEvent.route_id,
-                func.max(MobileTourEvent.route_name).label("route_name"),
-                func.sum(case((MobileTourEvent.event_name == "tour_started", 1), else_=0)).label("starts"),
-                func.sum(case((MobileTourEvent.event_name == "route_completed", 1), else_=0)).label("completions"),
-            )
-            .where(MobileTourEvent.created_at >= since)
-            .where(MobileTourEvent.route_id.isnot(None))
-            .group_by(MobileTourEvent.route_id)
-            .order_by(desc(func.sum(case((MobileTourEvent.event_name == "tour_started", 1), else_=0))))
-            .limit(limit)
-        )
-        route_rows = (await db.execute(route_stmt)).all()
-        routes = []
-        for row in route_rows:
-            starts = int(row.starts or 0)
-            completions = int(row.completions or 0)
-            routes.append({
-                "route_id": row.route_id,
-                "route_name": row.route_name or row.route_id,
-                "starts": starts,
-                "completions": completions,
-                "completion_rate": round(completions / starts, 4) if starts else 0.0,
-            })
-
-        spot_stmt = (
-            select(
-                MobileTourEvent.spot_id,
-                func.max(MobileTourEvent.spot_name).label("spot_name"),
-                func.count(MobileTourEvent.id).label("event_count"),
-            )
-            .where(MobileTourEvent.created_at >= since)
-            .where(MobileTourEvent.spot_id.isnot(None))
-            .where(MobileTourEvent.event_name.in_(["spot_arrived", "narration_played", "memory_created"]))
-            .group_by(MobileTourEvent.spot_id)
-            .order_by(desc(func.count(MobileTourEvent.id)))
-            .limit(limit)
-        )
-        spot_rows = (await db.execute(spot_stmt)).all()
-        hot_spots = [
-            {
-                "spot_id": row.spot_id,
-                "spot_name": row.spot_name or row.spot_id,
-                "event_count": int(row.event_count or 0),
-            }
-            for row in spot_rows
-        ]
-
-        pref_rows = (await db.execute(
-            select(MobileTourEvent.preferences_json)
-            .where(MobileTourEvent.created_at >= since)
-            .where(MobileTourEvent.preferences_json.isnot(None))
-        )).scalars().all()
-        preference_distribution: dict[str, int] = {}
-        for prefs in pref_rows:
-            if not isinstance(prefs, dict):
-                continue
-            mode = prefs.get("mode")
-            speed = prefs.get("narrationSpeed")
-            if mode:
-                preference_distribution[f"mode:{mode}"] = preference_distribution.get(f"mode:{mode}", 0) + 1
-            if speed:
-                preference_distribution[f"speed:{speed}"] = preference_distribution.get(f"speed:{speed}", 0) + 1
-            if prefs.get("dndMode"):
-                preference_distribution["dnd:on"] = preference_distribution.get("dnd:on", 0) + 1
-
-        recent_rows = (await db.execute(
-            select(MobileTourEvent)
-            .where(MobileTourEvent.created_at >= since)
-            .order_by(desc(MobileTourEvent.created_at))
-            .limit(limit)
-        )).scalars().all()
-        recent_events = [
-            {
-                "session_id": row.session_id,
-                "event_name": row.event_name,
-                "route_name": row.route_name,
-                "spot_name": row.spot_name,
-                "source_page": row.source_page,
-                "created_at": row.created_at.isoformat() if row.created_at else None,
-            }
-            for row in recent_rows
-        ]
-
-        return {
-            "days": days,
-            "total_events": total_events,
-            "active_sessions": active_sessions,
-            "route_starts": route_starts,
-            "route_completions": route_completions,
-            "route_completion_rate": min(route_completion_rate, 1.0),
-            "routes": routes,
-            "hot_spots": hot_spots,
-            "preference_distribution": preference_distribution,
-            "recent_events": recent_events,
-        }
-    except Exception as e:
-        logger.warning("mobile_tour_summary failed: %s", e)
-        return {
-            "days": days,
-            "total_events": 0,
-            "active_sessions": 0,
-            "route_starts": 0,
-            "route_completions": 0,
-            "route_completion_rate": 0.0,
-            "routes": [],
-            "hot_spots": [],
-            "preference_distribution": {},
-            "recent_events": [],
-        }

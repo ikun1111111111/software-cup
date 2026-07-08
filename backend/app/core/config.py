@@ -1,10 +1,16 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
     app_name: str = "Smart Tourism Digital Human"
     debug: bool = True
+
+    # Auth
+    jwt_secret_key: str = "smart-tourism-dev-secret"
+    jwt_access_token_expire_minutes: int = 60 * 24 * 7
 
     # Database
     db_host: str = "localhost"
@@ -57,6 +63,7 @@ class Settings(BaseSettings):
 
     doubao_api_key: str = ""
     doubao_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
+    amap_web_service_key: str = ""
 
     # Model names
     llm_default_model: str = "deepseek-chat"        # DeepSeek-V3
@@ -67,16 +74,10 @@ class Settings(BaseSettings):
     # Whisper
     whisper_model: str = "medium"  # tiny/base/small/medium/large
     whisper_device: str = "cpu"    # cpu / cuda
-    preload_asr_on_startup: bool = False
 
     # CosyVoice
     cosyvoice_endpoint: str = "http://localhost:5001"
     tts_stream_chunk_size: int = 4096  # bytes per SSE chunk
-
-    # Azure Speech Services (TTS)
-    azure_speech_key: str = ""
-    azure_speech_region: str = "eastasia"  # eastasia, japaneast, etc.
-    tts_provider: str = "edge"  # "edge" | "azure"
 
     # TTS Voice presets: voice_id -> edge-tts voice mapping
     tts_voices: dict = {
@@ -86,9 +87,6 @@ class Settings(BaseSettings):
         "male": {"speaker_id": "zh-CN-YunxiNeural", "description": "普通话男声"},
         "female": {"speaker_id": "zh-CN-XiaoyiNeural", "description": "普通话年轻女声"},
     }
-
-    # JWT
-    jwt_secret_key: str = "dev-secret-key-change-in-production"
 
     # RAG
     chunk_size: int = 512
@@ -100,23 +98,13 @@ class Settings(BaseSettings):
 
     # Semantic cache
     semantic_cache_model: str = "BAAI/bge-small-zh-v1.5"
-    semantic_cache_similarity_threshold: float = 0.90
+    semantic_cache_similarity_threshold: float = 0.97
     semantic_cache_max_entries: int = 1000
     semantic_cache_ttl: int = 3600  # 1 hour
 
     # Context management
     context_max_rounds: int = 5
     context_ttl: int = 86400  # 24 hours
-
-    # Rate limiting
-    rate_limit_enabled: bool = True
-    rate_limit_requests: int = 60  # 每窗口最大请求数
-    rate_limit_window: int = 60  # 窗口秒数
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-
 
 @lru_cache()
 def get_settings() -> Settings:

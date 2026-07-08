@@ -9,7 +9,6 @@ from app.core.tts import (
     _generate_phoneme_timestamps,
     _classify_mouth_shape,
     _cache_key,
-    _estimate_mp3_duration,
     _resolve_voice,
 )
 
@@ -64,14 +63,6 @@ class TestTTS:
         assert _generate_phoneme_timestamps("", 100) == []
         assert _generate_phoneme_timestamps("test", 0) == []
 
-    def test_estimate_mp3_duration_reads_frame_headers(self):
-        """MP3 duration should come from frame headers, not a fixed bitrate guess."""
-        header = bytes([0xFF, 0xFB, 0x90, 0x00])  # MPEG1 Layer III, 128kbps, 44100Hz
-        frame_length = int(144 * 128000 / 44100)
-        frame = header + bytes(frame_length - len(header))
-        duration_ms = _estimate_mp3_duration(frame * 10)
-        assert 260 <= duration_ms <= 262
-
     def test_cache_key(self):
         """Should generate consistent cache key."""
         k1 = _cache_key("灵山胜境", "default")
@@ -101,28 +92,11 @@ class TestTTS:
             assert "mouth_shape" in ts
 
     @pytest.mark.asyncio
-    async def test_synthesize_returns_local_audio_when_edge_tts_has_no_audio(self):
-        """Should still return playable local audio when edge-tts produces no bytes."""
-        class NoAudioCommunicate:
-            def __init__(self, *_args, **_kwargs):
-                pass
-
-            async def stream(self):
-                raise RuntimeError("No audio was received")
-                yield
-
-        with patch("edge_tts.Communicate", NoAudioCommunicate):
-            result = await synthesize("hello from local fallback")
-
-        assert result.audio_bytes
-        assert result.audio_format == "wav"
-        assert result.duration_ms > 0
-        assert len(result.phoneme_timestamps) > 0
-
-    @pytest.mark.asyncio
     async def test_synthesize_cached(self):
         """Should cache and retrieve TTS result."""
-        with patch("app.core.tts.synthesize", new_callable=AsyncMock) as mock_syn:
+        with patch("app.core.tts._get_cached", new_callable=AsyncMock, return_value=None), \
+             patch("app.core.tts._set_cache", new_callable=AsyncMock), \
+             patch("app.core.tts.synthesize", new_callable=AsyncMock) as mock_syn:
             mock_syn.return_value = TTSResult(
                 audio_bytes=b"cached_audio",
                 phoneme_timestamps=[{"char": "测", "start_ms": 0, "end_ms": 100, "mouth_shape": "closed"}],

@@ -33,8 +33,6 @@ async def seed_spots(session, data: dict) -> int:
             detail=item.get("detail", ""),
             qr_code=item.get("qr_code"),
             related_spots=item.get("related_spots", []),
-            latitude=item.get("latitude"),
-            longitude=item.get("longitude"),
         )
         stmt = select(ScenicSpot).where(ScenicSpot.id == spot.id)
         result = await session.execute(stmt)
@@ -47,8 +45,6 @@ async def seed_spots(session, data: dict) -> int:
             existing.detail = spot.detail
             existing.qr_code = spot.qr_code
             existing.related_spots = spot.related_spots
-            existing.latitude = spot.latitude
-            existing.longitude = spot.longitude
         else:
             session.add(spot)
         count += 1
@@ -60,35 +56,29 @@ async def seed_routes(session, data: dict) -> int:
     from sqlalchemy import select
     count = 0
     for item in data["routes"]:
-        # 先按 id 查找，再按 name 查找（兼容旧数据）
-        stmt = select(TourRoute).where(
-            (TourRoute.id == item["id"]) | (TourRoute.name == item["name"])
+        route = TourRoute(
+            id=item["id"],
+            name=item["name"],
+            route_type=item["type"],
+            duration=item["duration"],
+            description=item.get("description", ""),
+            gradient=item.get("gradient"),
+            spot_order=item.get("spot_order", []),
+            spot_details=item.get("spot_details"),
         )
+        stmt = select(TourRoute).where(TourRoute.id == route.id)
         result = await session.execute(stmt)
         existing = result.scalar_one_or_none()
         if existing:
-            existing.id = item["id"]
-            existing.name = item["name"]
-            existing.route_type = item["type"]
-            existing.duration = item["duration"]
-            existing.description = item.get("description", "")
-            existing.gradient = item.get("gradient")
-            existing.spot_order = item.get("spot_order", [])
-            existing.spot_details = item.get("spot_details")
-            await session.flush()
+            existing.name = route.name
+            existing.route_type = route.route_type
+            existing.duration = route.duration
+            existing.description = route.description
+            existing.gradient = route.gradient
+            existing.spot_order = route.spot_order
+            existing.spot_details = route.spot_details
         else:
-            route = TourRoute(
-                id=item["id"],
-                name=item["name"],
-                route_type=item["type"],
-                duration=item["duration"],
-                description=item.get("description", ""),
-                gradient=item.get("gradient"),
-                spot_order=item.get("spot_order", []),
-                spot_details=item.get("spot_details"),
-            )
             session.add(route)
-            await session.flush()
         count += 1
     return count
 

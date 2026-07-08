@@ -39,16 +39,16 @@ class VectorStore:
         schema.add_field("id", DataType.VARCHAR, max_length=200, is_primary=True)
         schema.add_field("doc_id", DataType.INT64)
         schema.add_field("chunk_index", DataType.INT32)
+        schema.add_field("topic", DataType.VARCHAR, max_length=50, nullable=True)
         schema.add_field("text", DataType.VARCHAR, max_length=65535)
         schema.add_field("embedding", DataType.FLOAT_VECTOR, dim=dim)
 
         index_params = cli.prepare_index_params()
-        # HNSW索引：在高召回和检索速度之间取得平衡，比IVF_FLAT更稳定
         index_params.add_index(
             "embedding",
-            index_type="HNSW",
+            index_type="IVF_FLAT",
             metric_type="COSINE",
-            params={"M": 16, "efConstruction": 200},
+            params={"nlist": 128},
         )
 
         cli.create_collection(
@@ -66,6 +66,7 @@ class VectorStore:
         doc_id: int,
         chunks: list[dict],
         embeddings: list[list[float]] | None = None,
+        topic: str | None = None,
     ) -> list[str]:
         """Insert chunks with optional pre-computed embeddings.
 
@@ -73,6 +74,7 @@ class VectorStore:
             doc_id: The knowledge document ID.
             chunks: List of chunk dicts with at least 'chunk_index' and 'chunk_text'.
             embeddings: Optional pre-computed embeddings. If None, they will be generated.
+            topic: Optional topic tag applied to all chunks.
 
         Returns:
             List of inserted embedding IDs.
@@ -91,10 +93,13 @@ class VectorStore:
         for chunk, emb in zip(chunks, embeddings):
             eid = self._make_id(doc_id, chunk["chunk_index"])
             ids.append(eid)
+            # Prefer per-chunk topic, fallback to document-level topic
+            chunk_topic = chunk.get("topic") if isinstance(chunk, dict) else None
             data.append({
                 "id": eid,
                 "doc_id": doc_id,
                 "chunk_index": chunk["chunk_index"],
+                "topic": chunk_topic or topic or "",
                 "text": chunk["chunk_text"],
                 "embedding": emb,
             })
@@ -110,21 +115,22 @@ class VectorStore:
         query_embedding: list[float],
         top_k: int = 10,
         output_fields: list[str] | None = None,
+        topic: str | None = None,
     ) -> list[dict]:
-        """Vector search with HNSW ef tuned for better recall."""
+        """Vector search with optional topic filter."""
         if output_fields is None:
-            output_fields = ["id", "doc_id", "chunk_index", "text"]
+            output_fields = ["id", "doc_id", "chunk_index", "text", "topic"]
 
-        # HNSW搜索参数：ef越大召回越高，但速度越慢
-        search_params = {"metric_type": "COSINE", "params": {"ef": max(top_k, 64)}}
+        search_params: dict[str, Any] = {
+            "collection_name": self.collection_name,
+            "data": [query_embedding],
+            "limit": top_k,
+            "output_fields": output_fields,
+        }
+        if topic:
+            search_params["filter"] = f'topic == "{topic}"'
 
-        results = self.client.search(
-            collection_name=self.collection_name,
-            data=[query_embedding],
-            limit=top_k,
-            output_fields=output_fields,
-            search_params=search_params,
-        )
+        results = self.client.search(**search_params)
         return results[0] if results else []
 
     def delete_by_doc_id(self, doc_id: int) -> int:
