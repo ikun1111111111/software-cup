@@ -74,6 +74,12 @@ class Settings(BaseSettings):
     # Whisper
     whisper_model: str = "medium"  # tiny/base/small/medium/large
     whisper_device: str = "cpu"    # cpu / cuda
+    preload_asr_on_startup: bool = False
+
+    # Rate limiting
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 60  # 每窗口最大请求数
+    rate_limit_window: int = 60  # 窗口秒数
 
     # CosyVoice
     cosyvoice_endpoint: str = "http://localhost:5001"

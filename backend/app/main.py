@@ -5,6 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.routing import WebSocketRoute
 from app.core.config import get_settings
 from app.core.database import init_db
+from app.core.rate_limiter import RateLimitMiddleware
+from app.core.metrics import MetricsMiddleware, metrics_endpoint
 # Import all models so they register with Base.metadata before init_db()
 import app.models  # noqa: F401
 # from app.core.rag import init_collection  # replaced by vector_store
@@ -48,7 +50,15 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass  # Model may not be cached locally; semantic cache will be skipped
 
-    # 5. Daily DB-backed report archive generation at 18:00 Asia/Shanghai
+    # 5. ASR is large; load it lazily in dev unless explicitly requested.
+    if settings.preload_asr_on_startup:
+        try:
+            from app.core.asr import init_asr_model
+            await init_asr_model()
+        except Exception:
+            pass  # ASR model may not be available
+
+    # 6. Daily DB-backed report archive generation at 18:00 Asia/Shanghai
     try:
         from app.services.report_scheduler import start_report_scheduler
         report_scheduler_task, report_scheduler_stop = start_report_scheduler()
@@ -69,17 +79,63 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — allow frontend dev server
+# CORS — 显式列出所有允许的源（含移动端局域网部署）
+import re
+import socket
+try:
+    _hostname = socket.gethostname()
+    _local_ip = socket.gethostbyname(_hostname)
+except Exception:
+    _local_ip = "localhost"
+
+_dev_origin_regex = (
+    rf"^http://("
+    rf"localhost|127\.0\.0\.1|{re.escape(_local_ip)}|"
+    rf"10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|"
+    rf"172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+"
+    rf"):\d+$"
+)
+
+_cors_origins = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175",
+    "http://localhost:5273",
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "http://localhost:8081",
+    "http://localhost:8082",
+    "http://localhost:8083",
+    "http://localhost:8084",
+    "http://localhost:8085",
+    "http://localhost:8086",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:8081",
+    "http://127.0.0.1:8083",
+    "http://127.0.0.1:8086",
+    f"http://{_local_ip}:8000",
+    f"http://{_local_ip}:8081",
+    f"http://{_local_ip}:8083",
+    f"http://{_local_ip}:8086",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5273", "http://localhost:3000", "http://127.0.0.1:8000", "http://localhost:8000"],
+    allow_origins=_cors_origins,
+    allow_origin_regex=_dev_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Global rate limiting (Redis sliding window)
+app.add_middleware(RateLimitMiddleware)
+
+# Prometheus-style metrics collection
+app.add_middleware(MetricsMiddleware)
+
 # Include API routers
-from app.api import admin, behavior, chat, ws, knowledge, upload, recommend, analytics, avatar, tts, offline, vision, story, room, push, spots, routes_api, vision_room, chat_role, history, zen, puzzle, asr, pois, shows, auth, tour  # noqa: E402
+from app.api import admin, behavior, chat, ws, knowledge, upload, recommend, analytics, avatar, tts, offline, vision, story, room, push, spots, routes_api, vision_room, chat_role, history, zen, puzzle, asr, pois, shows, auth, tour, memory, guide  # noqa: E402
 
 app.include_router(admin.router)
 app.include_router(behavior.router)
@@ -109,6 +165,8 @@ app.include_router(chat_role.router)
 app.include_router(history.router)
 app.include_router(zen.router)
 app.include_router(puzzle.router)
+app.include_router(memory.router)
+app.include_router(guide.router)
 
 # Register room WebSocket via Starlette native WebSocketRoute
 # to avoid FastAPI APIWebSocketRoute + Starlette 1.2.1 incompatibility
@@ -130,3 +188,9 @@ async def api_health():
         "app": settings.app_name,
         "version": "1.0.0",
     }
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    return await metrics_endpoint()

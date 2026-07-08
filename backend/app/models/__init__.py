@@ -7,6 +7,7 @@ from app.models.user import User
 from app.models.mobile_event import MobileTourEvent
 from app.models.tour_session import TourSession
 from app.models.report_archive import ReportArchive
+from app.models.memory import TravelMemory, JourneySummary
 
 __all__ = [
     "KnowledgeDoc",
@@ -25,4 +26,6 @@ __all__ = [
     "MobileTourEvent",
     "TourSession",
     "ReportArchive",
+    "TravelMemory",
+    "JourneySummary",
 ]
