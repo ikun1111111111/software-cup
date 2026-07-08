@@ -1,4 +1,4 @@
-import React, { Suspense, createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useGuideSpeech } from '../../hooks/useGuideSpeech';
 import { useCostume } from '../../hooks/useCostume';
 import type { Emotion } from '../DigitalHuman/EmotionController';
@@ -50,6 +50,11 @@ const POSE_CONFIG: Record<DigitalHumanPose, { left: string; bottom: string; scal
   right: { left: '82%', bottom: '6%', scale: 1.05, headAngleX: -8 },
 };
 
+const getViewportSize = () => ({
+  width: typeof window === 'undefined' ? 1440 : window.innerWidth,
+  height: typeof window === 'undefined' ? 900 : window.innerHeight,
+});
+
 export const DigitalHumanProvider: React.FC<DigitalHumanProviderProps> = ({
   children,
   pose = 'center',
@@ -64,11 +69,64 @@ export const DigitalHumanProvider: React.FC<DigitalHumanProviderProps> = ({
   const [isModelReady, setIsModelReady] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
   const [shouldMountModel, setShouldMountModel] = useState(false);
+  const [viewportSize, setViewportSize] = useState(getViewportSize);
+  const resizeFrameRef = useRef<number | null>(null);
 
   const handleModelReady = useCallback(() => {
     setIsModelReady(true);
     setModelError(null);
   }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (resizeFrameRef.current !== null) return;
+      resizeFrameRef.current = window.requestAnimationFrame(() => {
+        resizeFrameRef.current = null;
+        setViewportSize(getViewportSize());
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+      if (resizeFrameRef.current !== null) {
+        window.cancelAnimationFrame(resizeFrameRef.current);
+      }
+    };
+  }, []);
+
+  const responsiveConfig = useMemo(() => {
+    const shortViewport = viewportSize.height <= 820;
+    const veryShortViewport = viewportSize.height <= 720;
+    const mediumViewport = viewportSize.width <= 1180;
+    const narrowViewport = viewportSize.width <= 820;
+
+    if (effectivePose === 'kiosk-stage') {
+      const ultraShortViewport = viewportSize.height <= 680;
+      const scaleRatio = ultraShortViewport ? 0.72 : veryShortViewport ? 0.84 : shortViewport ? 0.9 : mediumViewport ? 0.96 : 1;
+      return {
+        ...config,
+        bottom: ultraShortViewport ? '-5%' : veryShortViewport ? '1.5%' : shortViewport ? '2.5%' : config.bottom,
+        left: narrowViewport ? '50%' : config.left,
+        scale: config.scale * scaleRatio,
+      };
+    }
+
+    if (effectivePose === 'route-stage') {
+      const scaleRatio = veryShortViewport ? 0.82 : shortViewport ? 0.9 : mediumViewport ? 0.95 : 1;
+      return {
+        ...config,
+        bottom: shortViewport ? '2%' : config.bottom,
+        left: narrowViewport ? '28%' : config.left,
+        scale: config.scale * scaleRatio,
+      };
+    }
+
+    return config;
+  }, [config, effectivePose, viewportSize.height, viewportSize.width]);
 
   const handleModelError = useCallback((message: string) => {
     setIsModelReady(false);
@@ -141,11 +199,11 @@ export const DigitalHumanProvider: React.FC<DigitalHumanProviderProps> = ({
             phonemes={guide.phonemes}
             characterName="小景"
             characterStatus="在线"
-            characterLeft={config.left}
-            characterBottom={config.bottom}
-            characterScale={config.scale}
+            characterLeft={responsiveConfig.left}
+            characterBottom={responsiveConfig.bottom}
+            characterScale={responsiveConfig.scale}
             isMobile={false}
-            headAngleX={config.headAngleX}
+            headAngleX={responsiveConfig.headAngleX}
             hideBackground={hideSceneBackground}
             onReady={handleModelReady}
             onError={handleModelError}
