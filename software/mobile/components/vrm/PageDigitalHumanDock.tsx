@@ -13,7 +13,7 @@ const SPEECH_BUBBLE_VISIBLE_MS = 3000;
 const DOCK_VISUAL_OFFSET_Y = 56;
 
 export type PageDigitalHumanDockDriver = Pick<DigitalHumanDriver,
-  'action' | 'actionDurationMs' | 'activate' | 'expression' | 'headRotation' | 'isSpeaking' | 'mouthOpen' | 'speak' | 'speechText' | 'subtitle'
+  'action' | 'actionDurationMs' | 'activate' | 'expression' | 'headRotation' | 'isSpeaking' | 'mouthOpen' | 'speak' | 'subtitle'
 >;
 
 export interface PageDigitalHumanDockProps {
@@ -27,7 +27,7 @@ export function PageDigitalHumanDock({
 }: PageDigitalHumanDockProps) {
   const insets = useSafeAreaInsets();
   const bottom = insets.bottom + (Platform.OS === 'web' ? 0 : 72);
-  const displayText = digitalHuman.speechText?.trim() || digitalHuman.subtitle?.trim() || idleText;
+  const displayText = digitalHuman.subtitle?.trim() || idleText;
   const [speechBubbleVisible, setSpeechBubbleVisible] = useState(true);
 
   useEffect(() => {
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   },
   speechBubble: {
     position: 'absolute',
-    right: 136,
+    right: 131,
     bottom: 220,
     width: 156,
     minHeight: 68,
