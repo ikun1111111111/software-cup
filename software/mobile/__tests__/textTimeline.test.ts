@@ -234,9 +234,11 @@ describe('ExpressionPlayer', () => {
     ];
 
     player.play(timeline, onUpdate);
+    expect(onUpdate).toHaveBeenCalledWith('happy', 'nod', 800);
     // 第一个 tick 在 100ms 后
     jest.advanceTimersByTime(100);
     expect(onUpdate).toHaveBeenCalledWith('happy', 'nod', 800);
+    expect(onUpdate).toHaveBeenCalledTimes(1);
 
     player.stop();
   });

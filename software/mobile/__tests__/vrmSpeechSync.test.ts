@@ -116,6 +116,18 @@ describe('VRM speech sync', () => {
 
     VRMManager.off('speak', onSpeak);
   });
+
+  test('scopes audible playback sync to the driver that owns the speech', () => {
+    const listener = jest.fn();
+    VRMManager.on('resync', listener);
+
+    VRMManager.speak('同步测试', 'neutral', 1200, 'explain', 1800, 'driver-a');
+    VRMManager.resyncTimeline(1180, 'driver-a');
+
+    expect(listener).toHaveBeenCalledWith({ durationMs: 1180, targetId: 'driver-a' });
+    VRMManager.off('resync', listener);
+    VRMManager.stopSpeaking({ playQueued: false });
+  });
 });
 
 describe('VRM TTS generation window', () => {
