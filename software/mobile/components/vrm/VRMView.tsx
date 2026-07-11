@@ -7,20 +7,23 @@ import { usePathname } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import type { Emotion } from './VRMTypes';
 import { VRMManager, isStaleVRMLoadError } from './VRMManager';
-import { applyIdleAnimation, applyMouthOpen, applyExpression, applyAction, resetMouthState, type Action } from './VRMIdleAnim';
+import { applyIdleAnimation, applyMouthOpen, applyExpression, applyExpressionCorrections, applyAction, resetMouthState, type Action } from './VRMIdleAnim';
+import { normalizeDemoAction, VRMDemoActionPlayer } from './vrmDemoActionPlayer';
 import { getCostume } from '@/constants/costumeMap';
 import type { VRMStageFraming, VRMStageMode } from './VRMStageTypes';
 import { normalizeVRMRoutePath } from './vrmRouteVisibility';
 
 // Web 端使用标准 WebGL canvas，因为 expo-gl 的 GLView 在 Web 端不工作
 const IS_WEB = Platform.OS === 'web';
-const MAX_FLOAT_PIXEL_RATIO = 1.5;
+const MIN_FLOAT_PIXEL_RATIO = 2;
+const MAX_FLOAT_PIXEL_RATIO = 3;
 const MAX_FULL_PIXEL_RATIO = 2.5;
 
 function getRendererPixelRatio(rawPixelRatio: number, mode: VRMStageMode): number {
+  const minPixelRatio = mode === 'float' ? MIN_FLOAT_PIXEL_RATIO : 1;
   const maxPixelRatio = mode === 'float' ? MAX_FLOAT_PIXEL_RATIO : MAX_FULL_PIXEL_RATIO;
   const pixelRatio = rawPixelRatio || 1;
-  return Math.max(1, Math.min(pixelRatio, maxPixelRatio));
+  return Math.max(minPixelRatio, Math.min(pixelRatio, maxPixelRatio));
 }
 
 function hasVisibleWebGLPixels(renderer: THREE.WebGLRenderer): boolean {
@@ -85,7 +88,10 @@ async function loadAndAttachVRM(
   }
   scene.add(vrm.scene);
 
-  const restoredTransform = VRMManager.restoreModelTransform(modelFile, mode);
+  const shouldUseCachedTransform = !framing;
+  const restoredTransform = shouldUseCachedTransform
+    ? VRMManager.restoreModelTransform(modelFile, mode)
+    : false;
   if (!restoredTransform) {
     vrm.scene.scale.set(1, 1, 1);
     vrm.scene.position.set(0, 0, 0);
@@ -104,7 +110,9 @@ async function loadAndAttachVRM(
       vrm.scene.position.x = (framing?.offsetX ?? 0) - (box2.max.x + box2.min.x) / 2;
       vrm.scene.position.z = (framing?.offsetZ ?? 0) - (box2.max.z + box2.min.z) / 2;
     }
-    VRMManager.markModelScaled(modelFile, mode);
+    if (shouldUseCachedTransform) {
+      VRMManager.markModelScaled(modelFile, mode);
+    }
   }
 
   const camDist = framing?.cameraDistance ?? (mode === 'float' ? 4.4 : 2.2);
@@ -245,6 +253,7 @@ function VRMViewWeb({
   const renderErrorWarnedRef = useRef(false);
   const onReadyChangeRef = useRef(onReadyChange);
   const externalAnimationMixerRef = useRef(externalAnimationMixer);
+  const demoActionPlayerRef = useRef(new VRMDemoActionPlayer());
   // 用 ref 存储 threeRefs，避免父组件重渲染导致 initWebGL 重建
   const threeRefsRef = useRef(threeRefs);
   // 标记是否已初始化，防止 onLayout 重复触发
@@ -363,50 +372,10 @@ function VRMViewWeb({
     }
 
     try {
-      const costume = costumeIdRef.current ? getCostume(costumeIdRef.current) : null;
-      const modelFile = costume?.modelFile || 'avatar.vrm';
-      const vrm = await VRMManager.getOrLoad(modelFile);
-      if (isFocusedRef.current) {
-      if (vrm.scene.parent) {
-        vrm.scene.parent.remove(vrm.scene);
-      }
-      scene.add(vrm.scene);
-
-      // 恢复当前模型+模式的缩放和定位；不同模式不能共用同一份 transform。
-      const restoredTransform = VRMManager.restoreModelTransform(modelFile, mode);
-
-      // 首次加载当前模型+模式时计算缩放和定位
-      if (!restoredTransform) {
-        vrm.scene.scale.set(1, 1, 1);
-        vrm.scene.position.set(0, 0, 0);
-        vrm.scene.updateWorldMatrix(true, true);
-        const box = new THREE.Box3().setFromObject(vrm.scene);
-        const modelHeight = box.max.y - box.min.y;
-        if (modelHeight > 0) {
-          const targetH = mode === 'float' ? 2.5 : 1.4;
-          const s = targetH / modelHeight;
-          vrm.scene.scale.set(s, s, s);
-          vrm.scene.updateWorldMatrix(true, true);
-          const box2 = new THREE.Box3().setFromObject(vrm.scene);
-          const scaledH = box2.max.y - box2.min.y;
-          if (mode === 'float') {
-            vrm.scene.position.y = -0.65;
-          } else {
-            vrm.scene.position.y = -scaledH * 0.3;
-          }
-          vrm.scene.position.x = -(box2.max.x + box2.min.x) / 2;
-          vrm.scene.position.z = -(box2.max.z + box2.min.z) / 2;
-        }
-        VRMManager.markModelScaled(modelFile, mode);
-      }
-
-      const camDist = mode === 'float' ? 4.4 : 2.2;
-      const camY = mode === 'float' ? 0.7 : 0.6;
-      camera.position.set(0, camY, camDist);
-      camera.lookAt(0, camY, 0);
-      camera.updateProjectionMatrix();
-      modelLoadedRef.current = true;
-      renderErrorWarnedRef.current = false;
+      const attached = await loadAndAttachVRM(scene, camera, mode, costumeIdRef.current, framing, false, () => isFocusedRef.current);
+      if (attached) {
+        modelLoadedRef.current = true;
+        renderErrorWarnedRef.current = false;
       } else {
         modelLoadedRef.current = false;
         setRenderReady(false);
@@ -465,8 +434,8 @@ function VRMViewWeb({
         applyExpression(vrm, expressionRef.current);
         applyMouthOpen(vrm, mouthOpenRef.current);
         let actionLookAt = { x: 0, y: 0, headRotX: 0, headRotY: 0 };
-        const curAction = actionRef.current;
-        if (curAction !== 'none') {
+        const curAction = normalizeDemoAction(actionRef.current);
+        if (curAction === 'showcase' || curAction === 'nod') {
           const now = Date.now();
           if (prevActionRef.current !== curAction) {
             actionStartRef.current = now;
@@ -483,7 +452,10 @@ function VRMViewWeb({
           lookAtRef.current.y + actionLookAt.y,
         );
         externalAnimationMixerRef.current?.update(dt);
+        demoActionPlayerRef.current.update(vrm, dt, elapsed, actionRef.current, speakingRef.current);
         VRMManager.update(dt);
+        demoActionPlayerRef.current.applyPose(vrm);
+        applyExpressionCorrections(vrm, expressionRef.current);
       }
 
       try {
@@ -549,6 +521,11 @@ function VRMViewWeb({
       setRenderReady(false);
     }
   }, [framing, mode, setRenderReady]);
+
+  useEffect(() => {
+    const player = demoActionPlayerRef.current;
+    return () => player.dispose();
+  }, []);
 
   useEffect(() => {
     const handleManualReload = (payload?: ManualReloadPayload) => {
@@ -662,6 +639,7 @@ function VRMViewNative({
   const routePathRef = useRef(normalizeVRMRoutePath(pathname));
   const onReadyChangeRef = useRef(onReadyChange);
   const externalAnimationMixerRef = useRef(externalAnimationMixer);
+  const demoActionPlayerRef = useRef(new VRMDemoActionPlayer());
   // 用 ref 存储 threeRefs，避免父组件重渲染导致 onContextCreate 重建
   const threeRefsRef = useRef(threeRefs);
   // 标记是否已初始化，防止 GL 上下文重复创建
@@ -767,48 +745,10 @@ function VRMViewNative({
     }
 
     try {
-      const costume = costumeIdRef.current ? getCostume(costumeIdRef.current) : null;
-      const modelFile = costume?.modelFile || 'avatar.vrm';
-      const vrm = await VRMManager.getOrLoad(modelFile);
-      if (isFocusedRef.current) {
-      if (vrm.scene.parent) {
-        vrm.scene.parent.remove(vrm.scene);
-      }
-      scene.add(vrm.scene);
-
-      const restoredTransform = VRMManager.restoreModelTransform(modelFile, mode);
-
-      if (!restoredTransform) {
-        vrm.scene.scale.set(1, 1, 1);
-        vrm.scene.position.set(0, 0, 0);
-        vrm.scene.updateWorldMatrix(true, true);
-        const box = new THREE.Box3().setFromObject(vrm.scene);
-        const modelHeight = box.max.y - box.min.y;
-        if (modelHeight > 0) {
-          const targetH = mode === 'float' ? 2.5 : 1.4;
-          const s = targetH / modelHeight;
-          vrm.scene.scale.set(s, s, s);
-          vrm.scene.updateWorldMatrix(true, true);
-          const box2 = new THREE.Box3().setFromObject(vrm.scene);
-          const scaledH = box2.max.y - box2.min.y;
-          if (mode === 'float') {
-            vrm.scene.position.y = -0.65;
-          } else {
-            vrm.scene.position.y = -scaledH * 0.3;
-          }
-          vrm.scene.position.x = -(box2.max.x + box2.min.x) / 2;
-          vrm.scene.position.z = -(box2.max.z + box2.min.z) / 2;
-        }
-        VRMManager.markModelScaled(modelFile, mode);
-      }
-
-      const camDist = mode === 'float' ? 4.4 : 2.2;
-      const camY = mode === 'float' ? 0.7 : 0.6;
-      camera.position.set(0, camY, camDist);
-      camera.lookAt(0, camY, 0);
-      camera.updateProjectionMatrix();
-      modelLoadedRef.current = true;
-      setNativeRenderReady(true);
+      const attached = await loadAndAttachVRM(scene, camera, mode, costumeIdRef.current, framing, false, () => isFocusedRef.current);
+      if (attached) {
+        modelLoadedRef.current = true;
+        setNativeRenderReady(true);
       } else {
         modelLoadedRef.current = false;
         setNativeRenderReady(false);
@@ -867,8 +807,8 @@ function VRMViewNative({
         applyExpression(vrm, expressionRef.current);
         applyMouthOpen(vrm, mouthOpenRef.current);
         let actionLookAt = { x: 0, y: 0, headRotX: 0, headRotY: 0 };
-        const curAction = actionRef.current;
-        if (curAction !== 'none') {
+        const curAction = normalizeDemoAction(actionRef.current);
+        if (curAction === 'showcase' || curAction === 'nod') {
           const now = Date.now();
           if (prevActionRef.current !== curAction) {
             actionStartRef.current = now;
@@ -885,7 +825,10 @@ function VRMViewNative({
           lookAtRef.current.y + actionLookAt.y,
         );
         externalAnimationMixerRef.current?.update(dt);
+        demoActionPlayerRef.current.update(vrm, dt, elapsed, actionRef.current, speakingRef.current);
         VRMManager.update(dt);
+        demoActionPlayerRef.current.applyPose(vrm);
+        applyExpressionCorrections(vrm, expressionRef.current);
       }
 
       try {
@@ -928,6 +871,11 @@ function VRMViewNative({
       setNativeRenderReady(false);
     }
   }, [framing, mode, setNativeRenderReady]);
+
+  useEffect(() => {
+    const player = demoActionPlayerRef.current;
+    return () => player.dispose();
+  }, []);
 
   useEffect(() => {
     const handleManualReload = (payload?: ManualReloadPayload) => {

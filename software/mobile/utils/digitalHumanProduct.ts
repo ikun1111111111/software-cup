@@ -2,12 +2,7 @@ export type MobileDigitalHumanTabName = 'index' | 'chat' | 'explore' | 'memory' 
 export type MobileDigitalHumanVoiceMode = 'silent' | 'browser' | 'tts';
 
 function resolveDefaultVoiceMode(): MobileDigitalHumanVoiceMode {
-  try {
-    const { Platform } = require('react-native');
-    return Platform.OS === 'web' ? 'browser' : 'tts';
-  } catch {
-    return 'tts';
-  }
+  return 'tts';
 }
 
 export interface MobileDigitalHumanTab {
@@ -39,9 +34,9 @@ export const HOME_DIGITAL_HUMAN_LINES = [
   {
     delay: 7000,
     text: '你可以直接语音问我，也可以让我主动规划路线、沿途讲解、提醒打卡并生成旅行回忆。',
-    emotion: 'thinking',
+    emotion: 'relaxed',
     duration: 6400,
-    action: 'point',
+    action: 'explain',
     actionDuration: 2400,
   },
 ] as const;

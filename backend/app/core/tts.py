@@ -1,7 +1,7 @@
-"""TTS (Text-to-Speech) via edge-tts with Redis caching.
+"""TTS (Text-to-Speech) with Redis caching.
 
+Supports Azure Speech Services (official, requires key) and edge-tts (free).
 Provides text-to-audio synthesis with phoneme timestamps for lip-sync.
-Uses Microsoft Edge TTS (free, high quality Chinese voices).
 """
 import logging
 import hashlib
@@ -16,13 +16,13 @@ from app.core.redis_client import get_redis
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
-# edge-tts voice mapping: voice_id -> edge-tts voice name
+# Voice mapping: voice_id -> Azure / edge-tts voice name
 _EDGE_TTS_VOICES = {
-    "mandarin": "zh-CN-XiaoxiaoNeural",     # 标准普通话女声
-    "nanjinghua": "zh-CN-XiaoxiaoNeural",    # 南京话暂用普通话
-    "sichuanhua": "zh-CN-XiaoxiaoNeural",    # 四川话暂用普通话
-    "male": "zh-CN-YunxiNeural",             # 普通话男声
-    "female": "zh-CN-XiaoyiNeural",          # 普通话年轻女声
+    "mandarin": "zh-CN-XiaoxiaoNeural",        # 标准普通话女声
+    "female": "zh-CN-XiaoyiNeural",            # 普通话年轻女声
+    "liaoning": "zh-CN-liaoning-XiaobeiNeural", # 东北女声
+    "shaanxi": "zh-CN-shaanxi-XiaoniNeural",   # 陕西女声
+    "male": "zh-CN-YunxiNeural",               # 普通话男声
 }
 
 
@@ -218,8 +218,49 @@ def _estimate_mp3_duration(audio_bytes: bytes) -> int:
     return int(len(audio_bytes) / 16)
 
 
+def _synthesize_azure(text: str, voice_name: str) -> TTSResult:
+    """Synthesize text using official Azure Speech SDK.
+
+    Requires AZURE_SPEECH_KEY and AZURE_SPEECH_REGION environment variables.
+    Falls back to empty audio on failure so callers can try edge-tts.
+    """
+    try:
+        import azure.cognitiveservices.speech as speechsdk
+
+        speech_config = speechsdk.SpeechConfig(
+            subscription=settings.azure_speech_key,
+            region=settings.azure_speech_region,
+        )
+        speech_config.speech_synthesis_voice_name = voice_name
+        # Request MP3 output to match edge-tts format
+        speech_config.set_speech_synthesis_output_format(
+            speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3
+        )
+
+        synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
+        result = synthesizer.speak_text_async(text).get()
+
+        if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+            audio_bytes = result.audio_data
+            duration_ms = _estimate_mp3_duration(audio_bytes)
+            phonemes = _generate_phoneme_timestamps(text, duration_ms)
+            logger.info("Azure TTS synthesized: %d bytes, %dms", len(audio_bytes), duration_ms)
+            return TTSResult(
+                audio_bytes=audio_bytes,
+                phoneme_timestamps=phonemes,
+                duration_ms=duration_ms,
+            )
+        elif result.reason == speechsdk.ResultReason.Canceled:
+            cancellation = result.cancellation_details
+            logger.error("Azure TTS canceled: %s", cancellation.error_details)
+            return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
+    except Exception as e:
+        logger.error("Azure TTS failed: %s", e)
+        return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
+
+
 async def synthesize(text: str, voice_id: str | None = None) -> TTSResult:
-    """Synthesize text to speech using edge-tts.
+    """Synthesize text to speech using Azure (if configured) or edge-tts.
 
     Args:
         text: Text to synthesize.
@@ -228,14 +269,21 @@ async def synthesize(text: str, voice_id: str | None = None) -> TTSResult:
     Returns:
         TTSResult with MP3 audio bytes and phoneme timestamps.
     """
+    # Try Azure first if configured
+    voice_name = _resolve_voice(voice_id)
+    if settings.azure_speech_key and settings.azure_speech_region:
+        azure_result = _synthesize_azure(text, voice_name)
+        if azure_result.audio_bytes:
+            return azure_result
+        logger.info("Azure TTS returned empty audio, falling back to edge-tts")
+
     if not text or not text.strip():
         return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
 
     try:
         import edge_tts
 
-        voice = _resolve_voice(voice_id)
-        communicate = edge_tts.Communicate(text, voice)
+        communicate = edge_tts.Communicate(text, voice_name)
 
         audio_chunks = []
         raw_phonemes = []

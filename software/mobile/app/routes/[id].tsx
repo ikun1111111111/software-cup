@@ -16,6 +16,9 @@ import { useTour } from '@/context/TourContext';
 import type { Route as TourRouteType } from '@/hooks/useTourOrchestrator';
 import TourProgressIndicator from '@/components/guide/TourProgressIndicator';
 import { XIAOLING_ROUTE_COPY } from '@/utils/digitalHumanProduct';
+import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
+import { PageDigitalHumanDock } from '@/components/vrm/PageDigitalHumanDock';
 
 export default function RouteDetailPage() {
   const params = useLocalSearchParams<{ id: string; returnTo?: string; returnLabel?: string }>();
@@ -23,7 +26,10 @@ export default function RouteDetailPage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { avoidance } = useVRM();
-  const bottomSpacerHeight = Math.max(120, avoidance.bottom + 48);
+  const routeDetailDigitalHuman = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE, {
+    speakerId: 'route-detail-page',
+  });
+  const bottomSpacerHeight = Math.max(220, avoidance.bottom + 48);
 
   const [route, setRoute] = useState<TourRouteDetail | null>(null);
   const [spotDetails, setSpotDetails] = useState<Record<string, SpotDetail>>({});
@@ -417,6 +423,8 @@ export default function RouteDetailPage() {
 
         <View style={{ height: bottomSpacerHeight }} />
     </ScrollView>
+
+    <PageDigitalHumanDock digitalHuman={routeDetailDigitalHuman} />
   </View>
   );
 }

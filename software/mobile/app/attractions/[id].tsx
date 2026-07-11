@@ -17,6 +17,9 @@ import { SESSION_ID } from '@/services/dataSync';
 import { getDemoSpotById } from '@/utils/localDemoData';
 import { setDigitalHumanPageContext, speakWithDigitalHuman } from '@/services/digitalHuman';
 import { Colors } from '@/constants/colors';
+import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
+import { PageDigitalHumanDock } from '@/components/vrm/PageDigitalHumanDock';
 import { Radius } from '@/constants/spacing';
 import { SPOT_IMAGES } from '@/constants/scenic';
 import { TRAVEL_TIPS } from '@/data/travelTips';
@@ -66,7 +69,10 @@ export default function AttractionDetailPage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { avoidance } = useVRM();
-  const bottomSpacerHeight = Math.max(160, avoidance.bottom + 48);
+  const attractionDigitalHuman = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE, {
+    speakerId: 'attraction-detail-page',
+  });
+  const bottomSpacerHeight = Math.max(220, avoidance.bottom + 48);
   const scrollY = useSharedValue(0);
   const heroFade = useSharedValue(1);
   const headerOpacity = useSharedValue(0);
@@ -915,6 +921,8 @@ export default function AttractionDetailPage() {
           />
         </Suspense>
       )}
+
+      <PageDigitalHumanDock digitalHuman={attractionDigitalHuman} />
     </View>
   );
 }

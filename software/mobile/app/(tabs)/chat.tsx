@@ -67,14 +67,10 @@ function stripAnswerSource(answer: string): string {
 }
 
 function getReplyAction(text: string, emotion?: Emotion): Action {
-  if (emotion === 'grateful') return 'bow';
-  if (emotion === 'sad') return 'shakeHead';
-  if (emotion === 'thinking') return 'lookUp';
-  if (emotion === 'surprised') return 'lookUp';
-  if (/(高|高度|米|层|楼|海拔)/.test(text)) return 'lookUp';
-  if (/(路线|依次|进入|前往|下一站|这里|这边|那边|前方|左边|右边)/.test(text)) return 'point';
-  if (emotion === 'happy') return 'nod';
-  return 'nod';
+  if (/(请看|看这里|看这边|前方|身后|左边|右边|左侧|右侧|跟我来)/.test(text)) {
+    return 'showcase';
+  }
+  return 'explain';
 }
 
 function ChatBubble({ item, isStreaming }: { item: Message; isStreaming: boolean }) {
@@ -315,7 +311,7 @@ export default function ChatPage() {
   const primeQuestionResponse = useCallback(() => {
     stop({ playQueued: false });
     setExpression('thinking');
-    playAction('lookUp', THINKING_ACTION_DURATION_MS);
+    playAction('thinking', THINKING_ACTION_DURATION_MS);
   }, [playAction, setExpression, stop]);
 
   const speakWithDriver = useCallback((

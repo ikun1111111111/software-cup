@@ -10,6 +10,9 @@ import Animated, { FadeInUp, FadeIn, FadeOut } from 'react-native-reanimated';
 import { VRMManager } from '@/components/vrm/VRMManager';
 import { useVRM } from '@/components/vrm/VRMProvider';
 import { getTimeline, type TimelineEvent } from '@/api/history';
+import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
+import { PageDigitalHumanDock } from '@/components/vrm/PageDigitalHumanDock';
 import { Colors } from '@/constants/colors';
 import { TimelineEventCard } from '@/components/history/TimelineEventCard';
 import { HistorySkeleton } from '@/components/ui/SkeletonLoader';
@@ -176,7 +179,10 @@ export default function HistoryPage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { avoidance } = useVRM();
-  const contentBottomPadding = Math.max(120, avoidance.bottom + 40);
+  const historyDigitalHuman = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE, {
+    speakerId: 'history-page',
+  });
+  const contentBottomPadding = Math.max(220, avoidance.bottom + 40);
 
   const [events, setEvents] = useState<TimelineEvent[]>(FALLBACK_EVENTS);
   const [eras, setEras] = useState<string[]>(FALLBACK_ERAS);
@@ -428,6 +434,8 @@ export default function HistoryPage() {
             </View>
           </View>
       </ScrollView>
+
+      <PageDigitalHumanDock digitalHuman={historyDigitalHuman} />
     </View>
   );
 }

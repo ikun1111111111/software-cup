@@ -833,10 +833,14 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   routeMedia: {
+    width: '100%',
     height: 118,
     justifyContent: 'flex-end',
+    overflow: 'hidden',
   },
   routeImage: {
+    width: '100%',
+    height: '100%',
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
   },

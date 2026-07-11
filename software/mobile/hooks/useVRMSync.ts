@@ -5,7 +5,7 @@ import { VRMManager, type Emotion } from '../components/vrm/VRMManager';
 import type { Action } from '../components/vrm/VRMIdleAnim';
 import { fetchTTS, type Phoneme } from '../api/tts';
 import { estimateSpeechDuration } from '../utils/digitalHumanDriver';
-import { getSubtitleCueForCharIndex, textToSubtitleCues, type SubtitleCue } from '../utils/textTimeline';
+import { getSubtitleCueForCharIndex, mapSpeechBoundariesToText, textToSubtitleCues, type SubtitleCue } from '../utils/textTimeline';
 
 export type VoiceMode = 'silent' | 'browser' | 'tts';
 
@@ -24,6 +24,7 @@ interface VRMSyncState {
   expression: Emotion;
   mouthOpen: number;
   isSpeaking: boolean;
+  speechText: string;
   subtitle: string;
 }
 
@@ -48,11 +49,13 @@ const MOUTH_SHAPE_VALUES: Record<string, number> = {
   half: 0.4,
   open: 1.0,
 };
+const SUBTITLE_SYNC_DELAY_MS = 180;
 
 let audioModeReady = false;
 
 interface BeginVisualSpeechOptions {
   subtitleProgression?: boolean;
+  subtitleInitiallyHidden?: boolean;
 }
 
 async function ensureSpeechAudioMode() {
@@ -71,12 +74,14 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     expression: 'neutral',
     mouthOpen: 0,
     isSpeaking: false,
+    speechText: '',
     subtitle: '',
   });
   const mouthSimRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   const phonemeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const subtitleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const subtitleBoundaryTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const subtitleCuesRef = useRef<SubtitleCue[]>([]);
   const subtitleCueIndexRef = useRef(0);
   const fallbackStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,6 +113,8 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
       clearInterval(subtitleTimerRef.current);
       subtitleTimerRef.current = null;
     }
+    subtitleBoundaryTimersRef.current.forEach((timer) => clearTimeout(timer));
+    subtitleBoundaryTimersRef.current.clear();
   }, []);
 
   const clearAutoStopTimer = useCallback(() => {
@@ -181,7 +188,11 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     return cues[0]?.text ?? '';
   }, []);
 
-  const startSubtitleProgression = useCallback((text: string, durationMs: number) => {
+  const startSubtitleProgression = useCallback((
+    text: string,
+    durationMs: number,
+    delayMs: number = 0,
+  ) => {
     clearSubtitleTimer();
     const cues = textToSubtitleCues(text, durationMs);
     subtitleCuesRef.current = cues;
@@ -192,7 +203,7 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     const startedAt = Date.now();
     subtitleTimerRef.current = setInterval(() => {
       if (!mountedRef.current) return;
-      const elapsed = Date.now() - startedAt;
+      const elapsed = Date.now() - startedAt - delayMs;
       let nextIndex = currentIndex;
       for (let i = cues.length - 1; i >= 0; i--) {
         if (cues[i].timeMs <= elapsed) {
@@ -228,29 +239,59 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     ));
   }, []);
 
+  const reserveSpeechRun = useCallback(() => {
+    speechRunIdRef.current += 1;
+    activeSpeechRef.current = true;
+    return speechRunIdRef.current;
+  }, []);
+
+  const scheduleSubtitleBoundarySync = useCallback((charIndex: number) => {
+    const timer = setTimeout(() => {
+      subtitleBoundaryTimersRef.current.delete(timer);
+      syncSubtitleToSpeechBoundary(charIndex);
+    }, SUBTITLE_SYNC_DELAY_MS);
+    subtitleBoundaryTimersRef.current.add(timer);
+  }, [syncSubtitleToSpeechBoundary]);
+
+  const beginVisualSpeechForRun = useCallback((
+    text: string,
+    emotion: Emotion,
+    durationMs: number,
+    runId: number,
+    options: BeginVisualSpeechOptions = {},
+  ) => {
+    if (speechRunIdRef.current !== runId) return false;
+    activeSpeechRef.current = true;
+    const initialSubtitle = options.subtitleProgression === false
+      ? prepareInitialSubtitle(text, durationMs)
+      : startSubtitleProgression(
+        text,
+        durationMs,
+        options.subtitleInitiallyHidden ? SUBTITLE_SYNC_DELAY_MS : 0,
+      );
+    if (mountedRef.current) {
+      setState((prev) => ({
+        ...prev,
+        isSpeaking: true,
+        speechText: text,
+        subtitle: options.subtitleInitiallyHidden ? '' : initialSubtitle,
+        expression: emotion || prev.expression,
+      }));
+    }
+    startMouthSimulation();
+    return true;
+  }, [prepareInitialSubtitle, startMouthSimulation, startSubtitleProgression]);
+
   const beginVisualSpeech = useCallback((
     text: string,
     emotion: Emotion,
     durationMs: number,
     options: BeginVisualSpeechOptions = {},
   ) => {
-    speechRunIdRef.current += 1;
-    const runId = speechRunIdRef.current;
-    activeSpeechRef.current = true;
-    const initialSubtitle = options.subtitleProgression === false
-      ? prepareInitialSubtitle(text, durationMs)
-      : startSubtitleProgression(text, durationMs);
-    if (mountedRef.current) {
-      setState((prev) => ({
-        ...prev,
-        isSpeaking: true,
-        subtitle: initialSubtitle,
-        expression: emotion || prev.expression,
-      }));
-    }
-    startMouthSimulation();
+    const runId = reserveSpeechRun();
+    beginVisualSpeechForRun(text, emotion, durationMs, runId, options);
     return runId;
-  }, [prepareInitialSubtitle, startMouthSimulation, startSubtitleProgression]);
+  }, [beginVisualSpeechForRun, reserveSpeechRun]);
 
   const scheduleVisualStop = useCallback((durationMs: number) => {
     clearAutoStopTimer();
@@ -278,8 +319,7 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     // 停止之前的语音
     window.speechSynthesis.cancel();
 
-    const runId = beginVisualSpeech(text, emotion, estimatedDuration);
-    scheduleVisualStop(estimatedDuration + 1000);
+    const runId = reserveSpeechRun();
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'zh-CN';
@@ -292,10 +332,23 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
       if (selected) utterance.voice = selected;
     }
 
+    utterance.onstart = () => {
+      if (!beginVisualSpeechForRun(
+        text,
+        emotion,
+        estimatedDuration,
+        runId,
+        { subtitleProgression: false, subtitleInitiallyHidden: true },
+      )) return;
+      scheduleSubtitleBoundarySync(0);
+      VRMManager.resyncTimeline(estimatedDuration);
+      scheduleVisualStop(estimatedDuration + 1000);
+    };
+
     utterance.onboundary = (event) => {
       if (speechRunIdRef.current !== runId) return;
       if (typeof event.charIndex === 'number' && event.charIndex >= 0) {
-        syncSubtitleToSpeechBoundary(event.charIndex);
+        scheduleSubtitleBoundarySync(event.charIndex);
       }
     };
 
@@ -319,16 +372,15 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
       console.warn('[useVRMSync] Browser TTS failed:', e);
       stopSpeaking();
     }
-  }, [beginVisualSpeech, scheduleVisualStop, stopSpeaking, syncSubtitleToSpeechBoundary, triggerSpeakFallback]);
+  }, [beginVisualSpeechForRun, reserveSpeechRun, scheduleSubtitleBoundarySync, scheduleVisualStop, stopSpeaking, triggerSpeakFallback]);
 
-  const TTS_TIMEOUT_MS = 3500;
+  const TTS_TIMEOUT_MS = 12000;
   const MAX_TTS_CACHE = 20;
 
   // Native/Web：edge-tts 合成 + expo-av 播放
   const playWithPhonemes = useCallback(async (text: string, emotion: Emotion) => {
     const estimatedDuration = estimateSpeechDuration(text);
-    const runId = beginVisualSpeech(text, emotion, estimatedDuration, { subtitleProgression: false });
-    scheduleVisualStop(estimatedDuration + 4000);
+    const runId = reserveSpeechRun();
     try {
       const voiceId = voiceConfigRef.current?.ttsVoiceId ?? 'default';
       const cacheKey = `${text}::${voiceId}`;
@@ -372,7 +424,36 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
         throw new Error('Audio not loaded');
       }
 
+      const actualDuration = result.durationMs > 0 ? result.durationMs : estimatedDuration;
+      let playbackStarted = false;
+      let resolvePlaybackStarted: (() => void) | null = null;
+      const playbackStartedPromise = new Promise<void>((resolve) => {
+        resolvePlaybackStarted = resolve;
+      });
+
       sound.setOnPlaybackStatusUpdate((status) => {
+        if (
+          speechRunIdRef.current === runId
+          && status.isLoaded
+          && status.isPlaying
+          && !playbackStarted
+        ) {
+          playbackStarted = true;
+          if (!beginVisualSpeechForRun(
+            text,
+            emotion,
+            actualDuration,
+            runId,
+            {
+              subtitleProgression: result.phonemes.length === 0,
+              subtitleInitiallyHidden: true,
+            },
+          )) return;
+          if (result.phonemes.length === 0) {
+            scheduleSubtitleBoundarySync(0);
+          }
+          resolvePlaybackStarted?.();
+        }
         if (speechRunIdRef.current === runId && status.isLoaded && status.didJustFinish) {
           // 先显示完整文本，再延迟停止，避免字幕提前消失
           setState((prev) => ({ ...prev, subtitle: text }));
@@ -382,32 +463,34 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
 
       // 开始播放音频
       await sound.playAsync();
+      await playbackStartedPromise;
       if (speechRunIdRef.current !== runId) {
         sound.stopAsync().catch(() => {});
         sound.unloadAsync().catch(() => {});
         return;
       }
 
-      const actualDuration = result.durationMs > 0 ? result.durationMs : estimatedDuration;
       // 用实际音频时长同步表情/动作时间轴
       VRMManager.resyncTimeline(actualDuration);
-      const initialSubtitle = startSubtitleProgression(text, actualDuration);
-      if (mountedRef.current) {
-        setState((prev) => ({ ...prev, subtitle: initialSubtitle }));
-      }
-
+      const subtitleBoundaries = mapSpeechBoundariesToText(text, result.phonemes);
       clearMouthTimers();
       if (result.phonemes.length > 0) {
         const startTime = Date.now();
         phonemeTimerRef.current = setInterval(() => {
           if (!mountedRef.current) return;
           const elapsed = Date.now() - startTime;
+          const subtitleElapsed = elapsed - SUBTITLE_SYNC_DELAY_MS;
           let targetMouth = 0;
-          for (const p of result.phonemes) {
+          let activeBoundaryIndex = -1;
+          for (let i = 0; i < result.phonemes.length; i++) {
+            const p = result.phonemes[i];
+            if (subtitleElapsed >= p.start_ms) activeBoundaryIndex = i;
             if (elapsed >= p.start_ms && elapsed < p.end_ms) {
               targetMouth = MOUTH_SHAPE_VALUES[p.mouth_shape] ?? 0.5;
-              break;
             }
+          }
+          if (activeBoundaryIndex >= 0) {
+            syncSubtitleToSpeechBoundary(subtitleBoundaries[activeBoundaryIndex]?.charIndex ?? 0);
           }
           setState((prev) => ({ ...prev, mouthOpen: targetMouth }));
         }, 50);
@@ -429,7 +512,7 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
         triggerSpeakFallback(text, emotion);
       }
     }
-  }, [beginVisualSpeech, clearMouthTimers, scheduleVisualStop, startSubtitleProgression, stopSpeaking]);
+  }, [beginVisualSpeechForRun, clearMouthTimers, reserveSpeechRun, scheduleSubtitleBoundarySync, scheduleVisualStop, stopSpeaking, syncSubtitleToSpeechBoundary]);
 
   useEffect(() => {
     const handleSpeak = ({ text, emotion, targetId }: { text: string; emotion: Emotion; targetId?: string }) => {
@@ -464,6 +547,7 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
         setState((prev) => ({
           ...prev,
           isSpeaking: false,
+          speechText: '',
           subtitle: '',
           mouthOpen: 0,
         }));

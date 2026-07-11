@@ -132,6 +132,8 @@ type DigitalHumanDriver = {
 
 所有页面只调用 `driver.speak()`、`driver.stop()`、`driver.setPageContext()`，不要直接复制 `ExpressionPlayer`、`textToTimeline` 或 `useVRMSync` 逻辑。
 
+使用页面级 `PageDigitalHumanDock` 时，空闲状态常驻“小灵 · 随时为你讲解”气泡；说话时由当前字幕替换，结束后自动恢复，避免隐藏全局浮窗后页面只剩模型而失去文字提示。
+
 ### 5.3 口型、字幕、语音对齐
 
 移动端讲解的自然度主要取决于三件事是否同步：声音、字幕、嘴型。
@@ -169,6 +171,9 @@ type DigitalHumanDriver = {
 
 - 每句话最多触发一个主动作。
 - 动作持续时间跟随当前语音片段，不要跨句残留。
+- 只有“请看、这边、前方、左侧、右侧”等明确方向表达触发 `point`；普通路线、景点和历史介绍保持讲解动作。
+- 红衣导览 VRM 的原生 `Surprised` 会呈现眯眼微笑，因此移动端 `surprised` 使用眼睑展开与 `O` 圆嘴组合，不叠加 `happy`。
+- 说话期间只保留呼吸、眨眼、当前讲解动作和实时口型，不调度随机 waiting 动作。
 - 连续问答时降低动作频率，避免干扰阅读。
 - 提供“减少动效”设置，适配低端机和无障碍需求。
 

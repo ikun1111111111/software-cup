@@ -293,6 +293,7 @@ const MobileEntryPage: React.FC = () => {
           left: 22px;
           right: 22px;
           bottom: 24px;
+          z-index: 3;
           color: #fffaf0;
         }
 
@@ -331,7 +332,7 @@ const MobileEntryPage: React.FC = () => {
           width: calc(100% - 32px);
           margin: -26px auto 16px;
           position: relative;
-          z-index: 2;
+          z-index: 3;
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           border: 1px solid rgba(96,76,42,0.12);

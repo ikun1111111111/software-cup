@@ -1,5 +1,6 @@
 export type Emotion = 'neutral' | 'happy' | 'sad' | 'angry' | 'relaxed' | 'surprised' | 'thinking' | 'grateful';
-export type Action = 'nod' | 'shakeHead' | 'tiltHead' | 'lookUp' | 'lookDown' | 'wave' | 'point' | 'clap' | 'bow' | 'none';
+export type { Action } from '../components/vrm/VRMIdleAnim';
+import type { Action } from '../components/vrm/VRMIdleAnim';
 
 export interface TimelineEvent {
   timeMs: number;
@@ -13,6 +14,38 @@ export interface SubtitleCue {
   text: string;
   startChar: number;
   endChar: number;
+}
+
+export interface SpeechBoundary {
+  char: string;
+  start_ms: number;
+}
+
+export interface TextBoundary {
+  timeMs: number;
+  charIndex: number;
+}
+
+export function mapSpeechBoundariesToText(
+  text: string,
+  boundaries: SpeechBoundary[],
+): TextBoundary[] {
+  let searchFrom = 0;
+  let fallbackIndex = 0;
+
+  return boundaries.map((boundary) => {
+    const token = boundary.char.trim();
+    const foundAt = token ? text.indexOf(token, searchFrom) : -1;
+    const charIndex = foundAt >= 0
+      ? foundAt
+      : Math.min(Math.max(text.length - 1, 0), fallbackIndex);
+
+    const advanceBy = Math.max(token.length, 1);
+    searchFrom = foundAt >= 0 ? foundAt + advanceBy : Math.min(text.length, charIndex + advanceBy);
+    fallbackIndex = searchFrom;
+
+    return { timeMs: boundary.start_ms, charIndex };
+  });
 }
 
 export function getTimedTextSlice(text: string, elapsedMs: number, durationMs: number): string {
@@ -112,7 +145,7 @@ export function getSubtitleCueForCharIndex(cues: SubtitleCue[], charIndex: numbe
 
 // ── 情感分析 ──
 
-export function analyzeSentence(sentence: string): { expression: Emotion; action: Action } {
+function analyzeSentenceLegacy(sentence: string): { expression: Emotion; action: Action } {
   const s = sentence.trim();
 
   // ── 表情分析（优先级从高到低）──
@@ -159,7 +192,7 @@ export function analyzeSentence(sentence: string): { expression: Emotion; action
     action = 'wave';
   }
   // point: 指引方向
-  else if (/(请看|那边|这里|这个|这座|这处|这一|前方|左边|右边|看这|看那|这边|那边|往这|往那|指向|指着|看看|瞧|瞧这|瞧那|路线|前往|导航|带路|跟随|继续|出发|到达|景点|地图|打开)/.test(s)) {
+  else if (/(请看|那边|这里|前方|左边|右边|左侧|右侧|看这|看那|这边|往这|往那|指向|指着|瞧这|瞧那|继续前往|跟我来)/.test(s)) {
     action = 'point';
   }
   // clap: 鼓掌、祝贺
@@ -198,6 +231,39 @@ export function analyzeSentence(sentence: string): { expression: Emotion; action
   return { expression, action };
 }
 
+export function analyzeSentence(sentence: string): { expression: Emotion; action: Action } {
+  const text = sentence.trim();
+  if (!text) return { expression: 'neutral', action: 'none' };
+
+  let expression: Emotion = 'relaxed';
+  if (/(惊喜|壮观|震撼|竟然|不可思议|太厉害|太美了)/.test(text)) {
+    expression = 'surprised';
+  } else if (/(抱歉|遗憾|可惜|无法|不知道|不清楚)/.test(text)) {
+    expression = 'sad';
+  } else if (/(危险|注意|禁止|不要|务必|安全)/.test(text)) {
+    expression = 'angry';
+  } else if (/(生气|愤怒|讨厌|真烦|气人)/.test(text)) {
+    expression = 'angry';
+  } else if (/(想想|思考|考虑|让我想想|琢磨)/.test(text)) {
+    expression = 'thinking';
+  } else if (/(谢谢|感谢|感恩)/.test(text)) {
+    expression = 'grateful';
+  } else if (/(欢迎|你好|很高兴|开心|太好了|恭喜)/.test(text)) {
+    expression = 'happy';
+  }
+
+  if (/(欢迎|你好|您好|再见|幸会)/.test(text)) {
+    return { expression: 'happy', action: 'wave' };
+  }
+  if (/(请看|看这里|看这边|前方|身后|左边|右边|左侧|右侧|跟我来)/.test(text)) {
+    return { expression: expression === 'relaxed' ? 'happy' : expression, action: 'showcase' };
+  }
+  if (/^(没错|当然|可以|好的|是的)[，。！？!?]?$/.test(text)) {
+    return { expression: 'happy', action: 'nod' };
+  }
+  return { expression, action: 'explain' };
+}
+
 function mergeTimelineSentences(sentences: string[]): string[] {
   const merged: string[] = [];
 
@@ -219,19 +285,19 @@ function mergeTimelineSentences(sentences: string[]): string[] {
 function getDefaultActionDuration(action: Action): number {
   switch (action) {
     case 'wave':
-    case 'point':
-    case 'clap':
-    case 'bow':
-      return 1600;
-    case 'lookUp':
-      return 2500;
-    case 'shakeHead':
-    case 'tiltHead':
-      return 1400;
+    case 'thinking':
+    case 'listen':
+      return 2000;
+    case 'explain':
+      return 2600;
+    case 'showcase':
+      return 1800;
     case 'nod':
       return 1200;
-    case 'lookDown':
-      return 1300;
+    case 'waiting1':
+    case 'waiting2':
+    case 'waiting3':
+      return 3000;
     case 'none':
     default:
       return 800;

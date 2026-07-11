@@ -581,10 +581,9 @@ const DashboardPage: React.FC = () => {
         {`
           .smart-brain-shell {
             position: relative;
-            height: calc(100vh - 64px);
-            min-height: 0;
-            padding: 0 24px 14px;
-            overflow: hidden;
+            min-height: calc(100vh - 64px);
+            padding: 0 24px 32px;
+            overflow: visible;
             background:
               radial-gradient(circle at 50% 48%, rgba(255, 241, 197, 0.42), transparent 34%),
               linear-gradient(180deg, rgba(253, 248, 236, 0.94), rgba(246, 237, 215, 0.88));
@@ -824,9 +823,9 @@ const DashboardPage: React.FC = () => {
             display: grid;
             grid-template-columns: minmax(238px, 282px) minmax(780px, 1.72fr) minmax(238px, 282px);
             gap: 12px;
-            height: calc(100vh - 238px);
-            min-height: 0;
-            overflow: hidden;
+            height: auto;
+            min-height: max(640px, calc(100vh - 238px));
+            overflow: visible;
             align-items: stretch;
           }
 
@@ -837,10 +836,8 @@ const DashboardPage: React.FC = () => {
             gap: 3px;
             min-width: 0;
             min-height: 0;
-            overflow-y: auto;
-            overflow-x: hidden;
+            overflow: visible;
             padding: 3px 2px;
-            scrollbar-gutter: stable;
             overscroll-behavior: contain;
           }
 
@@ -872,7 +869,7 @@ const DashboardPage: React.FC = () => {
           .brain-map-zone {
             position: relative;
             min-width: 0;
-            min-height: 0;
+            min-height: 640px;
             height: 100%;
             overflow: visible;
           }
@@ -1136,13 +1133,22 @@ const DashboardPage: React.FC = () => {
             place-items: center;
             width: 28px;
             height: 28px;
+            flex: 0 0 28px;
             border-radius: 999px;
             color: #F05A28;
+            font-size: 14px;
             background:
               radial-gradient(circle at 50% 50%, rgba(240, 90, 40, 0.12), transparent 58%),
               rgba(255, 248, 229, 0.34);
             border: 1px solid rgba(240, 90, 40, 0.22);
             box-shadow: 0 0 0 5px rgba(240, 90, 40, 0.045);
+          }
+
+          .brain-panel__icon :where(svg),
+          .layer-dock__icon :where(svg) {
+            width: 1em;
+            height: 1em;
+            display: block;
           }
 
           .brain-panel > *:not(.brain-panel__scan):not(.brain-panel__edge) {
@@ -1464,8 +1470,10 @@ const DashboardPage: React.FC = () => {
             height: 24px;
             display: grid;
             place-items: center;
+            flex: 0 0 24px;
             border-radius: 50%;
             color: var(--layer-color);
+            font-size: 14px;
             background: rgba(var(--layer-rgb), 0.10);
             box-shadow: inset 0 0 0 1px rgba(var(--layer-rgb), 0.18);
           }
@@ -1754,7 +1762,7 @@ const DashboardPage: React.FC = () => {
             }
 
             .smart-brain-grid {
-              height: calc(100vh - 154px);
+              min-height: max(640px, calc(100vh - 154px));
             }
 
             .metric-grid {
@@ -1875,7 +1883,6 @@ const DashboardPage: React.FC = () => {
             }
 
             .smart-brain-grid {
-              height: auto;
               min-height: 0;
               grid-template-columns: 1fr;
             }

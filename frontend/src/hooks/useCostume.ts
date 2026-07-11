@@ -7,7 +7,7 @@ import {
   type CostumeDef,
 } from '../config/costumeMap';
 
-const STORAGE_KEY = 'live2d-costume';
+const STORAGE_KEY = 'avatar-costume';
 
 type CostumeMode = 'auto' | 'manual';
 

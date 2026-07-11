@@ -79,10 +79,14 @@ function App() {
 
   const digitalHumanPose: DigitalHumanPose = React.useMemo(() => {
     if (location.pathname === '/chat') return 'kiosk-stage';
+    if (location.pathname === '/mobile') return 'mobile-entry';
     if (location.pathname === '/story') return 'left-stage';
     if (['/history', '/recommend'].includes(location.pathname)) return 'left';
     return 'center';
   }, [location.pathname]);
+
+  const sceneVariant = isMobileEntry ? 'minimal' : location.pathname === '/chat' ? 'zen' : undefined;
+  const hideSceneBackground = isMobileEntry || location.pathname === '/chat';
 
   const appContent = (
     <div
@@ -150,11 +154,12 @@ function App() {
 
   return (
     <ConfigProvider locale={zhCN} theme={theme}>
-      {isAdmin || isSpotSwitch || isMobileEntry ? appContent : (
+      {isAdmin || isSpotSwitch ? appContent : (
         <DigitalHumanProvider
           pose={digitalHumanPose}
-          sceneVariant={location.pathname === '/chat' ? 'zen' : undefined}
-          hideSceneBackground={location.pathname === '/chat'}
+          sceneVariant={sceneVariant}
+          hideSceneBackground={hideSceneBackground}
+          mobileLayout={isMobileEntry}
         >
           {appContent}
         </DigitalHumanProvider>

@@ -9,5 +9,7 @@ describe('home VRM greeting action', () => {
     );
 
     expect(source).toMatch(/speakWithDigitalHuman\('欢迎来到灵山胜境[\s\S]*?action: 'wave'[\s\S]*?actionDuration: 1600[\s\S]*?replaceCurrent: true/s);
+    expect(source).toMatch(/if \(!isFocused\) return undefined;[\s\S]*?homeDigitalHuman\.activate\(\);[\s\S]*?speakWithDigitalHuman\('欢迎来到灵山胜境/s);
+    expect(source).not.toContain("if (!isFocused || Platform.OS === 'web') return undefined;");
   });
 });

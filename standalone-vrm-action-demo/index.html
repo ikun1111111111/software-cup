@@ -94,6 +94,7 @@
       flex-direction: column;
       gap: 18px;
       box-shadow: -24px 0 80px rgba(22, 18, 14, 0.08);
+      overflow-y: auto;
     }
 
     h1 {
@@ -231,6 +232,98 @@
       line-height: 1.5;
     }
 
+    .performance-console {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      background: rgba(243, 234, 214, 0.72);
+    }
+
+    .performance-console input,
+    .performance-console textarea {
+      width: 100%;
+      border: 1px solid rgba(22, 18, 14, 0.28);
+      border-radius: 0;
+      padding: 10px 12px;
+      color: var(--ink);
+      background: rgba(255, 249, 234, 0.82);
+      font: inherit;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .performance-console textarea {
+      min-height: 104px;
+      resize: vertical;
+    }
+
+    .performance-console input {
+      min-height: 42px;
+    }
+
+    .performance-console label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .performance-console input:focus,
+    .performance-console textarea:focus {
+      outline: 2px solid rgba(180, 61, 42, 0.28);
+      outline-offset: 1px;
+    }
+
+    .performance-status,
+    .quick-states,
+    .expression-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+
+    .performance-status div {
+      min-width: 0;
+      padding: 8px;
+      border: 1px solid rgba(22, 18, 14, 0.12);
+      background: rgba(255, 249, 234, 0.58);
+      text-align: center;
+    }
+
+    .performance-status small,
+    .performance-status strong {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .performance-status small {
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .performance-status strong {
+      font-size: 12px;
+    }
+
+    .quick-states button,
+    .expression-grid button {
+      min-height: 36px;
+      padding: 0 6px;
+      border-color: rgba(22, 18, 14, 0.24);
+      background: transparent;
+      color: var(--ink);
+      font-size: 12px;
+    }
+
+    .expression-grid button.active {
+      border-color: var(--lacquer);
+      background: rgba(180, 61, 42, 0.12);
+      color: var(--lacquer);
+    }
+
     @media (max-width: 820px) {
       body {
         overflow: auto;
@@ -268,10 +361,40 @@
         <p class="sub">这个页面只加载你截图里的移动端红衣导览 VRM 和 GLB 动作文件，不经过移动端项目、不需要 Expo 打包。</p>
       </div>
 
+      <section class="performance-console" aria-label="文字驱动表演控制台">
+        <label for="questionText">用户问题</label>
+        <input id="questionText" type="text" placeholder="例如：灵山大佛有多高？留空表示主动欢迎，不触发思考" />
+        <label for="performanceText">小景回答</label>
+        <textarea id="performanceText">欢迎来到灵山胜境，我是数字人导游小景。请看这边，前方就是庄严的灵山大佛。</textarea>
+        <div class="performance-status">
+          <div><small>状态</small><strong id="performanceState">待机</strong></div>
+          <div><small>动作</small><strong id="performanceGesture">natural-idle</strong></div>
+          <div><small>表情</small><strong id="performanceEmotion">neutral</strong></div>
+        </div>
+        <button id="performButton">模拟问答表演</button>
+        <div class="quick-states">
+          <button id="listenStateButton">模拟倾听</button>
+          <button id="thinkingStateButton">模拟思考</button>
+          <button id="interruptButton">打断 / 待机</button>
+        </div>
+        <label>表情单独预览</label>
+        <div class="expression-grid">
+          <button data-emotion="neutral">中性</button>
+          <button data-emotion="happy">开心</button>
+          <button data-emotion="thinking">思考</button>
+          <button data-emotion="attentive">专注</button>
+          <button data-emotion="calm">平静</button>
+          <button data-emotion="concerned">关切</button>
+          <button data-emotion="surprised">惊讶</button>
+          <button data-emotion="serious">严肃</button>
+        </div>
+      </section>
+
       <div class="status">
         <div class="row"><span>模型</span><span id="modelStatus">等待加载</span></div>
         <div class="row"><span>动作</span><span id="clipStatus">等待加载</span></div>
         <div class="row"><span>绑定骨骼</span><span id="trackStatus">-</span></div>
+        <div class="row"><span>待机状态</span><span id="idleStatus">等待初始化</span></div>
       </div>
 
       <div class="controls">
@@ -286,11 +409,14 @@
 
       <p class="section-label">导览动作</p>
       <div class="action-grid">
-        <button class="action" data-action="idle">标准站姿</button>
+        <button class="action" data-action="natural-idle">自然待机</button>
         <button class="action" data-action="wave">挥手 wave</button>
         <button class="action" data-action="thinking">思考 thinking</button>
         <button class="action" data-action="explain">讲解 explain</button>
         <button class="action" data-action="listen">倾听 listen</button>
+        <button class="action" data-action="waiting1">待机 waiting1</button>
+        <button class="action" data-action="waiting2">待机 waiting2</button>
+        <button class="action" data-action="waiting3">待机 waiting3</button>
         <button class="action" data-action="point-right">右手指引</button>
         <button class="action" data-action="showcase">请看这边</button>
         <button class="action" data-action="nod">点头确认</button>
@@ -323,21 +449,35 @@
     const modelStatus = document.querySelector('#modelStatus');
     const clipStatus = document.querySelector('#clipStatus');
     const trackStatus = document.querySelector('#trackStatus');
+    const idleStatus = document.querySelector('#idleStatus');
     const errorBox = document.querySelector('#errorBox');
     const playButton = document.querySelector('#playButton');
     const stopButton = document.querySelector('#stopButton');
     const reloadButton = document.querySelector('#reloadButton');
     const fileInput = document.querySelector('#fileInput');
     const actionButtons = [...document.querySelectorAll('[data-action]')];
+    const questionText = document.querySelector('#questionText');
+    const performanceText = document.querySelector('#performanceText');
+    const performButton = document.querySelector('#performButton');
+    const listenStateButton = document.querySelector('#listenStateButton');
+    const thinkingStateButton = document.querySelector('#thinkingStateButton');
+    const interruptButton = document.querySelector('#interruptButton');
+    const performanceState = document.querySelector('#performanceState');
+    const performanceGesture = document.querySelector('#performanceGesture');
+    const performanceEmotion = document.querySelector('#performanceEmotion');
+    const emotionButtons = [...document.querySelectorAll('[data-emotion]')];
 
     const GLB_ACTIONS = {
       wave: './assets/animations/waving1.glb',
       thinking: './assets/animations/thinking.glb',
       explain: './assets/animations/explain.glb',
       listen: './assets/animations/listen.glb',
+      waiting1: './assets/animations/waiting1.glb',
+      waiting2: './assets/animations/waiting2.glb',
+      waiting3: './assets/animations/waiting3.glb',
     };
 
-    const ACTION_LABELS = {
+    /* Legacy labels were corrupted by an earlier encoding conversion.
       idle: '标准站姿',
       wave: '挥手 wave',
       thinking: '思考 thinking',
@@ -347,6 +487,68 @@
       showcase: '请看这边',
       nod: '点头确认',
       bow: '轻微鞠躬',
+      'natural-idle': '自然待机',
+      breathe: '呼吸',
+      'look-left': '左顾',
+      'look-right': '右盼',
+      'shift-left': '重心左移',
+      'shift-right': '重心右移',
+      'small-nod': '轻点头',
+    };
+
+    */
+    /* Replaced with ASCII-safe runtime labels below.
+      idle: '标准站姿',
+      wave: '挥手 wave',
+      thinking: '思考 thinking',
+      explain: '讲解 explain',
+      listen: '倾听 listen',
+      'point-right': '右手指引',
+      showcase: '请看这边',
+      nod: '点头确认',
+      bow: '轻微鞠躬',
+      'natural-idle': '自然待机',
+      breathe: '呼吸',
+      'look-left': '左顾',
+      'look-right': '右盼',
+      'shift-left': '重心左移',
+      'shift-right': '重心右移',
+      'small-nod': '轻点头',
+    };
+
+    */
+    const ACTION_LABELS = {
+      idle: 'Idle',
+      wave: 'Wave',
+      thinking: 'Thinking',
+      explain: 'Explain',
+      listen: 'Listen',
+      waiting1: 'Waiting 1',
+      waiting2: 'Waiting 2',
+      waiting3: 'Waiting 3',
+      'point-right': 'Point right',
+      showcase: 'Showcase',
+      nod: 'Nod',
+      bow: 'Bow',
+      'natural-idle': 'Natural idle',
+      breathe: 'Breathe',
+      'look-left': 'Look left',
+      'look-right': 'Look right',
+      'shift-left': 'Shift left',
+      'shift-right': 'Shift right',
+      'small-nod': 'Small nod',
+    };
+
+    const NATURAL_IDLE = 'natural-idle';
+    const IDLE_ACTIONS = ['breathe', 'look-left', 'look-right', 'shift-left', 'shift-right', 'small-nod'];
+    const IDLE_GLB_ACTIONS = ['waiting1', 'waiting2', 'waiting3'];
+    const idleTimer = {
+      nextTrigger: 0,
+      minInterval: 4.5,
+      maxInterval: 8.5,
+      playingIdle: false,
+      loadingIdle: false,
+      suspendedForSpeech: false,
     };
 
     const scene = new THREE.Scene();
@@ -372,6 +574,48 @@
       duration: 0,
       playing: false,
     };
+    let performanceRun = 0;
+    let performanceTimer = 0;
+    let mouthValue = 0;
+    let mouthTarget = 0;
+    let activeEmotion = 'neutral';
+    let nextBlinkAt = 0;
+    let blinkStartedAt = -1;
+    let faceMorphMeshes = [];
+
+    const EMOTION_EXPRESSIONS = {
+      neutral: null,
+      happy: ['happy', 'relaxed'],
+      concerned: ['sad', 'relaxed'],
+      surprised: null,
+      thinking: ['sad'],
+      attentive: null,
+      calm: ['relaxed'],
+      serious: ['angry'],
+    };
+
+    const ACTION_EMOTIONS = {
+      idle: 'neutral',
+      'natural-idle': 'neutral',
+      waiting1: 'neutral',
+      waiting2: 'neutral',
+      waiting3: 'neutral',
+      wave: 'happy',
+      thinking: 'thinking',
+      explain: 'calm',
+      listen: 'attentive',
+      'point-right': 'calm',
+      showcase: 'happy',
+      nod: 'happy',
+      bow: 'calm',
+    };
+
+    const PERFORMANCE_LABELS = {
+      idle: '待机',
+      listening: '倾听',
+      thinking: '思考',
+      speaking: '讲解',
+    };
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.72));
     const keyLight = new THREE.DirectionalLight(0xffffff, 1.15);
@@ -394,6 +638,16 @@
       camera.updateProjectionMatrix();
     }
 
+    function frameBodyCamera() {
+      camera.position.set(0, 0.92, 3.45);
+      camera.lookAt(0, 0.55, 0);
+    }
+
+    function frameFaceCamera() {
+      camera.position.set(0, 0.92, 1.32);
+      camera.lookAt(0, 0.78, 0);
+    }
+
     function frameModel() {
       if (!vrm) return;
       vrm.scene.scale.set(1, 1, 1);
@@ -411,8 +665,7 @@
       vrm.scene.position.y = -fitted.min.y - 1.02;
       vrm.scene.position.z = -(fitted.min.z + fitted.max.z) / 2;
 
-      camera.position.set(0, 0.92, 3.45);
-      camera.lookAt(0, 0.55, 0);
+      frameBodyCamera();
     }
 
     function getTrackParts(trackName) {
@@ -490,9 +743,13 @@
         if (!parts || !object) continue;
         if (parts.property !== 'quaternion') continue;
         if (!trackHasMotion(track)) continue;
+        const interpolant = track.createInterpolant(new Float32Array(track.getValueSize()));
+        const sourceBase = new THREE.Quaternion().fromArray(interpolant.evaluate(0)).normalize();
         tracks.push({
           object,
-          interpolant: track.createInterpolant(new Float32Array(track.getValueSize())),
+          interpolant,
+          sourceBase,
+          targetBase: object.quaternion.clone(),
         });
       }
       return tracks;
@@ -529,12 +786,37 @@
       bone.quaternion.copy(rest).multiply(delta);
     }
 
+    function setArmDirection(upperName, lowerName, desiredWorldDirection) {
+      const upper = vrm?.scene.getObjectByName(upperName);
+      const lower = vrm?.scene.getObjectByName(lowerName);
+      const rest = restPose.get(upperName);
+      if (!upper || !lower || !upper.parent || !rest) return;
+
+      upper.quaternion.copy(rest);
+      vrm.scene.updateWorldMatrix(true, true);
+
+      const parentWorld = upper.parent.getWorldQuaternion(new THREE.Quaternion());
+      const inverseParentWorld = parentWorld.clone().invert();
+      const upperWorldPosition = upper.getWorldPosition(new THREE.Vector3());
+      const lowerWorldPosition = lower.getWorldPosition(new THREE.Vector3());
+      const currentInParent = lowerWorldPosition
+        .sub(upperWorldPosition)
+        .applyQuaternion(inverseParentWorld)
+        .normalize();
+      const desiredInParent = desiredWorldDirection
+        .clone()
+        .applyQuaternion(inverseParentWorld)
+        .normalize();
+      const swing = new THREE.Quaternion().setFromUnitVectors(currentInParent, desiredInParent);
+      upper.quaternion.copy(swing.multiply(rest));
+    }
+
     function applyAPose() {
       if (!vrm || restPose.size === 0) return;
       setBoneDelta('J_Bip_L_Shoulder', 0, 0, -0.02);
       setBoneDelta('J_Bip_R_Shoulder', 0, 0, 0.02);
-      setBoneDelta('J_Bip_L_UpperArm', 0.02, 0, 1.12);
-      setBoneDelta('J_Bip_R_UpperArm', 0.02, 0, -1.12);
+      setArmDirection('J_Bip_L_UpperArm', 'J_Bip_L_LowerArm', new THREE.Vector3(0.3, -0.95, 0.04));
+      setArmDirection('J_Bip_R_UpperArm', 'J_Bip_R_LowerArm', new THREE.Vector3(-0.3, -0.95, 0.04));
       setBoneDelta('J_Bip_L_LowerArm', -0.06, 0, 0.12);
       setBoneDelta('J_Bip_R_LowerArm', -0.06, 0, -0.12);
       setBoneDelta('J_Bip_L_Hand', 0, 0, 0);
@@ -566,8 +848,8 @@
       guideAction.playing = false;
       guideAction.name = 'idle';
       guideAction.time = 0;
-      clipStatus.textContent = '标准站姿 / A-pose';
-      trackStatus.textContent = '程序骨骼';
+      clipStatus.textContent = '自然待机 / 程序骨骼';
+      trackStatus.textContent = '全身微动';
       setActiveAction('idle');
       applyAPose();
     }
@@ -578,7 +860,9 @@
       directPlayer.time = Math.min(directPlayer.time + dt, directPlayer.duration);
       for (const item of directPlayer.tracks) {
         const value = item.interpolant.evaluate(directPlayer.time);
-        item.object.quaternion.fromArray(value);
+        const sampled = new THREE.Quaternion().fromArray(value).normalize();
+        const delta = item.sourceBase.clone().invert().multiply(sampled);
+        item.object.quaternion.copy(item.targetBase).multiply(delta);
       }
       vrm?.scene.updateMatrixWorld(true);
 
@@ -587,11 +871,55 @@
       }
     }
 
+    function applyNaturalIdle() {
+      const t = clock.getElapsedTime();
+
+      const breath = Math.sin(t * 1.7) * 0.5 + Math.sin(t * 3.3 + 1.0) * 0.15;
+      const sway = Math.sin(t * 0.65) * 0.5 + Math.sin(t * 1.2 + 2.0) * 0.2;
+      const micro = Math.sin(t * 4.8 + 0.5) * 0.1;
+      const shift = Math.sin(t * 0.4 + 1.5) * 0.3;
+
+      setBoneDelta('J_Bip_C_Hips', 0, 0, 0.04 * shift);
+      setBoneDelta('J_Bip_C_Spine', 0.015 * breath, 0.05 * sway, 0.01 * shift);
+      setBoneDelta('J_Bip_C_Chest', 0.025 * breath, 0.02 * sway, 0);
+      setBoneDelta('J_Bip_C_UpperChest', 0.02 * breath + 0.01 * micro, 0.04 * sway, 0);
+      setBoneDelta('J_Bip_C_Neck', 0.01 * breath, 0.07 * sway + 0.02 * micro, 0);
+      setBoneDelta('J_Bip_C_Head', 0.012 * breath, 0.05 * sway, 0.008 * micro);
+
+      setBoneDelta('J_Bip_L_Shoulder', 0.008 * breath, 0, -0.03 + 0.04 * breath);
+      setBoneDelta('J_Bip_R_Shoulder', 0.008 * breath, 0, 0.03 - 0.04 * breath);
+      setArmDirection(
+        'J_Bip_L_UpperArm',
+        'J_Bip_L_LowerArm',
+        new THREE.Vector3(0.3 + 0.025 * sway, -0.95, 0.04 + 0.012 * breath),
+      );
+      setArmDirection(
+        'J_Bip_R_UpperArm',
+        'J_Bip_R_LowerArm',
+        new THREE.Vector3(-0.3 + 0.025 * sway, -0.95, 0.04 + 0.012 * breath),
+      );
+      setBoneDelta('J_Bip_L_LowerArm', -0.05 + 0.03 * breath, 0, 0.1 + 0.04 * sway);
+      setBoneDelta('J_Bip_R_LowerArm', -0.05 + 0.03 * breath, 0, -0.1 + 0.04 * sway);
+      setBoneDelta('J_Bip_L_Hand', 0.02 * micro, 0, 0.03 * sway);
+      setBoneDelta('J_Bip_R_Hand', 0.02 * micro, 0, 0.03 * sway);
+
+      vrm.scene.updateMatrixWorld(true);
+    }
+
     function applyGuideAction(dt) {
       if (!guideAction.playing || !vrm) return;
+
+      if (guideAction.name === NATURAL_IDLE) {
+        applyNaturalIdle();
+        return;
+      }
+
       guideAction.time = Math.min(guideAction.time + dt, guideAction.duration);
       const hold = holdCurve(guideAction.time, guideAction.duration);
       const pulse = Math.sin(guideAction.time * Math.PI * 2.6);
+
+      // 待机小动作以自然待机为基线，保持全身微动
+      applyNaturalIdle();
 
       if (guideAction.name === 'point-right') {
         setBoneDelta('J_Bip_R_Shoulder', 0, 0, 0.02);
@@ -625,10 +953,105 @@
         setBoneDelta('J_Bip_R_UpperArm', 0.02, 0, -1.02);
       }
 
+      if (guideAction.name === 'breathe') {
+        const breath = Math.sin(guideAction.time * Math.PI * 1.4) * hold;
+        setBoneDelta('J_Bip_C_Chest', 0.04 * breath, 0, 0);
+        setBoneDelta('J_Bip_C_UpperChest', 0.03 * breath, 0, 0);
+        setBoneDelta('J_Bip_L_Shoulder', 0, 0, -0.02 + 0.05 * breath);
+        setBoneDelta('J_Bip_R_Shoulder', 0, 0, 0.02 - 0.05 * breath);
+      }
+
+      if (guideAction.name === 'look-left') {
+        setBoneDelta('J_Bip_C_Neck', 0, 0.18 * hold, 0);
+        setBoneDelta('J_Bip_C_Head', 0, 0.24 * hold, 0);
+      }
+
+      if (guideAction.name === 'look-right') {
+        setBoneDelta('J_Bip_C_Neck', 0, -0.18 * hold, 0);
+        setBoneDelta('J_Bip_C_Head', 0, -0.24 * hold, 0);
+      }
+
+      if (guideAction.name === 'shift-left') {
+        setBoneDelta('J_Bip_C_Hips', 0, 0, -0.06 * hold);
+        setBoneDelta('J_Bip_C_Spine', 0, 0, -0.04 * hold);
+        setBoneDelta('J_Bip_C_UpperChest', 0, 0.03 * hold, 0);
+      }
+
+      if (guideAction.name === 'shift-right') {
+        setBoneDelta('J_Bip_C_Hips', 0, 0, 0.06 * hold);
+        setBoneDelta('J_Bip_C_Spine', 0, 0, 0.04 * hold);
+        setBoneDelta('J_Bip_C_UpperChest', 0, -0.03 * hold, 0);
+      }
+
+      if (guideAction.name === 'small-nod') {
+        const nod = Math.sin(guideAction.time * Math.PI * 2.6) * hold;
+        setBoneDelta('J_Bip_C_Neck', 0.02 * nod, 0, 0);
+        setBoneDelta('J_Bip_C_Head', 0.09 * nod, 0, 0);
+      }
+
       vrm.scene.updateMatrixWorld(true);
 
       if (guideAction.time >= guideAction.duration) {
         guideAction.playing = false;
+      }
+    }
+
+    function resetIdleTimer() {
+      idleTimer.nextTrigger = clock.getElapsedTime() + idleTimer.minInterval + Math.random() * (idleTimer.maxInterval - idleTimer.minInterval);
+      idleTimer.playingIdle = false;
+    }
+
+    function updateIdle() {
+      const now = clock.getElapsedTime();
+      const isBusy = directPlayer.playing || (guideAction.playing && guideAction.name !== NATURAL_IDLE) || currentAction?.isRunning?.();
+      const isSpeaking = performanceState.textContent === PERFORMANCE_LABELS.speaking;
+      const isPreviewingEmotion = performanceState.textContent === '表情预览';
+
+      if (isBusy) {
+        idleStatus.textContent = '播放中';
+        return;
+      }
+
+      if (isSpeaking || isPreviewingEmotion) {
+        if (!idleTimer.suspendedForSpeech) {
+          idleTimer.suspendedForSpeech = true;
+          idleTimer.playingIdle = false;
+        }
+        if (!guideAction.playing || guideAction.name !== NATURAL_IDLE) {
+          playProceduralAction(NATURAL_IDLE);
+        }
+        idleStatus.textContent = isPreviewingEmotion
+          ? '表情预览中 · 随机待机已暂停'
+          : '讲解中 · 随机待机已暂停';
+        return;
+      }
+
+      if (idleTimer.suspendedForSpeech) {
+        idleTimer.suspendedForSpeech = false;
+        resetIdleTimer();
+      }
+
+      if (idleTimer.playingIdle && !guideAction.playing) {
+        resetIdleTimer();
+      }
+
+      if (!guideAction.playing || guideAction.name !== NATURAL_IDLE) {
+        playProceduralAction(NATURAL_IDLE);
+        return;
+      }
+
+      const wait = Math.max(0, idleTimer.nextTrigger - now);
+      idleStatus.textContent = `自然待机中 · ${wait.toFixed(1)}s 后小动作`;
+
+      if (now >= idleTimer.nextTrigger && !idleTimer.playingIdle && !idleTimer.loadingIdle) {
+        const name = IDLE_GLB_ACTIONS[Math.floor(Math.random() * IDLE_GLB_ACTIONS.length)];
+        idleTimer.playingIdle = true;
+        idleTimer.loadingIdle = true;
+        playNamedAction(name)
+          .catch((error) => setError(error.message || String(error)))
+          .finally(() => {
+            idleTimer.loadingIdle = false;
+          });
       }
     }
 
@@ -640,9 +1063,14 @@
 
       VRMUtils.rotateVRM0(vrm);
       scene.add(vrm.scene);
+      faceMorphMeshes = [];
+      vrm.scene.traverse((object) => {
+        if (object.morphTargetInfluences?.length > 43) faceMorphMeshes.push(object);
+      });
       frameModel();
       captureRestPose();
       applyAPose();
+      resetIdleTimer();
       modelStatus.textContent = '已加载截图同款红衣导览 VRM';
     }
 
@@ -660,6 +1088,7 @@
         throw new Error('这个 GLB 有动画，但没有轨道能绑定到当前 VRM 骨骼');
       }
       const clip = makeBindableClip(picked.clip);
+      applyAPose();
       const directTracks = makeDirectTracks(picked.clip);
       if (directTracks.length === 0) {
         throw new Error('这个 GLB 有动画，但没有可播放的骨骼旋转变化');
@@ -690,6 +1119,7 @@
       applyAPose();
       directPlayer.time = 0;
       directPlayer.playing = true;
+      resetIdleTimer();
       applyDirectAnimation(0);
     }
 
@@ -704,45 +1134,369 @@
       mixer?.stopAllAction();
       directPlayer.playing = false;
       applyAPose();
+
+      const durations = {
+        nod: 1.6,
+        bow: 2.1,
+        breathe: 2.6,
+        'look-left': 1.8,
+        'look-right': 1.8,
+        'shift-left': 2.4,
+        'shift-right': 2.4,
+        'small-nod': 1.2,
+        'natural-idle': Infinity,
+      };
+
       guideAction = {
         name,
         time: 0,
-        duration: name === 'nod' ? 1.6 : name === 'bow' ? 2.1 : 2.0,
+        duration: durations[name] ?? 2.0,
         playing: true,
       };
-      clipStatus.textContent = `${ACTION_LABELS[name]} / 程序骨骼`;
+      resetIdleTimer();
+
+      const isIdleAction = name === NATURAL_IDLE || IDLE_ACTIONS.includes(name);
+      clipStatus.textContent = `${ACTION_LABELS[name]} / ${isIdleAction ? '待机程序骨骼' : '程序骨骼'}`;
       trackStatus.textContent = '可直接替换成 Blender GLB';
-      setActiveAction(name);
+
+      if (isIdleAction) {
+        setActiveAction('idle');
+      } else {
+        setActiveAction(name);
+      }
+
       applyGuideAction(0);
     }
 
     async function playNamedAction(name) {
       setError('');
-      if (name === 'idle') {
+      if (name === 'idle' || name === NATURAL_IDLE) {
         stopGuideMotion();
+        updateIdle();
         return;
       }
       if (GLB_ACTIONS[name]) {
         setActiveAction(name);
-        await loadAnimation(`${GLB_ACTIONS[name]}?t=${Date.now()}`, `${ACTION_LABELS[name]}.glb`);
+        const actionUrl = IDLE_GLB_ACTIONS.includes(name)
+          ? GLB_ACTIONS[name]
+          : `${GLB_ACTIONS[name]}?t=${Date.now()}`;
+        await loadAnimation(actionUrl, `${ACTION_LABELS[name]}.glb`);
         playAnimation();
         return;
       }
       playProceduralAction(name);
     }
 
+    function planPerformance(text) {
+      const content = text.trim();
+      if (/欢迎|你好|再见|幸会/.test(content)) {
+        return { gesture: 'wave', emotion: 'happy' };
+      }
+      if (/请看|这边|前方|方向|路线|大佛/.test(content)) {
+        return { gesture: 'showcase', emotion: 'happy' };
+      }
+      if (/没错|当然|可以|好的|是的/.test(content)) {
+        return { gesture: 'nod', emotion: 'happy' };
+      }
+      if (/危险|注意|禁止|不要|务必|安全/.test(content)) {
+        return { gesture: 'explain', emotion: 'serious' };
+      }
+      if (/抱歉|遗憾|关闭|错过|无法/.test(content)) {
+        return { gesture: 'explain', emotion: 'concerned' };
+      }
+      if (/惊喜|壮观|竟然|特别/.test(content)) {
+        return { gesture: 'explain', emotion: 'surprised' };
+      }
+      return { gesture: 'explain', emotion: 'neutral' };
+    }
+
+    function isUserQuestion(text) {
+      const content = text.trim();
+      if (!content) return false;
+      if (/^(你好|您好|欢迎|早上好|下午好|晚上好|嗨|再见)[！!。,.，]*$/.test(content)) return false;
+      return /[?？]$/.test(content)
+        || /(什么|为什么|怎么|如何|多少|几时|几点|哪里|哪儿|什么时候|能不能|是否|可以吗|吗|呢)/.test(content);
+    }
+
+    function planPerformanceV2(text) {
+      const content = text.trim();
+      if (/欢迎|你好|再见|幸会/.test(content)) {
+        return { gesture: 'wave', emotion: 'happy' };
+      }
+      if (/请看|看这里|这边|前方|身后|左边|右边|左侧|右侧|跟我来/.test(content)) {
+        return { gesture: 'showcase', emotion: 'happy' };
+      }
+      if (/没错|当然|可以|好的|是的/.test(content)) {
+        return { gesture: 'nod', emotion: 'happy' };
+      }
+      if (/抱歉|遗憾|关闭|错过|无法/.test(content)) {
+        return { gesture: 'explain', emotion: 'concerned' };
+      }
+      if (/惊喜|壮观|震撼|特别/.test(content)) {
+        return { gesture: 'explain', emotion: 'surprised' };
+      }
+      if (/介绍|讲解|历史|文化|由来|建于|始建|景点|建筑|佛教|门票|票价|开放|营业|演出|时间|路线|游览|交通|公里|米|分钟|小时/.test(content)) {
+        return { gesture: 'explain', emotion: 'calm' };
+      }
+      return { gesture: 'explain', emotion: 'calm' };
+    }
+
+    function setPerformanceStatus(state, gesture, emotion) {
+      performanceState.textContent = PERFORMANCE_LABELS[state] || state;
+      performanceGesture.textContent = gesture;
+      setActiveEmotion(emotion);
+    }
+
+    function setActiveEmotion(emotion) {
+      activeEmotion = emotion;
+      performanceEmotion.textContent = emotion;
+      emotionButtons.forEach((button) => {
+        button.classList.toggle('active', button.dataset.emotion === emotion);
+      });
+    }
+
+    function clearPerformanceTimer() {
+      if (performanceTimer) {
+        window.clearTimeout(performanceTimer);
+        performanceTimer = 0;
+      }
+    }
+
+    function applyDefaultEmotionForAction(name) {
+      const emotion = ACTION_EMOTIONS[name] || 'neutral';
+      setActiveEmotion(emotion);
+      return emotion;
+    }
+
+    function previewEmotion(emotion) {
+      performanceRun += 1;
+      clearPerformanceTimer();
+      window.speechSynthesis?.cancel();
+      mouthTarget = 0;
+      stopAnimation();
+      performanceState.textContent = '表情预览';
+      performanceGesture.textContent = 'none';
+      setActiveEmotion(emotion);
+      frameFaceCamera();
+    }
+
+    function interruptPerformance() {
+      performanceRun += 1;
+      clearPerformanceTimer();
+      window.speechSynthesis?.cancel();
+      mouthTarget = 0;
+      frameBodyCamera();
+      setPerformanceStatus('idle', 'natural-idle', 'neutral');
+      stopGuideMotion();
+      updateIdle();
+    }
+
+    async function enterListeningState() {
+      performanceRun += 1;
+      clearPerformanceTimer();
+      window.speechSynthesis?.cancel();
+      mouthTarget = 0;
+      frameBodyCamera();
+      setPerformanceStatus('listening', 'listen', 'attentive');
+      await playNamedAction('listen');
+    }
+
+    async function enterThinkingState() {
+      performanceRun += 1;
+      clearPerformanceTimer();
+      window.speechSynthesis?.cancel();
+      mouthTarget = 0;
+      frameBodyCamera();
+      setPerformanceStatus('thinking', 'thinking', 'thinking');
+      await playNamedAction('thinking');
+    }
+
+    function speakForPrototype(text, runId) {
+      const canSpeak = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+      const estimatedMs = Math.max(2200, text.replace(/\s/g, '').length * 210);
+      const speechStartedAt = Date.now();
+      const minimumVisibleMs = Math.min(3200, estimatedMs);
+
+      const finish = () => {
+        if (runId !== performanceRun) return;
+        const remaining = minimumVisibleMs - (Date.now() - speechStartedAt);
+        if (remaining > 0) {
+          clearPerformanceTimer();
+          mouthTarget = 0.4;
+          performanceTimer = window.setTimeout(finish, remaining);
+          return;
+        }
+        mouthTarget = 0;
+        setPerformanceStatus('idle', 'natural-idle', 'neutral');
+        stopGuideMotion();
+        updateIdle();
+      };
+
+      if (canSpeak) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-CN';
+        utterance.rate = 0.92;
+        utterance.pitch = 1.04;
+        utterance.onstart = () => {
+          if (runId === performanceRun) mouthTarget = 0.42;
+        };
+        utterance.onboundary = () => {
+          if (runId === performanceRun) mouthTarget = 0.2 + Math.random() * 0.28;
+        };
+        utterance.onend = finish;
+        utterance.onerror = finish;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+      } else {
+        mouthTarget = 0.42;
+        performanceTimer = window.setTimeout(finish, estimatedMs);
+      }
+    }
+
+    async function performText() {
+      const question = questionText.value.trim();
+      const text = performanceText.value.trim();
+      if (!text || !vrm) return;
+      frameBodyCamera();
+
+      performanceRun += 1;
+      const runId = performanceRun;
+      clearPerformanceTimer();
+      window.speechSynthesis?.cancel();
+      mouthTarget = 0;
+      stopAnimation();
+
+      const playResponse = async () => {
+        if (runId !== performanceRun) return;
+        const plan = planPerformanceV2(text);
+        setPerformanceStatus('speaking', plan.gesture, plan.emotion);
+        await playNamedAction(plan.gesture);
+        if (runId !== performanceRun) return;
+        speakForPrototype(text, runId);
+      };
+
+      if (!isUserQuestion(question)) {
+        await playResponse();
+        return;
+      }
+
+      setPerformanceStatus('thinking', 'thinking', 'thinking');
+      await playNamedAction('thinking');
+      performanceTimer = window.setTimeout(playResponse, 720);
+    }
+
+    function setExpressionWeight(name, value) {
+      const manager = vrm?.expressionManager;
+      if (!manager) return;
+      try {
+        if (manager.getExpression?.(name)) manager.setValue(name, value);
+      } catch {
+        // Expression presets vary between VRM models.
+      }
+    }
+
+    function updateFacialChannels(dt) {
+      if (!vrm?.expressionManager) return;
+
+      const now = clock.getElapsedTime();
+      if (nextBlinkAt === 0) nextBlinkAt = now + 2.2 + Math.random() * 2.8;
+      if (now >= nextBlinkAt && blinkStartedAt < 0) blinkStartedAt = now;
+
+      let blink = 0;
+      if (blinkStartedAt >= 0) {
+        const progress = (now - blinkStartedAt) / 0.18;
+        blink = progress < 0.5 ? progress * 2 : Math.max(0, (1 - progress) * 2);
+        if (progress >= 1) {
+          blinkStartedAt = -1;
+          nextBlinkAt = now + 2.2 + Math.random() * 3.4;
+        }
+      }
+
+      const speaking = performanceState.textContent === PERFORMANCE_LABELS.speaking;
+      if (speaking) {
+        const syllablePulse = 0.12 + Math.abs(Math.sin(now * 11.5)) * 0.34;
+        mouthTarget = Math.max(mouthTarget * 0.82, syllablePulse);
+      } else {
+        mouthTarget = 0;
+      }
+      mouthValue += (mouthTarget - mouthValue) * Math.min(1, dt * 15);
+
+      ['happy', 'relaxed', 'sad', 'surprised', 'angry'].forEach((name) => setExpressionWeight(name, 0));
+      const candidates = EMOTION_EXPRESSIONS[activeEmotion] || [];
+      for (const name of candidates || []) {
+        if (vrm.expressionManager.getExpression?.(name)) {
+          const baseEmotionWeight = activeEmotion === 'happy'
+            ? (speaking ? 0.16 : 0.24)
+            : activeEmotion === 'concerned'
+              ? 0.24
+              : activeEmotion === 'surprised'
+                ? 0.28
+                : activeEmotion === 'thinking'
+                  ? 0.14
+                  : activeEmotion === 'attentive'
+                    ? 0.1
+                    : activeEmotion === 'calm'
+                      ? 0.12
+                      : 0.16;
+          const previewBoost = performanceState.textContent === '表情预览' ? 1.45 : 1;
+          const emotionWeight = Math.min(0.36, baseEmotionWeight * previewBoost);
+          setExpressionWeight(name, emotionWeight);
+          break;
+        }
+      }
+
+      const surprised = activeEmotion === 'surprised';
+      const surpriseMouth = surprised
+        ? (performanceState.textContent === '表情预览' ? 0.82 : (speaking ? 0.52 : 0.64))
+        : 0;
+      setExpressionWeight('oh', surpriseMouth);
+      setExpressionWeight('aa', mouthValue);
+      setExpressionWeight('ih', mouthValue * 0.04);
+      const blinkWeight = surprised ? 0 : blink;
+      setExpressionWeight('blink', blinkWeight);
+      setExpressionWeight('blinkLeft', blinkWeight);
+      setExpressionWeight('blinkRight', blinkWeight);
+    }
+
+    function applyEmotionCorrections() {
+      if (activeEmotion !== 'surprised') return;
+
+      // This VRM's bundled Surprised morph smiles and narrows the eyes. A small
+      // negative Blink weight opens the eyelids without distorting the face.
+      const eyeWiden = performanceState.textContent === '表情预览' ? -0.16 : -0.12;
+      for (const mesh of faceMorphMeshes) {
+        mesh.morphTargetInfluences[13] = eyeWiden;
+      }
+    }
+
     function animate() {
       requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.08);
+      updateFacialChannels(dt);
       vrm?.update(dt);
+      applyEmotionCorrections();
       applyAPose();
       applyGuideAction(dt);
       applyDirectAnimation(dt);
+      updateIdle();
       renderer.render(scene, camera);
     }
 
     playButton.addEventListener('click', playAnimation);
     stopButton.addEventListener('click', stopAnimation);
+    performButton.addEventListener('click', () => {
+      performText().catch((error) => setError(error.message || String(error)));
+    });
+    listenStateButton.addEventListener('click', () => {
+      enterListeningState().catch((error) => setError(error.message || String(error)));
+    });
+    thinkingStateButton.addEventListener('click', () => {
+      enterThinkingState().catch((error) => setError(error.message || String(error)));
+    });
+    interruptButton.addEventListener('click', interruptPerformance);
+    emotionButtons.forEach((button) => {
+      button.addEventListener('click', () => previewEmotion(button.dataset.emotion));
+    });
     reloadButton.addEventListener('click', () => {
       loadAnimation(`${DEFAULT_ANIMATION_URL}?t=${Date.now()}`).catch((error) => {
         setError(error.message || String(error));
@@ -760,6 +1514,8 @@
     });
     actionButtons.forEach((button) => {
       button.addEventListener('click', () => {
+        frameBodyCamera();
+        applyDefaultEmotionForAction(button.dataset.action);
         playNamedAction(button.dataset.action).catch((error) => {
           setError(error.message || String(error));
           clipStatus.textContent = '播放失败';
@@ -768,6 +1524,40 @@
     });
 
     window.addEventListener('resize', resize);
+    setActiveEmotion('neutral');
+    document.title = '灵山数字人 · 文字驱动表演 Demo';
+    document.querySelector('.badge').textContent = '灵山数字人 · VRM 表演原型';
+    document.querySelector('h1').textContent = '小景表演控制台';
+    document.querySelector('.sub').textContent = '输入灵山讲解词，观察文字如何驱动动作、表情、眨眼与口型。';
+    playButton.textContent = '播放';
+    stopButton.textContent = '停止';
+    reloadButton.textContent = '重载默认动作';
+    document.querySelector('.file-label').childNodes[0].textContent = '选择 GLB ';
+    const actionButtonLabels = {
+      'natural-idle': '自然待机',
+      wave: '挥手 wave',
+      thinking: '思考 thinking',
+      explain: '讲解 explain',
+      listen: '倾听 listen',
+      'point-right': '右手指引',
+      showcase: '请看这边',
+      nod: '点头确认',
+      bow: '轻微鞠躬',
+    };
+    actionButtons.forEach((button) => {
+      button.textContent = actionButtonLabels[button.dataset.action] || button.dataset.action;
+    });
+    const statusLabels = ['模型', '动作', '绑定骨骼', '待机状态'];
+    document.querySelectorAll('.status .row span:first-child').forEach((label, index) => {
+      label.textContent = statusLabels[index] || label.textContent;
+    });
+    document.querySelector('.section-label').textContent = '手动动作测试';
+    document.querySelector('.path-box').textContent = '默认动作目录：standalone-vrm-action-demo/assets/animations/';
+    document.querySelector('.tips').innerHTML = `
+      <li>当前是交互原型：语音使用浏览器朗读，口型为模拟驱动。</li>
+      <li>动作、表情、口型使用独立通道，GLB 不负责嘴部变化。</li>
+      <li>文字表演会先思考，再按内容选择挥手、指引、点头或讲解。</li>
+    `;
     resize();
     animate();
 

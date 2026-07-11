@@ -31,9 +31,9 @@ const TAB_BOTTOM_GAP = 8;
 const TAB_ROUTES = new Set(['/', '/memory', '/profile']);
 
 function getAvatarHeight(screenHeight: number): number {
-  const target = Math.round(screenHeight * 0.34);
-  const cap = screenHeight < 720 ? 254 : 292;
-  const floor = screenHeight < 640 ? 196 : 214;
+  const target = Math.round(screenHeight * 0.44);
+  const cap = screenHeight < 720 ? 320 : 360;
+  const floor = screenHeight < 640 ? 240 : 260;
   return Math.max(floor, Math.min(target, cap));
 }
 

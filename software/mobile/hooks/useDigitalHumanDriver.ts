@@ -23,6 +23,7 @@ export interface DigitalHumanDriver {
   expression: Emotion;
   mouthOpen: number;
   isSpeaking: boolean;
+  speechText: string;
   subtitle: string;
   action: Action;
   actionDurationMs: number;
@@ -32,10 +33,32 @@ export interface DigitalHumanDriver {
   setExpression: (expression: Emotion) => void;
   playAction: (action: Action, durationMs?: number) => void;
   setPageContext: (context: PageContext, data?: Record<string, any>) => void;
+  activate: () => void;
 }
 
 const NEUTRAL_HEAD_ROTATION: HeadRotation = { x: 0, y: 0 };
 const ACTION_RESTART_DELAY_MS = 40;
+
+function getExpressionForAction(expression: Emotion, action: Action): Emotion {
+  switch (action) {
+    case 'thinking':
+      return 'thinking';
+    case 'wave':
+    case 'showcase':
+    case 'nod':
+      return 'happy';
+    case 'listen':
+      return 'relaxed';
+    case 'waiting1':
+    case 'waiting2':
+    case 'waiting3':
+      return 'neutral';
+    case 'explain':
+      return expression === 'neutral' ? 'relaxed' : expression;
+    default:
+      return expression;
+  }
+}
 
 export function useDigitalHumanDriver(
   voiceMode: VoiceMode = DEFAULT_DIGITAL_HUMAN_VOICE_MODE,
@@ -46,6 +69,7 @@ export function useDigitalHumanDriver(
     expression: syncExpression,
     mouthOpen,
     isSpeaking,
+    speechText,
     subtitle,
     triggerSpeak,
     stopSpeaking,
@@ -137,12 +161,12 @@ export function useDigitalHumanDriver(
     clearResetTimer();
 
     if (first) {
-      setTimelineExpression(first.expression);
+      setTimelineExpression(getExpressionForAction(first.expression, first.action || 'none'));
       restartAction(first.action || 'none', first.durationMs ?? 800);
     }
 
     playerRef.current?.play(timeline, (expression, nextAction, nextDurationMs) => {
-      setTimelineExpression(expression);
+      setTimelineExpression(getExpressionForAction(expression, nextAction || 'none'));
       restartAction(nextAction || 'none', nextDurationMs);
     });
 
@@ -248,10 +272,15 @@ export function useDigitalHumanDriver(
     VRMManager.setPageContext(context, data);
   }, []);
 
+  const activate = useCallback(() => {
+    VRMManager.setActiveSpeakerId(speakerIdRef.current);
+  }, []);
+
   return {
     expression: timelineExpression !== 'neutral' ? timelineExpression : syncExpression,
     mouthOpen,
     isSpeaking,
+    speechText,
     subtitle,
     action,
     actionDurationMs,
@@ -261,5 +290,6 @@ export function useDigitalHumanDriver(
     setExpression,
     playAction,
     setPageContext,
+    activate,
   };
 }

@@ -49,7 +49,7 @@ export default function VrmPerformanceDemoPage() {
     setExpression(preset.expression.emotion);
 
     // 2. 设置动作（减少动效模式下跳过大动作）
-    const skipBigActions = reduceMotion && ['wave', 'point', 'clap', 'bow'].includes(preset.primaryAction);
+    const skipBigActions = reduceMotion && ['wave', 'showcase'].includes(preset.primaryAction);
     if (!skipBigActions) {
       playAction(preset.primaryAction, preset.actionDurationMs);
     }

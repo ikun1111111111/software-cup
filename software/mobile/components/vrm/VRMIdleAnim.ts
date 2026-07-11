@@ -1,4 +1,57 @@
 import type { VRM } from '@pixiv/three-vrm';
+import type { Emotion } from './VRMTypes';
+
+export type ExpressionWeights = Record<
+  'neutral' | 'happy' | 'sad' | 'angry' | 'relaxed' | 'surprised' | 'oh',
+  number
+>;
+
+const EMPTY_EXPRESSION_WEIGHTS: ExpressionWeights = {
+  neutral: 0,
+  happy: 0,
+  sad: 0,
+  angry: 0,
+  relaxed: 0,
+  surprised: 0,
+  oh: 0,
+};
+
+const faceMorphMeshCache = new WeakMap<object, Array<{ morphTargetInfluences: number[] }>>();
+
+export function getExpressionWeights(emotion: Emotion): ExpressionWeights {
+  const weights = { ...EMPTY_EXPRESSION_WEIGHTS };
+
+  switch (emotion) {
+    case 'happy':
+      weights.happy = 0.24;
+      break;
+    case 'grateful':
+      weights.happy = 0.18;
+      weights.relaxed = 0.08;
+      break;
+    case 'sad':
+      weights.sad = 0.24;
+      break;
+    case 'angry':
+      weights.angry = 0.2;
+      break;
+    case 'relaxed':
+      weights.relaxed = 0.12;
+      break;
+    case 'thinking':
+      weights.sad = 0.14;
+      break;
+    case 'surprised':
+      // This model's bundled Surprised morph smiles and narrows the eyes.
+      weights.oh = 0.82;
+      break;
+    case 'neutral':
+    default:
+      break;
+  }
+
+  return weights;
+}
 
 interface BlinkState {
   nextBlinkTime: number;
@@ -100,34 +153,58 @@ export function resetMouthState(vrm?: VRM): void {
   }
 }
 
-// 记录上次设置的表情，避免每帧重复设置
-let lastAppliedExpression: string | null = null;
-
-export function applyExpression(vrm: VRM, emotion: string): void {
-  // 只在表情变化时才设置，避免覆盖组合表情
-  if (lastAppliedExpression === emotion) return;
-  lastAppliedExpression = emotion;
-
-  const expressions = ['happy', 'sad', 'angry', 'relaxed', 'surprised', 'neutral'];
-  expressions.forEach((name) => {
-    vrm.expressionManager?.setValue(name, name === emotion ? 1 : 0);
+export function applyExpression(vrm: VRM, emotion: Emotion): void {
+  const weights = getExpressionWeights(emotion);
+  Object.entries(weights).forEach(([name, value]) => {
+    vrm.expressionManager?.setValue(name, value);
   });
 
-  // thinking: 组合 relaxed + 自定义
-  if (emotion === 'thinking') {
-    vrm.expressionManager?.setValue('relaxed', 0.6);
-    // 眉毛微皱（如果有）
-    const browBone = vrm.humanoid?.getNormalizedBoneNode('head');
-    if (browBone) {
-      browBone.rotation.x = -0.05;
-    }
+  if (emotion === 'surprised') {
+    vrm.expressionManager?.setValue('blink', 0);
+    vrm.expressionManager?.setValue('blinkLeft', 0);
+    vrm.expressionManager?.setValue('blinkRight', 0);
   }
-
-  // 注意：不设置 'aa'（嘴型），由 applyMouthOpen 单独控制
-  // neutral: 保持自然中性表情
 }
 
-export type Action = 'nod' | 'shakeHead' | 'tiltHead' | 'lookUp' | 'lookDown' | 'wave' | 'point' | 'clap' | 'bow' | 'none';
+export function applyExpressionCorrections(vrm: VRM, emotion: Emotion): void {
+  if (emotion !== 'surprised') return;
+
+  let faceMorphMeshes = faceMorphMeshCache.get(vrm);
+  if (!faceMorphMeshes) {
+    faceMorphMeshes = [];
+    vrm.scene.traverse((object) => {
+      const mesh = object as unknown as { morphTargetInfluences?: number[] };
+      if (mesh.morphTargetInfluences && mesh.morphTargetInfluences.length > 13) {
+        faceMorphMeshes?.push({ morphTargetInfluences: mesh.morphTargetInfluences });
+      }
+    });
+    faceMorphMeshCache.set(vrm, faceMorphMeshes);
+  }
+
+  faceMorphMeshes.forEach((mesh) => {
+    mesh.morphTargetInfluences[13] = -0.16;
+  });
+}
+
+export type Action =
+  | 'wave'
+  | 'thinking'
+  | 'explain'
+  | 'listen'
+  | 'waiting1'
+  | 'waiting2'
+  | 'waiting3'
+  | 'showcase'
+  | 'nod'
+  | 'none'
+  // Legacy names stay accepted so old deep links and dev demos degrade into demo actions.
+  | 'shakeHead'
+  | 'tiltHead'
+  | 'lookUp'
+  | 'lookDown'
+  | 'point'
+  | 'clap'
+  | 'bow';
 
 export interface ActionLookAt {
   x: number;
@@ -256,6 +333,33 @@ export function applyAction(
         headBone.rotation.y = 0.2 * raiseCurve;
         lookAtX = 0.5 * raiseCurve;
         lookAtY = 0.3 * raiseCurve;
+      }
+      break;
+    }
+
+    case 'showcase': {
+      const rightUpperArm = vrm.humanoid?.getNormalizedBoneNode('rightUpperArm');
+      const rightLowerArm = vrm.humanoid?.getNormalizedBoneNode('rightLowerArm');
+      const rightHand = vrm.humanoid?.getNormalizedBoneNode('rightHand');
+      if (rightUpperArm && rightLowerArm) {
+        const hold = progress < 0.2
+          ? progress / 0.2
+          : progress > 0.8
+            ? (1 - progress) / 0.2
+            : 1;
+        rightUpperArm.rotation.z = -1.45 + 2.25 * hold;
+        rightUpperArm.rotation.x = 0.12 - 0.45 * hold;
+        rightUpperArm.rotation.y = -0.18 * hold;
+        rightLowerArm.rotation.x = -2.5 * hold;
+        rightLowerArm.rotation.z = -0.12 * hold;
+        if (rightHand) {
+          rightHand.rotation.x = 0.12 * hold;
+          rightHand.rotation.y = 0.12 * hold;
+          rightHand.rotation.z = 0.1 * hold;
+        }
+        headBone.rotation.y = 0.18 * hold;
+        lookAtX = 0.9 * hold;
+        lookAtY = 0.25 * hold;
       }
       break;
     }

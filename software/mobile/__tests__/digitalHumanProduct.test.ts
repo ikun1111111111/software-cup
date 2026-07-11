@@ -29,7 +29,7 @@ describe('mobile digital human product contract', () => {
   });
 
   test('defaults chat to audible digital human speech', () => {
-    expect(['browser', 'tts']).toContain(DEFAULT_DIGITAL_HUMAN_VOICE_MODE);
+    expect(DEFAULT_DIGITAL_HUMAN_VOICE_MODE).toBe('tts');
   });
 
   test('home welcome lines introduce Xiaoling as the digital guide', () => {

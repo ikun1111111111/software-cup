@@ -288,12 +288,26 @@ const AdminLayout: React.FC = () => {
           }
 
           .admin-command-main {
-            position: relative;
+            position: fixed;
+            top: 64px;
+            right: 0;
+            bottom: 0;
+            left: 0;
             width: 100%;
-            height: 100%;
-            padding-top: 64px;
+            height: auto;
+            min-height: 0;
+            padding-top: 0;
             overflow-y: auto;
             overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+          }
+
+          .admin-command-nav__icon :where(svg) {
+            width: 1em;
+            height: 1em;
+            display: block;
           }
 
           @media (max-width: 1280px) {
@@ -328,7 +342,7 @@ const AdminLayout: React.FC = () => {
             }
 
             .admin-command-main {
-              padding-top: 116px;
+              top: 116px;
             }
           }
         `}

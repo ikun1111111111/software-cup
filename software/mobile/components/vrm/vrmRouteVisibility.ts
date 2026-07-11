@@ -1,4 +1,5 @@
 const OWN_VRM_PATHS = new Set([
+  '/',
   '/chat',
   '/explore',
   '/attractions',
@@ -9,9 +10,15 @@ const OWN_VRM_PATHS = new Set([
   '/vrm-performance-demo',
   '/auth/login',
   '/auth/register',
+  '/memory',
+  '/profile',
+  '/history',
 ]);
 
-const OWN_VRM_PREFIXES: string[] = [];
+const OWN_VRM_PREFIXES: string[] = [
+  '/attractions/',
+  '/routes/',
+];
 
 export function normalizeVRMRoutePath(pathname: string): string {
   const withoutGroups = pathname.replace(/\/\([^/]+\)/g, '');

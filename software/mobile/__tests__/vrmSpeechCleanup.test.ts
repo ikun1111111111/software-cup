@@ -39,12 +39,51 @@ describe('VRM speech cleanup', () => {
     const boundarySyncBody = source.match(/const syncSubtitleToSpeechBoundary = useCallback\([\s\S]*?\n  \}, \[\]\);/)?.[0] || '';
 
     expect(source).toContain('utterance.onboundary = (event) => {');
-    expect(source).toContain('syncSubtitleToSpeechBoundary(event.charIndex);');
+    expect(source).toContain('scheduleSubtitleBoundarySync(event.charIndex);');
     expect(source).toContain('const subtitleCueIndexRef = useRef(0);');
     expect(boundarySyncBody).toContain('subtitleCueIndexRef.current = cueIndex;');
     expect(boundarySyncBody).not.toContain('clearSubtitleTimer();');
     expect(source).not.toContain('subtitleBoundaryActiveRef');
-    expect(source).toContain('beginVisualSpeech(text, emotion, estimatedDuration, { subtitleProgression: false });');
-    expect(source).toMatch(/await sound\.playAsync\(\);[\s\S]*?const actualDuration = result\.durationMs > 0 \? result\.durationMs : estimatedDuration;[\s\S]*?startSubtitleProgression\(text, actualDuration\);/s);
+    expect(source).not.toContain('beginVisualSpeech(text, emotion, estimatedDuration, { subtitleProgression: false });');
+    expect(source).toMatch(/await sound\.playAsync\(\);[\s\S]*?await playbackStartedPromise;/s);
+    expect(source).toContain('options.subtitleInitiallyHidden ? SUBTITLE_SYNC_DELAY_MS : 0');
+  });
+
+  test('starts subtitles and mouth animation only when audible playback begins', () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../hooks/useVRMSync.ts'),
+      'utf8',
+    );
+    const browserTtsBody = source.match(/const playWithBrowserTTS = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/)?.[0] || '';
+    const generatedTtsBody = source.match(/const playWithPhonemes = useCallback\([\s\S]*?\n  \}, \[[^\]]*\]\);/)?.[0] || '';
+
+    expect(browserTtsBody).toMatch(/utterance\.onstart = \(\) => \{[\s\S]*?beginVisualSpeechForRun\(/);
+    expect(browserTtsBody.indexOf('utterance.onstart')).toBeLessThan(browserTtsBody.indexOf('window.speechSynthesis.speak(utterance)'));
+    expect(generatedTtsBody).toMatch(/status\.isLoaded[\s\S]*?status\.isPlaying[\s\S]*?beginVisualSpeechForRun\(/);
+    expect(generatedTtsBody).not.toMatch(/const runId = beginVisualSpeech\(text, emotion, estimatedDuration/);
+  });
+
+  test('keeps the first subtitle hidden until the first audible boundary', () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../hooks/useVRMSync.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain('const SUBTITLE_SYNC_DELAY_MS = 180;');
+    expect(source).toContain('subtitleInitiallyHidden?: boolean;');
+    expect(source).toMatch(/utterance\.onstart = \(\) => \{[\s\S]*?subtitleInitiallyHidden: true/);
+    expect(source).toMatch(/status\.isPlaying[\s\S]*?subtitleInitiallyHidden: true/);
+    expect(source).toContain('const subtitleElapsed = elapsed - SUBTITLE_SYNC_DELAY_MS;');
+  });
+
+  test('shows the exact text belonging to the active audio run', () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../hooks/useVRMSync.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain("speechText: ''");
+    expect(source).toContain('speechText: text');
+    expect(source).toMatch(/isSpeaking: false,[\s\S]*?speechText: '',[\s\S]*?subtitle: ''/);
   });
 });

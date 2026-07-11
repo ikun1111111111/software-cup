@@ -1,14 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { SaveOutlined, CheckOutlined, LoadingOutlined, DesktopOutlined, MobileOutlined } from '@ant-design/icons';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { SaveOutlined, CheckOutlined, LoadingOutlined, DesktopOutlined, MobileOutlined, CalendarOutlined, SoundOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { message } from 'antd';
-import AvatarAppearance, { MODELS, SKINS, HAIRS, OUTFITS } from '../../components/admin/AvatarAppearance';
-import VoiceSelector from '../../components/admin/VoiceSelector';
-import WelcomeEditor from '../../components/admin/WelcomeEditor';
-import DigitalHuman from '../../components/DigitalHuman/DigitalHuman';
+import AvatarAppearance, { type AppearanceConfig } from '../../components/admin/AvatarAppearance';
 import PaperPanel from '../../components/admin/PaperPanel';
 import PageTransition from '../../components/admin/PageTransition';
-import { getModelPath, getExpressionForAppearance } from '../../config/avatarModels';
-import { getCostume } from '../../config/costumeMap';
+import { VRMPreview } from '../../components/admin/VRMPreview';
+import { getCostume, type CostumeDef } from '../../config/costumeMap';
 import { previewVoice } from '../../api/tts';
 import {
   getActiveAvatar,
@@ -17,8 +14,6 @@ import {
   updateAvatar,
   activateAvatar,
 } from '../../api/avatar';
-import type { AppearanceConfig } from '../../components/admin/AvatarAppearance';
-import type { Voice } from '../../components/admin/VoiceSelector';
 
 interface LocalConfig {
   backendId: string | null;
@@ -27,44 +22,38 @@ interface LocalConfig {
   welcomeMessage: string;
 }
 
-const DEFAULT_VOICES: Voice[] = [
-  { id: 'voice-1', name: '甜美女声', language: '中文', gender: '女', previewUrl: '' },
-  { id: 'voice-2', name: '沉稳男声', language: '中文', gender: '男', previewUrl: '' },
-  { id: 'voice-3', name: '活泼女声', language: '中文', gender: '女', previewUrl: '' },
-  { id: 'voice-4', name: '磁性男声', language: '英文', gender: '男', previewUrl: '' },
-];
-
 const DEFAULT_CONFIG: LocalConfig = {
   backendId: null,
   appearance: {
-    model: 'model-1',
-    skin: 'skin-1',
-    hair: 'hair-1',
-    outfit: 'outfit-1',
-    accessories: [],
     costumeMode: 'auto' as const,
-    costumeId: 'daily-classic',
+    costumeId: 'daily-artistic',
   },
-  voiceId: 'voice-1',
+  voiceId: 'mandarin',
   welcomeMessage: '你好！欢迎来到灵山景区，我是你的数字人导游，有什么可以帮你的吗？',
 };
+
+interface VoiceOption {
+  id: string;
+  name: string;
+  gender: string;
+}
+
+// Backend voice ids from /api/tts/voices (filtered to female presets)
+const VOICE_OPTIONS: VoiceOption[] = [
+  { id: 'mandarin', name: '标准女声', gender: '女' },
+  { id: 'female', name: '年轻女声', gender: '女' },
+  { id: 'liaoning', name: '东北女声', gender: '女' },
+];
 
 const mapBackendToLocal = (backend: Awaited<ReturnType<typeof getActiveAvatar>>): LocalConfig => ({
   backendId: backend.id,
   appearance: backend.appearanceJson
     ? {
-        model: backend.appearanceJson.model || DEFAULT_CONFIG.appearance.model,
-        skin: backend.appearanceJson.skin || DEFAULT_CONFIG.appearance.skin,
-        hair: backend.appearanceJson.hair || DEFAULT_CONFIG.appearance.hair,
-        outfit: backend.appearanceJson.outfit || DEFAULT_CONFIG.appearance.outfit,
-        accessories: Array.isArray(backend.appearanceJson.accessories)
-          ? backend.appearanceJson.accessories
-          : DEFAULT_CONFIG.appearance.accessories,
         costumeMode: (backend.appearanceJson.costumeMode as 'auto' | 'manual') || 'auto',
-        costumeId: backend.appearanceJson.costumeId || 'daily-classic',
+        costumeId: backend.appearanceJson.costumeId || 'daily-artistic',
       }
     : DEFAULT_CONFIG.appearance,
-  voiceId: backend.voiceId || DEFAULT_CONFIG.voiceId,
+  voiceId: backend.voiceId || 'mandarin',
   welcomeMessage: backend.welcomeMessage || DEFAULT_CONFIG.welcomeMessage,
 });
 
@@ -73,7 +62,6 @@ const AvatarPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
   const isMobile = false;
 
   useEffect(() => {
@@ -101,6 +89,8 @@ const AvatarPage: React.FC = () => {
     loadConfig();
   }, []);
 
+  const costume = useMemo<CostumeDef>(() => getCostume(config.appearance.costumeId), [config.appearance.costumeId]);
+
   const handleAppearanceChange = useCallback((appearance: AppearanceConfig) => {
     setConfig((prev) => ({ ...prev, appearance }));
     setSaved(false);
@@ -111,24 +101,41 @@ const AvatarPage: React.FC = () => {
     setSaved(false);
   }, []);
 
-  const handleWelcomeChange = useCallback((welcomeMessage: string) => {
-    setConfig((prev) => ({ ...prev, welcomeMessage }));
-    setSaved(false);
-  }, []);
+  const handleVoicePreview = useCallback(async (voiceId: string) => {
+    const text = config.welcomeMessage;
+    // Try backend TTS first
+    try {
+      const url = await previewVoice(voiceId, text);
+      const audio = new Audio(url);
+      await audio.play();
+      audio.onended = () => URL.revokeObjectURL(url);
+      return;
+    } catch (backendErr: any) {
+      // Backend failed / not configured: fall back to browser speech synthesis
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        const voices = window.speechSynthesis.getVoices();
+        const zhVoice = voices.find((v) => v.lang.startsWith('zh'));
+        if (zhVoice) utterance.voice = zhVoice;
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        window.speechSynthesis.speak(utterance);
+        message.info('后端语音合成不可用，已切换为浏览器本地试听');
+        return;
+      }
+      message.error('试听失败: ' + (backendErr?.message || '未知错误'));
+    }
+  }, [config.welcomeMessage]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
     setSaved(false);
     try {
+      const modelFile = costume.modelFile || 'avatar.vrm';
       const payload = {
         name: '默认数字人',
-        modelPath: getModelPath(config.appearance.model),
+        modelPath: `/models/${modelFile}`,
         appearanceJson: {
-          model: config.appearance.model,
-          skin: config.appearance.skin,
-          hair: config.appearance.hair,
-          outfit: config.appearance.outfit,
-          accessories: config.appearance.accessories,
           costumeMode: config.appearance.costumeMode,
           costumeId: config.appearance.costumeId,
         },
@@ -156,21 +163,7 @@ const AvatarPage: React.FC = () => {
     } finally {
       setSaving(false);
     }
-  }, [config]);
-
-  const tabs = ['外观', '声音', '欢迎语'];
-
-  const selectedVoiceName = DEFAULT_VOICES.find((v) => v.id === config.voiceId)?.name || config.voiceId;
-  const selectedModelName = MODELS.find((m) => m.id === config.appearance.model)?.name || config.appearance.model;
-  const selectedSkinName = SKINS.find((s) => s.id === config.appearance.skin)?.name || config.appearance.skin;
-  const selectedHairName = HAIRS.find((h) => h.id === config.appearance.hair)?.name || config.appearance.hair;
-  const selectedOutfitName = OUTFITS.find((o) => o.id === config.appearance.outfit)?.name || config.appearance.outfit;
-
-  // Derive costume properties from config (single source of truth)
-  const costumeDef = getCostume(config.appearance.costumeId);
-  const costumeTexturePath = costumeDef.texturePath;
-  const costumeCssFilter = costumeDef.cssFilter;
-  const previewKey = `${config.appearance.model}-${config.appearance.skin}-${config.appearance.hair}-${config.appearance.outfit}-${config.appearance.costumeId}`;
+  }, [config, costume]);
 
   return (
     <div data-testid="avatar-page" className="animate-scroll-unfold" style={{
@@ -195,7 +188,7 @@ const AvatarPage: React.FC = () => {
             letterSpacing: '0.5px',
             fontFamily: 'var(--font-serif)',
           }}>
-            数字人配置
+            数字人形象配置
           </h1>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             {saved && (
@@ -256,7 +249,7 @@ const AvatarPage: React.FC = () => {
             {[
               { icon: <DesktopOutlined />, label: 'Web 大屏', value: '现场讲解互动', hint: '问我、讲讲这里、历史穿越统一使用当前形象策略' },
               { icon: <MobileOutlined />, label: '移动端', value: '路线随身导览', hint: '移动端语音讲解复用同一音色与讲解风格' },
-              { icon: <CheckOutlined />, label: '当前配置', value: config.voiceId, hint: `模型 ${config.appearance.model} · 服饰 ${config.appearance.costumeId}` },
+              { icon: <CalendarOutlined />, label: '当前服装', value: costume.name, hint: `${costume.category === 'festival' ? '节日限定' : '日常服装'} · ${costume.description}` },
             ].map((item) => (
               <div key={item.label} style={{ padding: 14, borderRadius: 16, border: '1px solid rgba(184,115,51,0.12)', background: 'rgba(255,253,247,0.62)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--mountain-mid)', fontSize: 13, fontWeight: 700 }}>
@@ -303,7 +296,7 @@ const AvatarPage: React.FC = () => {
               maxWidth: 320,
               lineHeight: 1.6,
             }}>
-              请稍候，系统正在从服务端获取最新的数字人形象与声音配置
+              请稍候，系统正在从服务端获取最新的数字人形象配置
             </div>
           </div>
         ) : (
@@ -320,7 +313,6 @@ const AvatarPage: React.FC = () => {
               flexDirection: 'column',
               gap: '16px',
             }}>
-              {/* 月门卷轴预览容器 */}
               <div data-testid="preview-area" style={{
                 position: 'relative',
                 padding: '16px 16px 20px',
@@ -329,28 +321,13 @@ const AvatarPage: React.FC = () => {
                 border: '1px solid var(--border-subtle)',
                 boxShadow: 'var(--shadow-medium)',
                 overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 12,
               }}>
-                {/* 卷轴轴头装饰 */}
-                <div style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 6,
-                  background: 'linear-gradient(90deg, transparent 0%, rgba(201,169,110,0.3) 20%, rgba(201,169,110,0.5) 50%, rgba(201,169,110,0.3) 80%, transparent 100%)',
-                }} />
-                <div style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: 6,
-                  background: 'linear-gradient(90deg, transparent 0%, rgba(201,169,110,0.3) 20%, rgba(201,169,110,0.5) 50%, rgba(201,169,110,0.3) 80%, transparent 100%)',
-                }} />
-
                 <div style={{
                   textAlign: 'center',
-                  marginBottom: 12,
                   fontFamily: 'var(--font-serif)',
                   fontSize: 15,
                   fontWeight: 700,
@@ -378,90 +355,45 @@ const AvatarPage: React.FC = () => {
                   }} />
                 </div>
 
-                {/* 月门型预览框 */}
+                <VRMPreview
+                  key={costume.modelFile || 'avatar.vrm'}
+                  modelUrl={`/models/${costume.modelFile || 'avatar.vrm'}`}
+                  width={280}
+                  height={360}
+                />
+
                 <div style={{
-                  display: 'flex',
-                  justifyContent: 'center',
-                  padding: '12px',
-                  borderRadius: '50% / 42%',
-                  border: '2px solid rgba(168, 56, 40, 0.12)',
-                  background: 'linear-gradient(180deg, rgba(247,245,240,0.6) 0%, rgba(237,232,222,0.5) 100%)',
-                  overflow: 'hidden',
-                  position: 'relative',
+                  textAlign: 'center',
+                  lineHeight: 1.6,
                 }}>
-                  {/* 水墨晕染背景层 */}
-                  <div style={{
-                    position: 'absolute',
-                    inset: 0,
-                    background: 'radial-gradient(ellipse at 50% 80%, rgba(168,156,140,0.12) 0%, transparent 70%)',
-                    pointerEvents: 'none',
-                  }} />
-                  <div
-                    key={previewKey}
-                    className="animate-ink-reveal"
-                    style={{
-                      borderRadius: '50% / 42%',
-                      overflow: 'hidden',
-                      width: isMobile ? 200 : 280,
-                      height: isMobile ? 280 : 380,
-                      position: 'relative',
-                      zIndex: 1,
-                    }}
-                  >
-                    <DigitalHuman
-                      modelPath={getModelPath(config.appearance.model)}
-                      width={isMobile ? 200 : 280}
-                      height={isMobile ? 280 : 380}
-                      emotion="neutral"
-                      expression={getExpressionForAppearance(config.appearance)}
-                      texturePath={costumeTexturePath}
-                      cssFilter={costumeCssFilter}
-                      onReady={() => console.log('[AvatarPage] Preview ready')}
-                    />
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {costume.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                    {costume.category === 'festival' ? '节日限定' : '日常服装'} · {costume.description}
                   </div>
                 </div>
+              </div>
 
-                {/* 当前配置摘要 */}
-                <div style={{
-                  marginTop: 14,
-                  padding: '12px 14px',
-                  backgroundColor: 'rgba(247, 245, 240, 0.6)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px dashed var(--border-light)',
-                }}>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: '8px 12px',
-                    fontSize: 12,
-                    color: 'var(--text-secondary)',
-                    lineHeight: 1.6,
-                  }}>
-                    <div>
-                      <span style={{ color: 'var(--text-tertiary)' }}>模型</span>
-                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedModelName}</span>
-                    </div>
-                    <div>
-                      <span style={{ color: 'var(--text-tertiary)' }}>肤色</span>
-                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedSkinName}</span>
-                    </div>
-                    <div>
-                      <span style={{ color: 'var(--text-tertiary)' }}>发型</span>
-                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedHairName}</span>
-                    </div>
-                    <div>
-                      <span style={{ color: 'var(--text-tertiary)' }}>服装</span>
-                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedOutfitName}</span>
-                    </div>
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <span style={{ color: 'var(--text-tertiary)' }}>服装</span>
-                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{costumeDef.name}</span>
-                      <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--text-tertiary)' }}>{costumeDef.description}</span>
-                    </div>
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <span style={{ color: 'var(--text-tertiary)' }}>声音</span>
-                      <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{selectedVoiceName}</span>
-                    </div>
+              <div style={{
+                padding: '14px 16px',
+                backgroundColor: 'rgba(247, 245, 240, 0.6)',
+                borderRadius: 'var(--radius-md)',
+                border: '1px dashed var(--border-light)',
+              }}>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 6 }}>当前配置摘要</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: 12, color: 'var(--text-secondary)' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>服装</span>
+                    <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{costume.name}</span>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-tertiary)' }}>模式</span>
+                    <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{config.appearance.costumeMode === 'auto' ? '自动匹配' : '手动选择'}</span>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <span style={{ color: 'var(--text-tertiary)' }}>声音</span>
+                    <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{VOICE_OPTIONS.find((v) => v.id === config.voiceId)?.name || config.voiceId}</span>
                   </div>
                 </div>
               </div>
@@ -469,80 +401,80 @@ const AvatarPage: React.FC = () => {
 
             {/* 右侧：配置面板 */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div data-testid="config-tabs" style={{
-                marginBottom: '20px',
-                backgroundColor: 'var(--ink-dark)',
-                borderRadius: 'var(--radius-md)',
-                padding: '4px',
-                width: 'fit-content',
-                display: 'flex',
-                gap: '2px',
-              }}>
-                {tabs.map((tab, i) => (
-                  <span
-                    key={tab}
-                    onClick={() => setActiveTab(i)}
-                    style={{
-                      padding: '8px 18px',
-                      backgroundColor: activeTab === i ? 'rgba(243, 239, 230, 0.1)' : 'transparent',
-                      color: activeTab === i ? 'var(--gold-leaf)' : 'rgba(243, 239, 230, 0.55)',
-                      borderRadius: 'var(--radius-sm)',
-                      fontWeight: activeTab === i ? 600 : 400,
-                      fontSize: '14px',
-                      cursor: 'pointer',
-                      transition: 'all 200ms',
-                      whiteSpace: 'nowrap',
-                      position: 'relative',
-                    }}
-                  >
-                    {tab}
-                    {activeTab === i && (
-                      <span style={{
-                        position: 'absolute',
-                        bottom: 4,
-                        left: '50%',
-                        transform: 'translateX(-50%)',
-                        width: 4,
-                        height: 4,
-                        borderRadius: '50%',
-                        backgroundColor: 'var(--vermilion)',
-                      }} />
-                    )}
-                  </span>
-                ))}
-              </div>
-
               <PaperPanel>
-                {activeTab === 0 && (
-                  <div data-testid="appearance-section">
-                    <AvatarAppearance config={config.appearance} onChange={handleAppearanceChange} />
+                <div data-testid="appearance-section">
+                  <AvatarAppearance config={config.appearance} onChange={handleAppearanceChange} />
+                </div>
+
+                <div data-testid="voice-section" style={{
+                  marginTop: 24,
+                  paddingTop: 24,
+                  borderTop: '1px solid var(--border-light)',
+                }}>
+                  <div style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    marginBottom: 12,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}>
+                    <SoundOutlined style={{ color: 'var(--mountain-mid)' }} />
+                    讲解声音
                   </div>
-                )}
-                {activeTab === 1 && (
-                  <div data-testid="voice-section">
-                    <VoiceSelector
-                      voices={DEFAULT_VOICES}
-                      selected={config.voiceId}
-                      onChange={handleVoiceChange}
-                      previewVoice={(voiceId) => previewVoice(voiceId, config.welcomeMessage)}
-                    />
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    {VOICE_OPTIONS.map((voice) => {
+                      const selected = config.voiceId === voice.id;
+                      return (
+                        <div
+                          key={voice.id}
+                          data-testid={`voice-${voice.id}`}
+                          onClick={() => handleVoiceChange(voice.id)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '10px 14px',
+                            borderRadius: 'var(--radius-md)',
+                            border: selected ? '1.5px solid rgba(200, 75, 49, 0.35)' : '1px solid var(--border-light)',
+                            backgroundColor: selected ? 'rgba(200, 75, 49, 0.08)' : 'transparent',
+                            cursor: 'pointer',
+                            transition: 'all 200ms',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: selected ? 600 : 400, color: selected ? '#A83828' : 'var(--text-secondary)' }}>
+                              {voice.name}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{voice.gender}</div>
+                          </div>
+                          <button
+                            data-testid={`voice-preview-${voice.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleVoicePreview(voice.id);
+                            }}
+                            style={{
+                              marginLeft: 4,
+                              padding: 4,
+                              border: 'none',
+                              background: 'transparent',
+                              cursor: 'pointer',
+                              color: 'var(--mountain-mid)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                            title="试听"
+                          >
+                            <PlayCircleOutlined style={{ fontSize: 18 }} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
-                {activeTab === 2 && (
-                  <div data-testid="welcome-section">
-                    <WelcomeEditor
-                      welcome={config.welcomeMessage}
-                      onChange={handleWelcomeChange}
-                      onSave={handleWelcomeChange}
-                      onPreview={async (text) => {
-                        const url = await previewVoice(config.voiceId, text);
-                        const audio = new Audio(url);
-                        await audio.play();
-                        audio.onended = () => URL.revokeObjectURL(url);
-                      }}
-                    />
-                  </div>
-                )}
+                </div>
               </PaperPanel>
             </div>
           </div>

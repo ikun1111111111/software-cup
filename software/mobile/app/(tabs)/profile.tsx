@@ -18,6 +18,9 @@ import { useTour } from '@/context/TourContext';
 import { setDigitalHumanPageContext, speakWithDigitalHuman } from '@/services/digitalHuman';
 import { trackMobileEvent, flushMobileEvents } from '@/services/mobileAnalytics';
 import { SESSION_ID } from '@/services/dataSync';
+import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
+import { PageDigitalHumanDock } from '@/components/vrm/PageDigitalHumanDock';
 
 const PROFILE_VISUALS = {
   hero: require('../../assets/images/explore/hero-courtyard.png'),
@@ -167,6 +170,9 @@ export default function ProfilePage() {
   const { user } = useUserStore();
   const { logout } = useAuth();
   const [tourState] = useTour();
+  const profileDigitalHuman = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE, {
+    speakerId: 'profile-page',
+  });
   const { progress, guideProfile } = tourState;
 
   const completion = progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
@@ -227,6 +233,7 @@ export default function ProfilePage() {
     return (
       <View style={styles.root}>
         <GuestProfile onLogin={() => router.push('/auth/login')} topInset={insets.top} />
+        <PageDigitalHumanDock digitalHuman={profileDigitalHuman} />
       </View>
     );
   }
@@ -266,12 +273,13 @@ export default function ProfilePage() {
   ];
 
   return (
-    <ScrollView
-      style={styles.root}
-      contentContainerStyle={{ paddingBottom: insets.bottom + 42 }}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={[styles.hero, { paddingTop: insets.top + 18 }]}>
+    <View style={styles.root}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 220 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.hero, { paddingTop: insets.top + 18 }]}>
         <ExpoImage source={PROFILE_VISUALS.hero} style={StyleSheet.absoluteFill} contentFit="cover" />
         <ExpoImage source={PROFILE_VISUALS.heroEcho} style={[StyleSheet.absoluteFill, styles.heroEchoImage]} contentFit="cover" />
         <View style={styles.heroScrim} />
@@ -415,6 +423,9 @@ export default function ProfilePage() {
         ))}
       </View>
     </ScrollView>
+
+    <PageDigitalHumanDock digitalHuman={profileDigitalHuman} />
+  </View>
   );
 }
 
@@ -422,6 +433,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: Colors.paper,
+  },
+  scroll: {
+    flex: 1,
   },
   pressed: {
     opacity: 0.76,

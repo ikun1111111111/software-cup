@@ -117,3 +117,14 @@ describe('VRM speech sync', () => {
     VRMManager.off('speak', onSpeak);
   });
 });
+
+describe('VRM TTS generation window', () => {
+  test('allows backend voice generation to exceed the previous 3.5 second cutoff', () => {
+    const source = require('fs').readFileSync(
+      require('path').resolve(__dirname, '../hooks/useVRMSync.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain('const TTS_TIMEOUT_MS = 12000;');
+  });
+});

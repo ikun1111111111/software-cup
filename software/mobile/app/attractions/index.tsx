@@ -962,7 +962,7 @@ export default function AttractionListPage() {
   const handleHearRecommendation = useCallback(() => {
     const spot = heroSpot;
     const meta = recommendation.spot?.id === spot?.id ? recommendation.meta : getSpotMeta(spot);
-    playAction('point', 1100);
+    playAction('showcase', 1100);
     speak(
       spot
         ? `我推荐${spot.name}，这是${recommendation.source === 'remote' ? '后端个性化推荐' : '本地规则推荐'}，依据是${recommendation.basis}。${meta.reason}建议停留${meta.duration}，最佳时段是${meta.bestTime}。`
@@ -997,7 +997,7 @@ export default function AttractionListPage() {
 
   const handleSpotPress = useCallback((spot: Spot) => {
     const meta = getSpotMeta(spot);
-    playAction('point', 1200);
+    playAction('showcase', 1200);
     speak(`${spot.name}，${meta.reason}`, { emotion: 'happy' });
     router.push(`/attractions/${spot.id}`);
   }, [playAction, router, speak]);

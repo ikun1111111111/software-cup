@@ -2,6 +2,7 @@ import {
   splitSentences,
   getTimedTextSlice,
   getSubtitleCueForCharIndex,
+  mapSpeechBoundariesToText,
   textToSubtitleCues,
   analyzeSentence,
   textToTimeline,
@@ -85,29 +86,43 @@ describe('textToSubtitleCues', () => {
   });
 });
 
+describe('mapSpeechBoundariesToText', () => {
+  test('maps TTS word boundaries back to the matching subtitle character positions', () => {
+    expect(mapSpeechBoundariesToText('欢迎来到灵山，欢迎继续游览', [
+      { char: '欢迎', start_ms: 0 },
+      { char: '灵山', start_ms: 800 },
+      { char: '欢迎', start_ms: 1600 },
+    ])).toEqual([
+      { timeMs: 0, charIndex: 0 },
+      { timeMs: 800, charIndex: 4 },
+      { timeMs: 1600, charIndex: 7 },
+    ]);
+  });
+});
+
 // ── analyzeSentence ──
 
 describe('analyzeSentence', () => {
-  test('感叹句 → surprised + nod', () => {
+  test('感叹句 → surprised + explain', () => {
     const { expression, action } = analyzeSentence('太壮观了！');
     expect(expression).toBe('surprised');
-    expect(action).toBe('nod');
+    expect(action).toBe('explain');
   });
 
-  test('含数字 → lookUp', () => {
+  test('普通景点数据 → explain', () => {
     const { expression, action } = analyzeSentence('大佛高88米');
-    expect(action).toBe('lookUp');
+    expect(action).toBe('explain');
   });
 
-  test('问句 → relaxed + tiltHead', () => {
+  test('回答里的问句仍使用讲解动作', () => {
     const { expression, action } = analyzeSentence('你去过吗？');
     expect(expression).toBe('relaxed');
-    expect(action).toBe('tiltHead');
+    expect(action).toBe('explain');
   });
 
-  test('否定词 → shakeHead', () => {
+  test('否定说明仍使用讲解动作', () => {
     const { expression, action } = analyzeSentence('不去也没关系');
-    expect(action).toBe('shakeHead');
+    expect(action).toBe('explain');
   });
 
   test('开心词汇 → happy', () => {
@@ -125,22 +140,28 @@ describe('analyzeSentence', () => {
     expect(expression).toBe('angry');
   });
 
-  test('思考词汇 → thinking + lookUp', () => {
+  test('说话阶段不重复触发 thinking', () => {
     const { expression, action } = analyzeSentence('让我想想');
     expect(expression).toBe('thinking');
-    expect(action).toBe('lookUp');
+    expect(action).toBe('explain');
   });
 
-  test('默认 → neutral + none', () => {
+  test('默认讲解 → relaxed + explain', () => {
     const { expression, action } = analyzeSentence('灵山大佛');
-    expect(expression).toBe('neutral');
-    expect(action).toBe('none');
+    expect(expression).toBe('relaxed');
+    expect(action).toBe('explain');
   });
 
-  test('导览常用话术会触发可见指引动作', () => {
-    expect(analyzeSentence('好的，我们继续前往灵山大佛').action).toBe('point');
-    expect(analyzeSentence('这里是梵宫，我来为你讲解').action).toBe('point');
-    expect(analyzeSentence('打开地图自由逛').action).toBe('point');
+  test('只有明确方向话术触发指引动作', () => {
+    expect(analyzeSentence('好的，我们继续前往灵山大佛').action).toBe('explain');
+    expect(analyzeSentence('这里是梵宫，我来为你讲解').action).toBe('explain');
+    expect(analyzeSentence('请看这边，前方就是梵宫').action).toBe('showcase');
+  });
+
+  test('普通路线和景点介绍不触发指引动作', () => {
+    expect(analyzeSentence('这条路线包含三个景点').action).toBe('explain');
+    expect(analyzeSentence('灵山大佛是著名景点').action).toBe('explain');
+    expect(analyzeSentence('我来介绍梵宫的历史').action).toBe('explain');
   });
 });
 
@@ -188,8 +209,8 @@ describe('textToTimeline', () => {
   test('导览动作默认时长足够被用户看见', () => {
     const tl = textToTimeline('这里是灵山大佛。好的，我们继续前往下一站。', 6000);
 
-    expect(tl[0]).toMatchObject({ action: 'point', durationMs: 1600 });
-    expect(tl[1]).toMatchObject({ action: 'point', durationMs: 1600 });
+    expect(tl[0]).toMatchObject({ action: 'explain', durationMs: 2600 });
+    expect(tl[1]).toMatchObject({ action: 'explain', durationMs: 2600 });
   });
 });
 

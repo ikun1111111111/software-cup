@@ -29,9 +29,15 @@ import { MemoryPrompt } from '@/components/guide/MemoryPrompt';
 import { useTour } from '@/context/TourContext';
 import { useUserStore } from '@/stores/userStore';
 import type { Route } from '@/hooks/useTourOrchestrator';
+import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import {
+  PageDigitalHumanDock,
+  type PageDigitalHumanDockDriver,
+} from '@/components/vrm/PageDigitalHumanDock';
 import { useTourGeolocation } from '@/hooks/useTourGeolocation';
 import { useTourGuide } from '@/hooks/useTourGuide';
 import { enrichSpotsWithLocations } from '@/constants/spot-locations';
+import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
 
 const IntroSection = lazy(() => import('@/components/home/IntroSection'));
 const FeaturedSpots = lazy(() => import('@/components/home/FeaturedSpots'));
@@ -370,7 +376,6 @@ function FeatureSection() {
   );
 }
 
-// ─── 主组件 ───
 export default function HomePage() {
   const router = useRouter();
   const isFocused = useIsFocused();
@@ -379,6 +384,10 @@ export default function HomePage() {
   const [showGuidePlan, setShowGuidePlan] = useState(false);
   const [showMemoryPrompt, setShowMemoryPrompt] = useState(false);
   const [tourState, tourActions] = useTour();
+  const homeDigitalHuman: PageDigitalHumanDockDriver = useDigitalHumanDriver(
+    DEFAULT_DIGITAL_HUMAN_VOICE_MODE,
+    { speakerId: 'home-hero' },
+  );
 
   const onScroll = useCallback((e: any) => {
     scrollY.value = e.nativeEvent.contentOffset.y;
@@ -424,9 +433,10 @@ export default function HomePage() {
 
   // 首页获得焦点时：数字人欢迎
   useEffect(() => {
-    if (!isFocused || Platform.OS === 'web') return undefined;
+    if (!isFocused) return undefined;
 
     let timer: ReturnType<typeof setTimeout> | null = null;
+    homeDigitalHuman.activate();
     stopDigitalHumanSpeech(false);
     setDigitalHumanPageContext('home');
 
@@ -567,6 +577,8 @@ export default function HomePage() {
         </Suspense>
       </ScrollView>
 
+      <PageDigitalHumanDock digitalHuman={homeDigitalHuman} />
+
       {/* 导览进度指示器 */}
       {tourState.currentRoute && tourState.progress.total > 0 && (
         <View style={styles.progressOverlay}>
@@ -668,7 +680,7 @@ const styles = StyleSheet.create({
   heroContent: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28,
-    zIndex: 2,
+    zIndex: 3,
   },
   userEntryBtn: {
     position: 'absolute', top: 12, right: 16, zIndex: 10,

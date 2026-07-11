@@ -37,6 +37,9 @@ import { trackMobileEvent, flushMobileEvents } from '@/services/mobileAnalytics'
 import { useMapSpots } from '@/hooks/useMapSpots';
 import { getSoloRouteRecommendation } from '@/data/lingshanGuideData';
 import { buildSoloTourSummary } from '@/utils/soloTour';
+import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
+import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
+import { PageDigitalHumanDock } from '@/components/vrm/PageDigitalHumanDock';
 
 // Extracted components
 import { HeroHeader } from '@/components/memory/HeroHeader';
@@ -195,6 +198,9 @@ export default function MemoryPage() {
   const scrollY = useSharedValue(0);
   const [tourState, tourActions] = useTour();
   const { spots } = useMapSpots();
+  const memoryDigitalHuman = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE, {
+    speakerId: 'memory-page',
+  });
   const returnTo = typeof params.returnTo === 'string' ? params.returnTo : undefined;
   const returnLabel = typeof params.returnLabel === 'string' ? params.returnLabel : '返回';
   const showContextBack = Boolean(returnTo);
@@ -923,7 +929,7 @@ export default function MemoryPage() {
                 </Text>
               </Pressable>
             )}
-            <View style={{ height: 100 }} />
+            <View style={{ height: 220 }} />
           </View>
         }
       />
@@ -969,6 +975,8 @@ export default function MemoryPage() {
           />
         </Suspense>
       )}
+
+      <PageDigitalHumanDock digitalHuman={memoryDigitalHuman} />
     </View>
   );
 }

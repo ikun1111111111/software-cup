@@ -233,7 +233,7 @@ export const NarrationSheet: React.FC<Props> = ({
     speakWithDigitalHuman(spokenText, {
       emotion: 'neutral',
       durationMs: duration * 1000,
-      action: 'point',
+      action: 'showcase',
       actionDurationMs: 1200,
     });
 

@@ -6,7 +6,7 @@ import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 
 import type { Emotion, PageContext, VRMState } from './VRMTypes';
-import type { Action } from './VRMIdleAnim';
+import { getExpressionWeights, type Action } from './VRMIdleAnim';
 import { createVRMTransformKey, type VRMRenderMode } from './vrmTransformCache';
 import { estimateSpeechDuration } from '../../utils/digitalHumanDriver';
 export type { Emotion, PageContext, VRMState } from './VRMTypes';
@@ -497,31 +497,8 @@ class VRMManagerClass {
     const allPresets = new Set(['neutral', 'happy', 'sad', 'angry', 'relaxed', 'surprised', 'aa', 'ih', 'ou', 'ee', 'oh']);
     allPresets.forEach((name) => manager.setValue(name, 0));
 
-    // 设置目标表情（可组合）
-    switch (emotion) {
-      case 'happy':
-      case 'grateful':
-        manager.setValue('happy', 0.9);
-        manager.setValue('relaxed', 0.3);
-        break;
-      case 'surprised':
-        manager.setValue('surprised', 0.9);
-        manager.setValue('happy', 0.2);
-        break;
-      case 'sad':
-        manager.setValue('sad', 0.8);
-        break;
-      case 'angry':
-        manager.setValue('angry', 0.8);
-        break;
-      case 'thinking':
-        manager.setValue('relaxed', 0.5);
-        break;
-      case 'neutral':
-      default:
-        manager.setValue('neutral', 0.3);
-        break;
-    }
+    const weights = getExpressionWeights(emotion);
+    Object.entries(weights).forEach(([name, value]) => manager.setValue(name, value));
 
     this.state.currentEmotion = emotion;
     this.emit('emotionChange', emotion);
