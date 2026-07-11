@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CheckOutlined, CloseOutlined, CopyOutlined, MobileOutlined, QrcodeOutlined } from '@ant-design/icons';
 import { QRCode, message } from 'antd';
 
@@ -22,6 +22,16 @@ const getMobileEntryUrl = () => {
   return configured;
 };
 
+const shouldOpenBridgeByDefault = () => {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(min-width: 1200px) and (min-height: 780px)').matches;
+};
+
+const canKeepBridgePanelOpen = () => {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(min-width: 1080px) and (min-height: 740px)').matches;
+};
+
 const shortUrl = (value: string) => {
   try {
     const url = new URL(value);
@@ -32,12 +42,26 @@ const shortUrl = (value: string) => {
 };
 
 const MobileBridgeQRCode: React.FC = () => {
-  const [open, setOpen] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia('(min-width: 900px)').matches;
-  });
+  const [open, setOpen] = useState(shouldOpenBridgeByDefault);
   const [copied, setCopied] = useState(false);
   const mobileUrl = useMemo(() => getMobileEntryUrl(), []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (!canKeepBridgePanelOpen()) {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    handleResize();
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
+  }, []);
 
   const handleCopy = async () => {
     try {

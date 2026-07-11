@@ -1208,7 +1208,7 @@ const ChatPage: React.FC = () => {
             position: relative;
             width: 100%;
             height: 100dvh;
-            min-height: 720px;
+            min-height: min(720px, 100dvh);
             overflow: hidden;
             display: grid;
             grid-template-rows: auto minmax(0, 1fr) auto;
@@ -1256,18 +1256,22 @@ const ChatPage: React.FC = () => {
           .kiosk-topbar {
             position: relative;
             z-index: 130;
-            height: clamp(64px, 7vh, 88px);
+            height: clamp(58px, 7vh, 88px);
             display: grid;
             grid-template-columns: minmax(260px, 1fr) auto auto;
             align-items: center;
             gap: clamp(10px, 1.4vw, 22px);
-            padding: clamp(12px, 1.4vw, 22px) clamp(24px, 3vw, 54px) 0;
+            padding: clamp(10px, 1.25vw, 22px) clamp(24px, 3vw, 54px) 0;
           }
 
           .kiosk-topbar__brand {
             display: flex;
             align-items: center;
             gap: 14px;
+            min-width: 0;
+          }
+
+          .kiosk-topbar__brand > div {
             min-width: 0;
           }
 
@@ -1278,6 +1282,9 @@ const ChatPage: React.FC = () => {
             font-weight: 900;
             color: #2a2520;
             text-shadow: 0 1px 0 rgba(255,255,255,0.58);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
 
           .kiosk-topbar__brand span:last-child {
@@ -1366,7 +1373,7 @@ const ChatPage: React.FC = () => {
           .kiosk-layout {
             position: relative;
             z-index: 115;
-            height: auto;
+            height: 100%;
             min-height: 0;
             display: grid;
             grid-template-columns: minmax(560px, 1fr) minmax(360px, 29vw);
@@ -1572,8 +1579,8 @@ const ChatPage: React.FC = () => {
             top: clamp(8px, 1vh, 18px);
             left: 50%;
             transform: translateX(-50%);
-            width: min(560px, 88%);
-            padding: clamp(10px, 1vw, 16px);
+            width: min(560px, 82%);
+            padding: clamp(8px, 0.9vw, 14px) clamp(14px, 1.35vw, 22px);
             border-radius: 999px;
             border: 1px solid rgba(96,76,42,0.12);
             background: rgba(255,250,238,0.60);
@@ -1986,56 +1993,349 @@ const ChatPage: React.FC = () => {
 
           @media (max-width: 1180px) {
             .kiosk-page {
-              min-height: 860px;
-              overflow: auto;
-            }
-
-            .kiosk-topbar,
-            .kiosk-control-deck,
-            .kiosk-layout {
-              grid-template-columns: 1fr;
+              min-height: 100dvh;
+              overflow: hidden;
             }
 
             .kiosk-topbar {
-              height: auto;
+              grid-template-columns: minmax(0, 1fr) auto auto;
+              height: clamp(54px, 8vh, 72px);
+              gap: clamp(8px, 1.2vw, 14px);
+              padding: clamp(8px, 1.2vw, 12px) clamp(18px, 2.4vw, 28px) 0;
             }
 
             .kiosk-topbar__brand {
-              flex-wrap: wrap;
+              gap: 10px;
+              overflow: hidden;
+            }
+
+            .kiosk-topbar__brand span:last-child {
+              display: none;
+            }
+
+            .kiosk-spot-switch-link,
+            .kiosk-topbar__status,
+            .kiosk-ghost-button {
+              min-height: 34px;
+              padding-inline: 10px;
+              font-size: 12px;
             }
 
             .kiosk-layout {
-              height: auto;
-              min-height: 720px;
-              padding-inline: 24px;
+              grid-template-columns: minmax(0, 1fr) minmax(300px, 34vw);
+              gap: clamp(12px, 1.7vw, 20px);
+              padding: clamp(2px, 0.6vw, 8px) clamp(18px, 2.4vw, 28px) 0;
+              overflow: visible;
             }
 
             .kiosk-page--route-mode .kiosk-layout {
-              grid-template-columns: 1fr;
-              height: auto;
-              min-height: 720px;
-              overflow: visible;
-              padding-inline: 24px;
+              grid-template-columns: minmax(230px, 0.42fr) minmax(0, 1fr);
+              gap: clamp(12px, 1.7vw, 20px);
+              padding: clamp(2px, 0.6vw, 8px) clamp(18px, 2.4vw, 28px) clamp(6px, 1vh, 12px);
+              overflow: hidden;
             }
 
             .kiosk-center-stage {
-              min-height: 420px;
-              order: -1;
+              min-height: 0;
+              order: initial;
+            }
+
+            .kiosk-idle-card {
+              top: clamp(4px, 0.8vh, 10px);
+              width: min(430px, 74%);
+              padding: 8px 18px;
+            }
+
+            .kiosk-idle-card span {
+              font-size: 11px;
+              letter-spacing: 0.16em;
+            }
+
+            .kiosk-idle-card h2 {
+              font-size: clamp(20px, 2.8vw, 30px);
+            }
+
+            .kiosk-answer-card {
+              padding: clamp(14px, 1.5vw, 18px);
+              border-radius: 22px;
+            }
+
+            .kiosk-answer-text p {
+              font-size: clamp(16px, 1.7vw, 22px);
+              line-height: 1.68;
+            }
+
+            .kiosk-control-deck {
+              grid-template-columns: auto minmax(0, 1fr) auto;
+              gap: clamp(10px, 1.4vw, 14px);
+              padding: clamp(8px, 1vh, 12px) clamp(18px, 2.4vw, 28px) clamp(10px, 1.2vh, 14px);
+            }
+
+            .kiosk-voice-button {
+              width: clamp(82px, 10vw, 100px);
+              height: clamp(82px, 10vw, 100px);
+              gap: 5px;
+            }
+
+            .kiosk-voice-button__halo {
+              inset: -10px;
+            }
+
+            .kiosk-voice-button__icon {
+              font-size: clamp(26px, 3vw, 34px);
+            }
+
+            .kiosk-voice-button__text {
+              font-size: clamp(13px, 1.4vw, 16px);
+            }
+
+            .kiosk-text-box {
+              min-height: clamp(66px, 8.4vh, 86px);
+              padding: 10px;
+              border-radius: 22px;
+            }
+
+            .kiosk-text-box textarea {
+              min-height: 46px;
+              font-size: clamp(16px, 1.6vw, 19px);
+            }
+
+            .kiosk-send-button {
+              min-width: clamp(74px, 8vw, 92px);
+              border-radius: 18px;
             }
 
             .kiosk-utility-buttons {
-              flex-direction: row;
+              gap: 8px;
+            }
+
+            .kiosk-utility-buttons button {
+              min-width: 72px;
+              min-height: 36px;
+              padding-inline: 10px;
+            }
+          }
+
+          @media (max-width: 1180px) and (max-height: 760px) and (min-width: 821px) {
+            .kiosk-topbar {
+              height: 56px;
+            }
+
+            .kiosk-topbar__status span:last-child,
+            .kiosk-topbar__divider {
+              display: none;
+            }
+
+            .kiosk-idle-card {
+              width: min(380px, 68%);
+              padding: 7px 16px;
+              box-shadow: 0 10px 28px rgba(92,70,38,0.10);
+            }
+
+            .kiosk-idle-card h2 {
+              margin-top: 2px;
+              font-size: clamp(18px, 2.45vw, 25px);
             }
 
             .kiosk-service-grid {
-              position: relative;
-              left: auto;
-              bottom: auto;
-              transform: none;
-              margin: auto auto 18px;
+              bottom: clamp(8px, 1.4vh, 14px);
+              padding: 5px;
+              gap: 6px;
+              transform: translate3d(-50%, 0, 0) scale(0.9);
+            }
+
+            .kiosk-service-pill {
+              min-width: 92px;
+              min-height: 38px;
+              gap: 6px;
+            }
+
+            .kiosk-control-deck {
+              padding-block: 6px 10px;
+            }
+
+            .kiosk-voice-button {
+              width: 78px;
+              height: 78px;
+            }
+
+            .kiosk-text-box {
+              min-height: 62px;
+              padding: 8px 10px;
+            }
+
+            .kiosk-text-box textarea {
+              min-height: 42px;
+            }
+          }
+
+          @media (max-height: 680px) and (min-width: 821px) {
+            .kiosk-page {
+              grid-template-rows: auto minmax(0, 1fr) auto;
+            }
+
+            .kiosk-topbar {
+              height: 52px;
+              padding-top: 8px;
+            }
+
+            .kiosk-topbar__brand strong {
+              font-size: clamp(19px, 1.45vw, 24px);
+            }
+
+            .kiosk-layout {
+              gap: clamp(14px, 2vw, 28px);
+              padding-top: 0;
+            }
+
+            .kiosk-idle-card {
+              top: clamp(4px, 1vh, 8px);
+              left: clamp(180px, 28vw, 330px);
+              width: min(380px, 52vw);
+              min-height: 0;
+              padding: 8px 22px;
+              transform: translateX(-50%);
+              border-radius: 30px;
+              background: rgba(255,250,238,0.48);
+              box-shadow: 0 10px 30px rgba(92,70,38,0.08);
+            }
+
+            .kiosk-idle-card span {
+              font-size: 10px;
+              letter-spacing: 0.14em;
+            }
+
+            .kiosk-idle-card h2 {
+              margin-top: 1px;
+              font-size: clamp(20px, 2.3vw, 28px);
+              line-height: 1.12;
+            }
+
+            .kiosk-service-grid {
+              bottom: clamp(8px, 1.8vh, 12px);
+              padding: 5px;
+              gap: 6px;
+              transform: translate3d(-50%, 0, 0) scale(0.86);
+            }
+
+            .kiosk-service-pill {
+              min-width: 92px;
+              min-height: 38px;
+            }
+
+            .kiosk-answer-card {
+              padding: clamp(12px, 1.15vw, 18px);
+            }
+
+            .kiosk-answer-text {
+              margin-top: 10px;
+            }
+
+            .kiosk-answer-text p {
+              font-size: clamp(16px, 1.55vw, 22px);
+              line-height: 1.58;
+            }
+
+            .kiosk-control-deck {
+              gap: 12px;
+              padding-block: 4px 8px;
+            }
+
+            .kiosk-voice-button {
+              width: clamp(76px, 7vw, 88px);
+              height: clamp(76px, 7vw, 88px);
+            }
+
+            .kiosk-text-box {
+              min-height: clamp(58px, 9vh, 72px);
+              padding: 8px 10px;
+              border-radius: 22px;
+            }
+
+            .kiosk-text-box textarea {
+              min-height: 40px;
+              font-size: clamp(15px, 1.35vw, 18px);
+            }
+
+            .kiosk-send-button {
+              min-width: clamp(72px, 6vw, 90px);
+              border-radius: 18px;
+            }
+
+            .kiosk-utility-buttons button {
+              min-height: 34px;
+            }
+          }
+
+          @media (max-width: 820px) {
+            .kiosk-page {
+              overflow: auto;
+              min-height: 100dvh;
+              height: auto;
+            }
+
+            .kiosk-topbar {
+              grid-template-columns: minmax(0, 1fr) auto;
+              height: auto;
+              padding-inline: 16px;
+              row-gap: 8px;
+            }
+
+            .kiosk-topbar__brand {
+              grid-column: 1 / -1;
+              justify-content: space-between;
+            }
+
+            .kiosk-topbar__status {
+              display: none;
+            }
+
+            .kiosk-layout,
+            .kiosk-page--route-mode .kiosk-layout {
+              grid-template-columns: 1fr;
+              height: auto;
+              min-height: 0;
+              overflow: visible;
+              padding-inline: 16px;
+              padding-bottom: 16px;
+            }
+
+            .kiosk-center-stage {
+              min-height: min(56vh, 430px);
+              order: -1;
+            }
+
+            .kiosk-idle-card {
+              left: 50%;
+              transform: translateX(-50%);
+              width: min(430px, calc(100vw - 32px));
+              text-align: center;
+            }
+
+            .kiosk-service-grid {
+              bottom: 12px;
+              max-width: calc(100vw - 32px);
               flex-wrap: wrap;
             }
 
+            .kiosk-answer-card {
+              min-height: 260px;
+              margin-bottom: 110px;
+            }
+
+            .kiosk-control-deck {
+              grid-template-columns: auto minmax(0, 1fr);
+              position: fixed;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              padding-inline: 16px;
+              background: linear-gradient(180deg, rgba(247,241,226,0), rgba(247,241,226,0.92) 28%, rgba(247,241,226,0.96));
+            }
+
+            .kiosk-utility-buttons {
+              display: none;
+            }
           }
 
           @media (prefers-reduced-motion: reduce) {
