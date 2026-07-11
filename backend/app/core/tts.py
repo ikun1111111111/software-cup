@@ -3,6 +3,7 @@
 Supports Azure Speech Services (official, requires key) and edge-tts (free).
 Provides text-to-audio synthesis with phoneme timestamps for lip-sync.
 """
+import asyncio
 import logging
 import hashlib
 import json
@@ -39,6 +40,104 @@ def _fallback_mouth_shape(char: str) -> str:
     if not char.strip() or not _is_cjk(char):
         return "closed"
     return "half" if ord(char) % 5 == 0 else "open"
+
+
+# MP3 frame header parsing tables for accurate duration estimation.
+_MPEG1_LAYER3_BITRATES = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0]
+_MPEG2_LAYER3_BITRATES = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0]
+_MPEG_SAMPLE_RATES = {
+    0: [11025, 12000, 8000, 0],    # MPEG2.5
+    2: [22050, 24000, 16000, 0],   # MPEG2
+    3: [44100, 48000, 32000, 0],   # MPEG1
+}
+
+
+def _skip_id3v2(audio_bytes: bytes) -> int:
+    """Return the byte offset after an ID3v2 tag, or 0 if none."""
+    if len(audio_bytes) < 10 or audio_bytes[:3] != b"ID3":
+        return 0
+    # Synchsafe integer (7 bits per byte)
+    size = (
+        (audio_bytes[6] << 21)
+        | (audio_bytes[7] << 14)
+        | (audio_bytes[8] << 7)
+        | audio_bytes[9]
+    )
+    return 10 + size
+
+
+def _parse_mp3_duration_ms(audio_bytes: bytes) -> int | None:
+    """Estimate MP3 duration by walking frame headers.
+
+    edge-tts produces CBR MP3 (commonly 24kHz/24-48kbps mono). The previous
+    fixed 128kbps assumption over-estimated duration by 2x-5x, breaking
+    lip-sync and subtitle timing.
+    """
+    if not audio_bytes or len(audio_bytes) < 4:
+        return None
+
+    offset = _skip_id3v2(audio_bytes)
+    n = len(audio_bytes)
+    total_ms = 0.0
+    frame_count = 0
+    i = offset
+
+    while i < n - 4:
+        # Frame sync: 11 consecutive 1-bits
+        if audio_bytes[i] != 0xFF or (audio_bytes[i + 1] & 0xE0) != 0xE0:
+            i += 1
+            continue
+
+        b1 = audio_bytes[i + 1]
+        b2 = audio_bytes[i + 2]
+        version = (b1 >> 3) & 0x3
+        layer_bits = (b1 >> 1) & 0x3
+        bitrate_index = (b2 >> 4) & 0xF
+        sr_index = (b2 >> 2) & 0x3
+        padding = (b2 >> 1) & 0x1
+
+        # version==1 is reserved; layer_bits==0 is reserved; sr_index==3 is reserved
+        if version == 1 or layer_bits == 0 or sr_index == 3:
+            i += 1
+            continue
+        if version not in _MPEG_SAMPLE_RATES:
+            i += 1
+            continue
+
+        sample_rate = _MPEG_SAMPLE_RATES[version][sr_index]
+        if sample_rate == 0:
+            i += 1
+            continue
+
+        # layer_bits: 3=LayerI, 2=LayerII, 1=LayerIII
+        if layer_bits == 3:
+            samples_per_frame = 384
+        elif version == 3:
+            samples_per_frame = 1152
+        else:
+            samples_per_frame = 576
+
+        if version == 3:
+            bitrate = _MPEG1_LAYER3_BITRATES[bitrate_index]
+        else:
+            bitrate = _MPEG2_LAYER3_BITRATES[bitrate_index]
+        if bitrate == 0:
+            i += 1
+            continue
+
+        frame_ms = samples_per_frame / sample_rate * 1000
+        frame_size = int(samples_per_frame * bitrate * 125 / sample_rate) + padding
+        if frame_size < 1:
+            i += 1
+            continue
+
+        total_ms += frame_ms
+        frame_count += 1
+        i += frame_size
+
+    if frame_count == 0:
+        return None
+    return int(total_ms)
 
 
 class TTSResult(BaseModel):
@@ -208,14 +307,120 @@ async def _set_cache(text: str, voice_id: str | None, result: TTSResult) -> None
 
 
 def _estimate_mp3_duration(audio_bytes: bytes) -> int:
-    """Estimate MP3 duration in milliseconds from file size.
+    """Estimate MP3 duration in milliseconds.
 
-    For edge-tts output (128kbps CBR), this is accurate enough.
+    Parses the actual frame headers when possible; falls back to a conservative
+    byte-rate estimate otherwise.
     """
     if not audio_bytes:
         return 0
-    # edge-tts produces ~128kbps MP3 = 16000 bytes/sec
-    return int(len(audio_bytes) / 16)
+    parsed = _parse_mp3_duration_ms(audio_bytes)
+    if parsed is not None:
+        return parsed
+    # Conservative fallback: edge-tts commonly uses 24-48 kbps mono MP3.
+    # 48 kbps ~= 6000 bytes/sec, 24 kbps ~= 3000 bytes/sec. Use 24kbps to avoid
+    # over-estimation when the real bitrate is unknown.
+    return int(len(audio_bytes) / 3)
+
+
+_EDGE_TTS_TIMEOUT_SECONDS = 30
+_EDGE_TTS_MAX_RETRIES = 2
+
+
+async def _synthesize_edge_once(text: str, voice_name: str) -> tuple[bytes, list[dict]]:
+    """Run a single edge-tts synthesis and return audio + word boundaries."""
+    import edge_tts
+
+    communicate = edge_tts.Communicate(text, voice_name)
+    audio_chunks: list[bytes] = []
+    raw_phonemes: list[dict] = []
+
+    async def _collect():
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                data = chunk.get("data", b"")
+                if data:
+                    audio_chunks.append(data)
+            elif chunk["type"] == "WordBoundary":
+                raw_phonemes.append({
+                    "char": chunk.get("text", ""),
+                    "start_ms": chunk.get("offset", 0) // 10000,
+                    "end_ms": (chunk.get("offset", 0) + chunk.get("duration", 0)) // 10000,
+                    "mouth_shape": _classify_mouth_shape(
+                        chunk.get("text", "")[0] if chunk.get("text") else "?"
+                    ),
+                })
+
+    try:
+        await asyncio.wait_for(_collect(), timeout=_EDGE_TTS_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError as e:
+        raise RuntimeError(f"edge-tts timed out after {_EDGE_TTS_TIMEOUT_SECONDS}s") from e
+
+    audio_bytes = b"".join(audio_chunks)
+    if not audio_bytes:
+        raise RuntimeError("edge-tts returned empty audio")
+    return audio_bytes, raw_phonemes
+
+
+async def _synthesize_edge_with_retry(text: str, voice_name: str) -> tuple[bytes, list[dict]]:
+    """Synthesize via edge-tts with retries on transient failures."""
+    last_error: Exception | None = None
+    for attempt in range(_EDGE_TTS_MAX_RETRIES + 1):
+        try:
+            return await _synthesize_edge_once(text, voice_name)
+        except Exception as e:
+            last_error = e
+            logger.warning("edge-tts attempt %d failed: %s", attempt + 1, e)
+            if attempt < _EDGE_TTS_MAX_RETRIES:
+                await asyncio.sleep(0.5 * (attempt + 1))
+    raise last_error or RuntimeError("edge-tts synthesis failed after retries")
+
+
+async def _synthesize_edge_stream(
+    text: str,
+    voice_name: str,
+    chunk_size: int,
+    queue: asyncio.Queue,
+):
+    """Stream edge-tts audio into an asyncio.Queue with a global timeout handled by caller."""
+    import edge_tts
+
+    communicate = edge_tts.Communicate(text, voice_name)
+    audio_buffer: list[bytes] = []
+    first_chunk_sent = False
+    stream_start = time.time()
+
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            data = chunk.get("data", b"")
+            if not data:
+                continue
+            audio_buffer.append(data)
+            accumulated = b"".join(audio_buffer)
+            if len(accumulated) >= chunk_size or not first_chunk_sent:
+                if not first_chunk_sent:
+                    logger.info("[tts] first_audio_chunk elapsed=%.3fs bytes=%d",
+                                time.time() - stream_start, len(accumulated))
+                    first_chunk_sent = True
+                await queue.put({"type": "audio", "data": accumulated})
+                audio_buffer.clear()
+        elif chunk["type"] == "WordBoundary":
+            await queue.put({
+                "type": "phoneme",
+                "data": {
+                    "char": chunk.get("text", ""),
+                    "start_ms": chunk.get("offset", 0) // 10000,
+                    "end_ms": (chunk.get("offset", 0) + chunk.get("duration", 0)) // 10000,
+                    "mouth_shape": _classify_mouth_shape(
+                        chunk.get("text", "")[0] if chunk.get("text") else "?"
+                    ),
+                },
+            })
+
+    remaining = b"".join(audio_buffer)
+    if remaining:
+        await queue.put({"type": "audio", "data": remaining})
+    await queue.put(None)  # sentinel
 
 
 def _synthesize_azure(text: str, voice_name: str) -> TTSResult:
@@ -281,27 +486,7 @@ async def synthesize(text: str, voice_id: str | None = None) -> TTSResult:
         return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
 
     try:
-        import edge_tts
-
-        communicate = edge_tts.Communicate(text, voice_name)
-
-        audio_chunks = []
-        raw_phonemes = []
-
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_chunks.append(chunk["data"])
-            elif chunk["type"] == "WordBoundary":
-                raw_phonemes.append({
-                    "char": chunk["text"],
-                    "start_ms": chunk["offset"] // 10000,  # 100ns ticks -> ms
-                    "end_ms": (chunk["offset"] + chunk["duration"]) // 10000,
-                    "mouth_shape": _classify_mouth_shape(chunk["text"][0] if chunk["text"] else "?"),
-                })
-
-        audio_bytes = b"".join(audio_chunks)
-        if not audio_bytes:
-            raise RuntimeError("edge-tts returned empty audio")
+        audio_bytes, raw_phonemes = await _synthesize_edge_with_retry(text, voice_name)
 
         # Use real word boundaries if available, otherwise generate approximate ones
         if raw_phonemes:
@@ -410,62 +595,59 @@ async def synthesize_stream(
     import base64
 
     try:
-        import edge_tts
+        import edge_tts  # noqa: F401
     except ImportError as e:
         logger.error("[tts] edge-tts not installed: %s", e)
         for event in _fallback_stream_events(text, e):
             yield event
         return
 
-    audio_buffer = []
-    all_audio_chunks = []
-    raw_phonemes = []
+    audio_chunks: list[bytes] = []
+    raw_phonemes: list[dict] = []
     first_audio_yielded = False
     synth_start = time.time()
+    voice = _resolve_voice(voice_id)
+    queue: asyncio.Queue = asyncio.Queue()
+
+    producer = asyncio.create_task(_synthesize_edge_stream(text, voice, chunk_size, queue))
 
     try:
-        voice = _resolve_voice(voice_id)
-        communicate = edge_tts.Communicate(text, voice)
-
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                data = chunk.get("data", b"")
-                if not data:
-                    continue
-                audio_buffer.append(data)
-                all_audio_chunks.append(data)
-                # Accumulate a small buffer then start streaming to balance TTFB and chunk count.
-                accumulated = b"".join(audio_buffer)
-                if len(accumulated) >= chunk_size or not first_audio_yielded:
-                    if accumulated:
-                        if not first_audio_yielded:
-                            logger.info("[tts] first_audio_chunk elapsed=%.3fs bytes=%d",
-                                        time.time() - synth_start, len(accumulated))
-                            first_audio_yielded = True
-                        yield {"type": "audio", "data": base64.b64encode(accumulated).decode("utf-8")}
-                        audio_buffer = []
-            elif chunk["type"] == "WordBoundary":
-                raw_phonemes.append({
-                    "char": chunk["text"],
-                    "start_ms": chunk["offset"] // 10000,  # 100ns ticks -> ms
-                    "end_ms": (chunk["offset"] + chunk["duration"]) // 10000,
-                    "mouth_shape": _classify_mouth_shape(chunk["text"][0] if chunk["text"] else "?"),
-                })
+        while True:
+            event = await asyncio.wait_for(queue.get(), timeout=_EDGE_TTS_TIMEOUT_SECONDS)
+            if event is None:
+                break
+            if event["type"] == "audio":
+                data = event["data"]
+                audio_chunks.append(data)
+                if not first_audio_yielded:
+                    logger.info("[tts] first_audio_chunk elapsed=%.3fs bytes=%d",
+                                time.time() - synth_start, len(data))
+                    first_audio_yielded = True
+                yield {"type": "audio", "data": base64.b64encode(data).decode("utf-8")}
+            elif event["type"] == "phoneme":
+                raw_phonemes.append(event["data"])
+    except asyncio.TimeoutError as e:
+        producer.cancel()
+        logger.error("[tts] streaming synthesis timed out: %s", e)
+        for event in _fallback_stream_events(text, RuntimeError("edge-tts stream timeout")):
+            yield event
+        return
     except Exception as e:
+        producer.cancel()
         logger.error("[tts] streaming synthesis failed: %s", e)
         for event in _fallback_stream_events(text, e):
             yield event
         return
+    finally:
+        if not producer.done():
+            producer.cancel()
 
-    # Flush any remaining audio
-    remaining = b"".join(audio_buffer)
-    if remaining:
-        if not first_audio_yielded:
-            logger.info("[tts] first_audio_chunk elapsed=%.3fs bytes=%d",
-                        time.time() - synth_start, len(remaining))
-        yield {"type": "audio", "data": base64.b64encode(remaining).decode("utf-8")}
-
-    audio_bytes = b"".join(all_audio_chunks)
+    audio_bytes = b"".join(audio_chunks)
+    if not audio_bytes:
+        logger.error("[tts] edge-tts stream produced no audio")
+        for event in _fallback_stream_events(text, RuntimeError("edge-tts produced no audio")):
+            yield event
+        return
 
     if raw_phonemes:
         phonemes = _normalize_phonemes(raw_phonemes)
