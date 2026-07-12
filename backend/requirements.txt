@@ -1,5 +1,6 @@
 # Web Framework
 fastapi==0.115.6
+starlette==0.41.3       # ASGI toolkit (used directly by middleware)
 uvicorn[standard]==0.34.0
 python-multipart==0.0.19
 
@@ -9,8 +10,9 @@ asyncpg==0.30.0
 alembic==1.14.1
 psycopg2-binary>=2.9.10
 
-# Vector Database
+# Vector Database / Embeddings
 pymilvus==2.5.0
+sentence-transformers==3.4.1  # Local embedding model cache
 
 # Redis
 redis==5.2.1
@@ -26,6 +28,10 @@ FlagEmbedding==1.3.3    # BGE-Reranker
 # TTS
 edge-tts>=6.1.0          # Microsoft Edge TTS (free, high quality Chinese voices)
 azure-cognitiveservices-speech>=1.37.0  # Official Azure Speech SDK
+
+# Data Processing
+pandas==2.2.3           # Excel/CSV data import
+openpyxl==3.1.5         # .xlsx support for pandas
 
 # Document Parsing
 pymupdf==1.25.1         # PDF parsing
@@ -44,6 +50,9 @@ numpy>=1.26.4
 
 # Clustering / ML
 scikit-learn>=1.3.0
+
+# Graph DB
+neo4j==5.28.1            # Knowledge graph import
 
 # Utilities
 pydantic==2.10.4
