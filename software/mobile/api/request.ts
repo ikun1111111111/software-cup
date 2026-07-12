@@ -56,16 +56,58 @@ const shouldRetry = (error: AxiosError, config: AxiosRequestConfig & RetryConfig
 
 // Cache token in memory to avoid AsyncStorage reads on every request
 let cachedToken: string | null | undefined = undefined;
+let tokenGeneration = 0;
 
 async function getToken(): Promise<string | null> {
   if (cachedToken !== undefined) return cachedToken;
-  cachedToken = await AsyncStorage.getItem('token');
-  return cachedToken;
+  const generation = tokenGeneration;
+  const storedToken = await AsyncStorage.getItem('token');
+  if (tokenGeneration === generation) cachedToken = storedToken;
+  return cachedToken ?? null;
 }
 
 // Called on login/logout to invalidate the cache
 export function invalidateTokenCache() {
+  tokenGeneration += 1;
   cachedToken = undefined;
+}
+
+export async function persistAuthToken(token: string): Promise<void> {
+  const generation = ++tokenGeneration;
+  cachedToken = token;
+  try {
+    await AsyncStorage.setItem('token', token);
+  } catch (error) {
+    if (tokenGeneration === generation) cachedToken = undefined;
+    throw error;
+  }
+}
+
+export async function clearAuthToken(): Promise<void> {
+  const generation = ++tokenGeneration;
+  cachedToken = null;
+  try {
+    await AsyncStorage.removeItem('token');
+  } catch (error) {
+    if (tokenGeneration === generation) cachedToken = undefined;
+    throw error;
+  }
+}
+
+async function clearAuthTokenIfCurrent(requestToken: string): Promise<boolean> {
+  const storedToken = await AsyncStorage.getItem('token');
+  if (storedToken !== requestToken) return false;
+  if (cachedToken !== undefined && cachedToken !== requestToken) return false;
+
+  const generation = ++tokenGeneration;
+  cachedToken = null;
+  try {
+    await AsyncStorage.removeItem('token');
+  } catch (error) {
+    if (tokenGeneration === generation) cachedToken = undefined;
+    throw error;
+  }
+  return true;
 }
 
 function getResponseMessage(error: AxiosError<ApiResponse | any>): string {
@@ -81,15 +123,17 @@ function getResponseMessage(error: AxiosError<ApiResponse | any>): string {
   return error.message || '请求失败，请稍后再试';
 }
 
-function hasBearerAuthorization(config: AxiosRequestConfig): boolean {
+function getBearerToken(config: AxiosRequestConfig): string | null {
   const headers = config.headers;
-  if (!headers) return false;
+  if (!headers) return null;
 
   const authorization = typeof (headers as any).get === 'function'
     ? (headers as any).get('Authorization')
-    : Object.entries(headers).find(([name]) => name.toLowerCase() === 'authorization')?.[1];
+    : (headers as any).Authorization
+      ?? Object.entries(headers).find(([name]) => name.toLowerCase() === 'authorization')?.[1];
 
-  return typeof authorization === 'string' && /^Bearer\s+\S+/i.test(authorization.trim());
+  if (typeof authorization !== 'string') return null;
+  return authorization.trim().match(/^Bearer\s+(\S+)$/i)?.[1] ?? null;
 }
 
 function isPublicAuthPath(url?: string): boolean {
@@ -129,9 +173,8 @@ const createAxiosInstance = (): AxiosInstance => {
 
       // 401 统一登出
       if (error.response?.status === 401) {
-        if (hasBearerAuthorization(config)) {
-          await AsyncStorage.removeItem('token');
-          invalidateTokenCache();
+        const requestToken = getBearerToken(config);
+        if (requestToken && await clearAuthTokenIfCurrent(requestToken)) {
           authEvents.emit();
         }
         return Promise.reject(new Error(getResponseMessage(error)));
