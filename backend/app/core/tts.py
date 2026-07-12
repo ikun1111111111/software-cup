@@ -17,6 +17,10 @@ from app.core.redis_client import get_redis
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+_MEMORY_TTS_CACHE: dict[str, "TTSResult"] = {}
+_MEMORY_TTS_CACHE_LIMIT = 128
+_REDIS_TTS_TIMEOUT_SECONDS = 0.25
+
 # Voice mapping: voice_id -> Azure / edge-tts voice name
 _EDGE_TTS_VOICES = {
     "mandarin": "zh-CN-XiaoxiaoNeural",        # 标准普通话女声
@@ -25,6 +29,20 @@ _EDGE_TTS_VOICES = {
     "shaanxi": "zh-CN-shaanxi-XiaoniNeural",   # 陕西女声
     "male": "zh-CN-YunxiNeural",               # 普通话男声
 }
+
+# Voice mapping: voice_id -> DashScope CosyVoice speaker
+_COSYVOICE_VOICES = {
+    voice: cfg["cosyvoice_speaker"]
+    for voice, cfg in settings.tts_voices.items()
+    if "cosyvoice_speaker" in cfg
+}
+
+
+def _resolve_cosyvoice_speaker(voice_id: str | None) -> str | None:
+    """Resolve voice_id to DashScope CosyVoice speaker name."""
+    if voice_id and voice_id in _COSYVOICE_VOICES:
+        return _COSYVOICE_VOICES[voice_id]
+    return _COSYVOICE_VOICES.get("mandarin")
 
 
 def _is_cjk(char: str) -> bool:
@@ -271,19 +289,28 @@ def _cache_key(text: str, voice_id: str | None) -> str:
 
 async def _get_cached(text: str, voice_id: str | None) -> TTSResult | None:
     """Check Redis for cached TTS result."""
+    key = _cache_key(text, voice_id)
+    memory_cached = _MEMORY_TTS_CACHE.get(key)
+    if memory_cached:
+        return memory_cached
+
     try:
         redis = await get_redis()
-        key = _cache_key(text, voice_id)
-        cached = await redis.get(key)
+        cached = await asyncio.wait_for(
+            redis.get(key),
+            timeout=_REDIS_TTS_TIMEOUT_SECONDS,
+        )
         if cached:
             data = json.loads(cached)
-            return TTSResult(
+            result = TTSResult(
                 audio_bytes=bytes.fromhex(data["audio_hex"]),
                 phoneme_timestamps=data["phonemes"],
                 sample_rate=data.get("sample_rate", 24000),
                 duration_ms=data.get("duration_ms", 0),
                 audio_format=data.get("audio_format", "mp3"),
             )
+            _MEMORY_TTS_CACHE[key] = result
+            return result
     except Exception as e:
         logger.debug("TTS cache check failed: %s", e)
     return None
@@ -291,9 +318,13 @@ async def _get_cached(text: str, voice_id: str | None) -> TTSResult | None:
 
 async def _set_cache(text: str, voice_id: str | None, result: TTSResult) -> None:
     """Cache TTS result in Redis with TTL (default 7 days)."""
+    key = _cache_key(text, voice_id)
+    _MEMORY_TTS_CACHE[key] = result
+    if len(_MEMORY_TTS_CACHE) > _MEMORY_TTS_CACHE_LIMIT:
+        _MEMORY_TTS_CACHE.pop(next(iter(_MEMORY_TTS_CACHE)))
+
     try:
         redis = await get_redis()
-        key = _cache_key(text, voice_id)
         data = {
             "audio_hex": result.audio_bytes.hex(),
             "phonemes": result.phoneme_timestamps,
@@ -301,7 +332,10 @@ async def _set_cache(text: str, voice_id: str | None, result: TTSResult) -> None
             "duration_ms": result.duration_ms,
             "audio_format": result.audio_format,
         }
-        await redis.set(key, json.dumps(data), ex=604800)  # 7 days
+        await asyncio.wait_for(
+            redis.set(key, json.dumps(data), ex=604800),
+            timeout=_REDIS_TTS_TIMEOUT_SECONDS,
+        )  # 7 days
     except Exception as e:
         logger.debug("TTS cache set failed: %s", e)
 
@@ -325,13 +359,20 @@ def _estimate_mp3_duration(audio_bytes: bytes) -> int:
 
 _EDGE_TTS_TIMEOUT_SECONDS = 30
 _EDGE_TTS_MAX_RETRIES = 2
+_EDGE_TTS_RATE = "-4%"
+_EDGE_TTS_PITCH = "+2Hz"
 
 
 async def _synthesize_edge_once(text: str, voice_name: str) -> tuple[bytes, list[dict]]:
     """Run a single edge-tts synthesis and return audio + word boundaries."""
     import edge_tts
 
-    communicate = edge_tts.Communicate(text, voice_name)
+    communicate = edge_tts.Communicate(
+        text,
+        voice_name,
+        rate=_EDGE_TTS_RATE,
+        pitch=_EDGE_TTS_PITCH,
+    )
     audio_chunks: list[bytes] = []
     raw_phonemes: list[dict] = []
 
@@ -385,7 +426,12 @@ async def _synthesize_edge_stream(
     """Stream edge-tts audio into an asyncio.Queue with a global timeout handled by caller."""
     import edge_tts
 
-    communicate = edge_tts.Communicate(text, voice_name)
+    communicate = edge_tts.Communicate(
+        text,
+        voice_name,
+        rate=_EDGE_TTS_RATE,
+        pitch=_EDGE_TTS_PITCH,
+    )
     audio_buffer: list[bytes] = []
     first_chunk_sent = False
     stream_start = time.time()
@@ -421,6 +467,55 @@ async def _synthesize_edge_stream(
     if remaining:
         await queue.put({"type": "audio", "data": remaining})
     await queue.put(None)  # sentinel
+
+
+async def _synthesize_dashscope(text: str, voice_id: str | None) -> TTSResult:
+    """Synthesize text using DashScope CosyVoice.
+
+    Requires QWEN_API_KEY environment variable (loaded as settings.qwen_api_key).
+    Returns empty audio on failure so callers can fall back to Azure / edge-tts.
+    """
+    speaker = _resolve_cosyvoice_speaker(voice_id)
+    if not speaker:
+        return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
+    if not settings.qwen_api_key:
+        logger.debug("DashScope API key not configured, skipping CosyVoice")
+        return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
+
+    try:
+        from dashscope.audio.tts import SpeechSynthesizer
+        from dashscope.api_entities.dashscope_response import SpeechSynthesisResponse
+
+        def _call():
+            response = SpeechSynthesizer.call(
+                model=settings.cosyvoice_model,
+                text=text,
+                voice=speaker,
+                format="mp3",
+                api_key=settings.qwen_api_key,
+            )
+            if isinstance(response, SpeechSynthesisResponse):
+                return response.get_audio_data() if response.get_audio_data() is not None else b""
+            if isinstance(response, bytes):
+                return response
+            return b""
+
+        audio_bytes = await asyncio.to_thread(_call)
+        if not audio_bytes:
+            logger.warning("DashScope CosyVoice returned empty audio for voice=%s", speaker)
+            return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
+
+        duration_ms = _estimate_mp3_duration(audio_bytes)
+        phonemes = _generate_phoneme_timestamps(text, duration_ms)
+        logger.info("DashScope CosyVoice synthesized: %d bytes, %dms", len(audio_bytes), duration_ms)
+        return TTSResult(
+            audio_bytes=audio_bytes,
+            phoneme_timestamps=phonemes,
+            duration_ms=duration_ms,
+        )
+    except Exception as e:
+        logger.error("DashScope CosyVoice failed: %s", e)
+        return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
 
 
 def _synthesize_azure(text: str, voice_name: str) -> TTSResult:
@@ -465,7 +560,12 @@ def _synthesize_azure(text: str, voice_name: str) -> TTSResult:
 
 
 async def synthesize(text: str, voice_id: str | None = None) -> TTSResult:
-    """Synthesize text to speech using Azure (if configured) or edge-tts.
+    """Synthesize text to speech using DashScope CosyVoice, Azure, or edge-tts.
+
+    Priority:
+        1. DashScope CosyVoice (if QWEN_API_KEY is set)
+        2. Azure Speech Services (if AZURE_SPEECH_KEY/REGION are set)
+        3. edge-tts (free, network-dependent)
 
     Args:
         text: Text to synthesize.
@@ -474,7 +574,17 @@ async def synthesize(text: str, voice_id: str | None = None) -> TTSResult:
     Returns:
         TTSResult with MP3 audio bytes and phoneme timestamps.
     """
-    # Try Azure first if configured
+    if not text or not text.strip():
+        return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
+
+    # 1. Try DashScope CosyVoice first (preferred high-quality voice)
+    if settings.qwen_api_key:
+        cosy_result = await _synthesize_dashscope(text, voice_id)
+        if cosy_result.audio_bytes:
+            return cosy_result
+        logger.info("CosyVoice returned empty audio, trying next provider")
+
+    # 2. Try Azure Speech Services if configured
     voice_name = _resolve_voice(voice_id)
     if settings.azure_speech_key and settings.azure_speech_region:
         azure_result = _synthesize_azure(text, voice_name)
@@ -590,9 +700,30 @@ async def synthesize_stream(
         yield {"type": "done", "duration_ms": cached.duration_ms}
         return
 
-    # Fresh synthesis: stream directly from edge-tts for lowest TTFB.
+    # Fresh synthesis: prefer DashScope CosyVoice, fall back to edge-tts stream.
     logger.info("[tts] synthesis_start text_len=%d", len(text))
     import base64
+
+    synth_start = time.time()
+
+    # 1. Try DashScope CosyVoice first (high quality, low latency for short text)
+    if settings.qwen_api_key:
+        try:
+            cosy_result = await _synthesize_dashscope(text, voice_id)
+            if cosy_result.audio_bytes:
+                audio = cosy_result.audio_bytes
+                logger.info("[tts] cosyvoice first_chunk elapsed=%.3fs bytes=%d",
+                            time.time() - synth_start, len(audio))
+                for i in range(0, len(audio), chunk_size):
+                    chunk = audio[i:i + chunk_size]
+                    yield {"type": "audio", "data": base64.b64encode(chunk).decode("utf-8")}
+                yield {"type": "phonemes", "data": cosy_result.phoneme_timestamps}
+                yield {"type": "done", "duration_ms": cosy_result.duration_ms}
+                await _set_cache(text, voice_id, cosy_result)
+                return
+            logger.info("[tts] cosyvoice returned empty audio, falling back to edge-tts")
+        except Exception as e:
+            logger.warning("[tts] cosyvoice failed: %s, falling back to edge-tts", e)
 
     try:
         import edge_tts  # noqa: F401
@@ -605,7 +736,6 @@ async def synthesize_stream(
     audio_chunks: list[bytes] = []
     raw_phonemes: list[dict] = []
     first_audio_yielded = False
-    synth_start = time.time()
     voice = _resolve_voice(voice_id)
     queue: asyncio.Queue = asyncio.Queue()
 

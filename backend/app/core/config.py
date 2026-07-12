@@ -81,22 +81,44 @@ class Settings(BaseSettings):
     rate_limit_requests: int = 60  # 每窗口最大请求数
     rate_limit_window: int = 60  # 窗口秒数
 
-    # CosyVoice
+    # CosyVoice via DashScope (preferred high-quality TTS)
+    cosyvoice_model: str = "cosyvoice-v1"
+    # Default DashScope voice for each voice_id.
+    tts_voices: dict = {
+        "mandarin": {
+            "speaker_id": "zh-CN-XiaoxiaoNeural",
+            "cosyvoice_speaker": "longxiaochun",
+            "description": "标准女声",
+        },
+        "female": {
+            "speaker_id": "zh-CN-XiaoyiNeural",
+            "cosyvoice_speaker": "longxiaoxia",
+            "description": "年轻女声",
+        },
+        "liaoning": {
+            "speaker_id": "zh-CN-liaoning-XiaobeiNeural",
+            "cosyvoice_speaker": "longxiaochun",
+            "description": "东北女声",
+        },
+        "shaanxi": {
+            "speaker_id": "zh-CN-shaanxi-XiaoniNeural",
+            "cosyvoice_speaker": "longxiaoxia",
+            "description": "陕西女声",
+        },
+        "male": {
+            "speaker_id": "zh-CN-YunxiNeural",
+            "cosyvoice_speaker": "longxiaocheng",
+            "description": "普通话男声",
+        },
+    }
+
+    # Legacy / local CosyVoice server endpoint (optional fallback)
     cosyvoice_endpoint: str = "http://localhost:5001"
     tts_stream_chunk_size: int = 4096  # bytes per SSE chunk
 
     # Azure Speech Services (optional; falls back to edge-tts if not configured)
     azure_speech_key: str = ""
     azure_speech_region: str = ""
-
-    # TTS Voice presets: voice_id -> Azure / edge-tts voice name
-    tts_voices: dict = {
-        "mandarin": {"speaker_id": "zh-CN-XiaoxiaoNeural", "description": "标准女声"},
-        "female": {"speaker_id": "zh-CN-XiaoyiNeural", "description": "年轻女声"},
-        "liaoning": {"speaker_id": "zh-CN-liaoning-XiaobeiNeural", "description": "东北女声"},
-        "shaanxi": {"speaker_id": "zh-CN-shaanxi-XiaoniNeural", "description": "陕西女声"},
-        "male": {"speaker_id": "zh-CN-YunxiNeural", "description": "普通话男声"},
-    }
 
     # RAG
     chunk_size: int = 512
