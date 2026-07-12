@@ -81,6 +81,21 @@ function getResponseMessage(error: AxiosError<ApiResponse | any>): string {
   return error.message || '请求失败，请稍后再试';
 }
 
+function hasBearerAuthorization(config: AxiosRequestConfig): boolean {
+  const headers = config.headers;
+  if (!headers) return false;
+
+  const authorization = typeof (headers as any).get === 'function'
+    ? (headers as any).get('Authorization')
+    : Object.entries(headers).find(([name]) => name.toLowerCase() === 'authorization')?.[1];
+
+  return typeof authorization === 'string' && /^Bearer\s+\S+/i.test(authorization.trim());
+}
+
+function isPublicAuthPath(url?: string): boolean {
+  return /^\/auth\/(?:login|register)(?:[/?#]|$)/.test(url ?? '');
+}
+
 const createAxiosInstance = (): AxiosInstance => {
   const instance = axios.create({
     baseURL: API_BASE_URL,
@@ -89,6 +104,8 @@ const createAxiosInstance = (): AxiosInstance => {
   });
 
   instance.interceptors.request.use(async (config) => {
+    if (isPublicAuthPath(config.url)) return config;
+
     const token = await getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -112,9 +129,11 @@ const createAxiosInstance = (): AxiosInstance => {
 
       // 401 统一登出
       if (error.response?.status === 401) {
-        await AsyncStorage.removeItem('token');
-        invalidateTokenCache();
-        authEvents.emit();
+        if (hasBearerAuthorization(config)) {
+          await AsyncStorage.removeItem('token');
+          invalidateTokenCache();
+          authEvents.emit();
+        }
         return Promise.reject(new Error(getResponseMessage(error)));
       }
 
