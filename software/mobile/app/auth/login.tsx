@@ -1,20 +1,15 @@
-import { useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useRef, useState } from 'react';
 import { Link, useRouter } from 'expo-router';
-import { useAuth } from '@/hooks/useAuth';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AuthBrandHeader } from '@/components/auth/AuthBrandHeader';
+import { AuthField } from '@/components/auth/AuthField';
+import { AuthScreenShell } from '@/components/auth/AuthScreenShell';
+import { AuthSubmitButton } from '@/components/auth/AuthSubmitButton';
 import { Colors } from '@/constants/colors';
+import { validateLogin, type LoginErrors } from '@/features/auth/validation';
+import { useAuth } from '@/hooks/useAuth';
 
-type LoginErrors = Partial<Record<'username' | 'password' | 'submit', string>>;
+type LoginField = 'username' | 'password';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -22,201 +17,145 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<LoginErrors>({});
   const [loading, setLoading] = useState(false);
+  const loginInFlightRef = useRef(false);
   const { login } = useAuth();
   const router = useRouter();
 
-  const validate = () => {
-    const nextErrors: LoginErrors = {};
-    if (!username.trim()) nextErrors.username = '请输入用户名';
-    if (!password) nextErrors.password = '请输入密码';
-    setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+  const clearFieldError = (field: LoginField) => {
+    if (errors[field] || errors.submit) {
+      setErrors((previous) => ({
+        ...previous,
+        [field]: undefined,
+        submit: undefined,
+      }));
+    }
   };
 
   const handleLogin = async () => {
-    if (loading || !validate()) return;
+    if (loginInFlightRef.current) return;
+
+    const nextErrors = validateLogin(username, password);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
+    loginInFlightRef.current = true;
     setLoading(true);
-    setErrors({});
     try {
       await login(username.trim(), password);
       router.replace('/(tabs)');
-    } catch (err: any) {
-      setErrors({ submit: err.message || '登录失败，请检查账号或密码' });
+    } catch (error: unknown) {
+      setErrors({
+        submit:
+          error instanceof Error && error.message
+            ? error.message
+            : '登录失败，请检查账号或密码',
+      });
     } finally {
+      loginInFlightRef.current = false;
       setLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.brandBlock}>
-          <View style={styles.brandMark}>
-            <Text style={styles.brandMarkText}>山</Text>
+    <AuthScreenShell>
+      <AuthBrandHeader
+        eyebrow="灵山智慧导览"
+        title="欢迎回来"
+        subtitle="继续你的个性化游览档案"
+      />
+
+      <View style={styles.formPanel}>
+        <View style={styles.titleRow}>
+          <View>
+            <Text style={styles.eyebrow}>账号登录</Text>
+            <Text style={styles.formTitle}>开启灵山文化之旅</Text>
           </View>
-          <Text style={styles.brandName}>灵山智慧导览</Text>
-          <Text style={styles.brandSub}>继续你的个性化游览档案</Text>
+          <Link href="/(tabs)" asChild>
+            <Pressable
+              accessibilityLabel="游客进入"
+              accessibilityRole="button"
+              hitSlop={8}
+              style={({ pressed }) => [styles.guestEntry, pressed && styles.pressed]}
+            >
+              <Text style={styles.guestEntryText}>游客进入</Text>
+            </Pressable>
+          </Link>
         </View>
 
-        <View style={styles.formPanel}>
-          <View style={styles.titleRow}>
-            <View>
-              <Text style={styles.eyebrow}>账号登录</Text>
-              <Text style={styles.title}>欢迎回来</Text>
-            </View>
-            <Link href="/(tabs)" asChild>
-              <Pressable style={styles.ghostEntry} hitSlop={8}>
-                <Text style={styles.ghostEntryText}>游客</Text>
-              </Pressable>
-            </Link>
-          </View>
+        <AuthField
+          accessibilityLabel="用户名"
+          autoCapitalize="none"
+          autoCorrect={false}
+          error={errors.username}
+          label="用户名"
+          leading={<Text style={styles.fieldLeading}>@</Text>}
+          onChangeText={(value) => {
+            setUsername(value);
+            clearFieldError('username');
+          }}
+          placeholder="输入用户名"
+          returnKeyType="next"
+          textContentType="username"
+          value={username}
+        />
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>用户名</Text>
-            <View style={[styles.inputWrapper, errors.username && styles.inputError]}>
-              <Text style={styles.inputPrefix}>@</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="输入用户名"
-                placeholderTextColor={Colors.textTertiary}
-                value={username}
-                onChangeText={(value) => {
-                  setUsername(value);
-                  if (errors.username || errors.submit) {
-                    setErrors((prev) => ({ ...prev, username: undefined, submit: undefined }));
-                  }
-                }}
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="next"
-                textContentType="username"
-              />
-            </View>
-            {errors.username ? <Text style={styles.errorText}>{errors.username}</Text> : null}
-          </View>
+        <AuthField
+          accessibilityLabel="密码"
+          error={errors.password}
+          label="密码"
+          leading={<Text style={styles.fieldLeading}>密</Text>}
+          onChangeText={(value) => {
+            setPassword(value);
+            clearFieldError('password');
+          }}
+          onSubmitEditing={handleLogin}
+          onTogglePassword={() => setShowPassword((visible) => !visible)}
+          placeholder="输入密码"
+          returnKeyType="done"
+          secureTextEntry
+          showPassword={showPassword}
+          textContentType="password"
+          value={password}
+        />
 
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>密码</Text>
-            <View style={[styles.inputWrapper, errors.password && styles.inputError]}>
-              <Text style={styles.inputPrefix}>*</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="输入密码"
-                placeholderTextColor={Colors.textTertiary}
-                value={password}
-                onChangeText={(value) => {
-                  setPassword(value);
-                  if (errors.password || errors.submit) {
-                    setErrors((prev) => ({ ...prev, password: undefined, submit: undefined }));
-                  }
-                }}
-                secureTextEntry={!showPassword}
-                returnKeyType="done"
-                textContentType="password"
-                onSubmitEditing={handleLogin}
-              />
-              <Pressable
-                style={styles.passwordToggle}
-                onPress={() => setShowPassword((value) => !value)}
-                hitSlop={8}
-              >
-                <Text style={styles.passwordToggleText}>{showPassword ? '隐藏' : '显示'}</Text>
-              </Pressable>
-            </View>
-            {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
-          </View>
-
-          {errors.submit ? <Text style={styles.submitError}>{errors.submit}</Text> : null}
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.primaryButton,
-              pressed && !loading && styles.primaryButtonPressed,
-              loading && styles.primaryButtonDisabled,
-            ]}
-            onPress={handleLogin}
-            disabled={loading}
+        {errors.submit ? (
+          <Text
+            accessibilityLiveRegion="assertive"
+            accessibilityRole="alert"
+            style={styles.submitError}
           >
-            {loading ? (
-              <ActivityIndicator size="small" color={Colors.textInverse} />
-            ) : (
-              <Text style={styles.primaryButtonText}>登录</Text>
-            )}
-          </Pressable>
+            {errors.submit}
+          </Text>
+        ) : null}
 
-          <View style={styles.footerRow}>
-            <Text style={styles.footerHint}>还没有账号？</Text>
-            <Link href="/auth/register" asChild>
-              <Pressable hitSlop={8}>
-                <Text style={styles.footerLink}>创建账号</Text>
-              </Pressable>
-            </Link>
-          </View>
+        <AuthSubmitButton label="登录" loading={loading} onPress={handleLogin} />
+
+        <View style={styles.footerRow}>
+          <Text style={styles.footerHint}>还没有账号？</Text>
+          <Link href="/auth/register" asChild>
+            <Pressable
+              accessibilityLabel="创建账号"
+              accessibilityRole="button"
+              hitSlop={8}
+              style={({ pressed }) => pressed && styles.pressed}
+            >
+              <Text style={styles.footerLink}>创建账号</Text>
+            </Pressable>
+          </Link>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </View>
+    </AuthScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.paper,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 32,
-  },
-  brandBlock: {
-    marginBottom: 28,
-  },
-  brandMark: {
-    width: 58,
-    height: 58,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    backgroundColor: Colors.ink,
-    marginBottom: 16,
-    shadowColor: Colors.ink,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 18,
-    elevation: 6,
-  },
-  brandMarkText: {
-    color: Colors.gold,
-    fontSize: 28,
-    fontWeight: '700',
-  },
-  brandName: {
-    color: Colors.textPrimary,
-    fontSize: 28,
-    fontWeight: '800',
-    lineHeight: 36,
-  },
-  brandSub: {
-    color: Colors.textSecondary,
-    fontSize: 14,
-    lineHeight: 22,
-    marginTop: 6,
-  },
   formPanel: {
     backgroundColor: Colors.surfaceCard,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: Colors.borderLight,
     padding: 20,
-    shadowColor: Colors.gray900,
+    shadowColor: Colors.ink,
     shadowOffset: { width: 0, height: 14 },
     shadowOpacity: 0.08,
     shadowRadius: 24,
@@ -226,121 +165,55 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: 22,
     gap: 12,
+    marginBottom: 22,
   },
   eyebrow: {
     color: Colors.primaryDark,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 1,
     marginBottom: 4,
   },
-  title: {
-    color: Colors.textPrimary,
-    fontSize: 24,
-    fontWeight: '800',
-    lineHeight: 30,
+  formTitle: {
+    color: Colors.ink,
+    fontSize: 20,
+    fontWeight: '900',
+    lineHeight: 28,
   },
-  ghostEntry: {
-    minWidth: 52,
-    height: 34,
+  guestEntry: {
+    minWidth: 72,
+    minHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: Colors.borderDefault,
+    backgroundColor: Colors.paperWarm,
   },
-  ghostEntryText: {
-    color: Colors.textSecondary,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  fieldGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    color: Colors.textSecondary,
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  inputWrapper: {
-    minHeight: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.borderDefault,
-    backgroundColor: Colors.gray50,
-    paddingHorizontal: 14,
-  },
-  inputError: {
-    borderColor: Colors.error,
-    backgroundColor: Colors.errorBg,
-  },
-  inputPrefix: {
-    width: 22,
+  guestEntryText: {
     color: Colors.primaryDark,
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '800',
   },
-  input: {
-    flex: 1,
-    color: Colors.textPrimary,
-    fontSize: 16,
-    minHeight: 50,
-    paddingVertical: 0,
-  },
-  passwordToggle: {
-    minWidth: 42,
-    minHeight: 34,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  passwordToggleText: {
+  fieldLeading: {
+    minWidth: 20,
     color: Colors.primaryDark,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  errorText: {
-    color: Colors.error,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 6,
+    fontSize: 15,
+    fontWeight: '900',
+    textAlign: 'center',
   },
   submitError: {
     color: Colors.error,
     backgroundColor: Colors.errorBg,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.error,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 13,
     lineHeight: 19,
     marginBottom: 14,
-  },
-  primaryButton: {
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    backgroundColor: Colors.primaryDark,
-    shadowColor: Colors.primaryDark,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.22,
-    shadowRadius: 16,
-    elevation: 4,
-  },
-  primaryButtonPressed: {
-    transform: [{ translateY: 1 }],
-    opacity: 0.9,
-  },
-  primaryButtonDisabled: {
-    opacity: 0.72,
-  },
-  primaryButtonText: {
-    color: Colors.textInverse,
-    fontSize: 17,
-    fontWeight: '800',
   },
   footerRow: {
     flexDirection: 'row',
@@ -357,5 +230,8 @@ const styles = StyleSheet.create({
     color: Colors.primaryDark,
     fontSize: 14,
     fontWeight: '800',
+  },
+  pressed: {
+    opacity: 0.68,
   },
 });
