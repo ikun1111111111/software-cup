@@ -107,6 +107,12 @@ async function clearAuthTokenIfCurrent(requestToken: string): Promise<boolean> {
     if (tokenGeneration === generation) cachedToken = undefined;
     throw error;
   }
+
+  if (tokenGeneration !== generation) {
+    const currentToken = cachedToken;
+    if (typeof currentToken === 'string') await persistAuthToken(currentToken);
+    return false;
+  }
   return true;
 }
 

@@ -241,4 +241,40 @@ describe('request 401 handling', () => {
 
     expect(config.headers.Authorization).toBe('Bearer new-token');
   });
+
+  test('successful older 401 cleanup neither emits nor loses a newer token', async () => {
+    let storedToken: string | null = null;
+    setItem.mockImplementation(async (_key: string, token: string) => {
+      storedToken = token;
+    });
+    getItem.mockImplementation(async () => storedToken);
+    await persistAuthToken('old-token');
+
+    let finishOldRemoval!: () => void;
+    let removalStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      removalStarted = resolve;
+    });
+    removeItem.mockReturnValueOnce(new Promise<void>((resolve) => {
+      finishOldRemoval = () => {
+        storedToken = null;
+        resolve();
+      };
+      removalStarted();
+    }));
+    const error = {
+      config: { url: '/auth/me', headers: { Authorization: 'Bearer old-token' } },
+      response: { status: 401, data: { detail: 'Token 无效或已过期' } },
+    };
+    const oldCleanup = rejectedInterceptor(error);
+    await started;
+    await persistAuthToken('new-token');
+    finishOldRemoval();
+
+    await expect(oldCleanup).rejects.toThrow('Token 无效或已过期');
+    expect(listener).not.toHaveBeenCalled();
+    expect(storedToken).toBe('new-token');
+    const config = await requestInterceptor({ url: '/auth/me', headers: {} });
+    expect(config.headers.Authorization).toBe('Bearer new-token');
+  });
 });
