@@ -28,9 +28,17 @@ describe('standalone demo action integration', () => {
     expect(playerSource).toContain('track.sourceBase.clone().invert().multiply(sampled)');
   });
 
-  test('suspends random waiting actions during speech', () => {
-    expect(playerSource).toMatch(/normalized === 'none' && speaking[\s\S]*?stopActive\(\)[\s\S]*?return;/);
-    expect(playerSource).toMatch(/normalized === 'none' && !speaking && elapsed >= this\.idleDueAt/);
+  test('uses the shared absolute-time scheduler instead of a page-local zero deadline', () => {
+    expect(playerSource).toContain("import { sharedVRMIdleActionScheduler } from './vrmIdleActionScheduler'");
+    expect(playerSource).toContain('sharedVRMIdleActionScheduler.claim(nowMs)');
+    expect(playerSource).not.toContain('private idleDueAt = 0');
+    expect(playerSource).not.toContain('elapsed >= this.idleDueAt');
+  });
+
+  test('postpones random waiting actions around speech and explicit actions', () => {
+    expect(playerSource).toContain('sharedVRMIdleActionScheduler.postpone(nowMs)');
+    expect(playerSource).toContain('idleEligible !== this.wasIdleEligible');
+    expect(playerSource).toMatch(/normalized === 'none' && speaking[\s\S]*?stopActive\(\)/);
   });
 
   test('lets a started speech GLB finish when React releases the action', () => {
