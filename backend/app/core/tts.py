@@ -470,6 +470,137 @@ async def _synthesize_edge_stream(
     await queue.put(None)  # sentinel
 
 
+async def _synthesize_dashscope(text: str, voice_id: str | None) -> TTSResult:
+    """Synthesize text using DashScope CosyVoice v3.
+
+    Returns an empty result when the provider is unavailable so callers can
+    continue through the Azure and Edge TTS fallbacks.
+    """
+    speaker = _resolve_cosyvoice_speaker(voice_id)
+    if not settings.qwen_api_key or not speaker:
+        return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
+
+    def _call() -> bytes:
+        import dashscope
+        from dashscope.audio.tts_v2 import AudioFormat, SpeechSynthesizer
+
+        dashscope.api_key = settings.qwen_api_key
+        synthesizer = SpeechSynthesizer(
+            model=settings.cosyvoice_model,
+            voice=speaker,
+            format=AudioFormat.MP3_22050HZ_MONO_256KBPS,
+        )
+        return synthesizer.call(text, timeout_millis=30_000) or b""
+
+    started_at = time.time()
+    try:
+        audio_bytes = await asyncio.to_thread(_call)
+    except Exception as exc:
+        error_message = str(exc)
+        if settings.qwen_api_key:
+            error_message = error_message.replace(settings.qwen_api_key, "***")
+        logger.warning(
+            "DashScope CosyVoice failed model=%s voice=%s error=%s",
+            settings.cosyvoice_model,
+            speaker,
+            error_message,
+        )
+        return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
+
+    if not audio_bytes:
+        logger.warning(
+            "DashScope CosyVoice returned empty audio model=%s voice=%s",
+            settings.cosyvoice_model,
+            speaker,
+        )
+        return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
+
+    duration_ms = _estimate_mp3_duration(audio_bytes)
+    phonemes = _generate_phoneme_timestamps(text, duration_ms)
+    logger.info(
+        "DashScope CosyVoice synthesized model=%s voice=%s elapsed=%.3fs bytes=%d duration_ms=%d",
+        settings.cosyvoice_model,
+        speaker,
+        time.time() - started_at,
+        len(audio_bytes),
+        duration_ms,
+    )
+    return TTSResult(
+        audio_bytes=audio_bytes,
+        phoneme_timestamps=phonemes,
+        duration_ms=duration_ms,
+    )
+
+
+async def _synthesize_dashscope_stream(
+    text: str,
+    voice_id: str | None,
+    queue: asyncio.Queue,
+) -> None:
+    """Stream CosyVoice audio callbacks into an asyncio queue."""
+    speaker = _resolve_cosyvoice_speaker(voice_id)
+    if not settings.qwen_api_key or not speaker:
+        await queue.put(None)
+        return
+
+    loop = asyncio.get_running_loop()
+
+    def enqueue(event) -> None:
+        try:
+            loop.call_soon_threadsafe(queue.put_nowait, event)
+        except RuntimeError:
+            # The request was cancelled and its event loop is already closed.
+            pass
+
+    def _call() -> None:
+        import dashscope
+        from dashscope.audio.tts_v2 import (
+            AudioFormat,
+            ResultCallback,
+            SpeechSynthesizer,
+        )
+
+        dashscope.api_key = settings.qwen_api_key
+
+        class Callback(ResultCallback):
+            def on_open(self) -> None:
+                pass
+
+            def on_event(self, _message: str) -> None:
+                pass
+
+            def on_complete(self) -> None:
+                pass
+
+            def on_data(self, data: bytes) -> None:
+                if data:
+                    enqueue({"type": "audio", "data": data})
+
+            def on_error(self, message: str) -> None:
+                error_message = str(message).replace(settings.qwen_api_key, "***")
+                enqueue({"type": "error", "error": RuntimeError(error_message)})
+
+            def on_close(self) -> None:
+                pass
+
+        synthesizer = SpeechSynthesizer(
+            model=settings.cosyvoice_model,
+            voice=speaker,
+            format=AudioFormat.MP3_22050HZ_MONO_256KBPS,
+            callback=Callback(),
+        )
+        synthesizer.streaming_call(text)
+        synthesizer.streaming_complete(30_000)
+
+    try:
+        await asyncio.to_thread(_call)
+    except Exception as exc:
+        error_message = str(exc).replace(settings.qwen_api_key, "***")
+        await queue.put({"type": "error", "error": RuntimeError(error_message)})
+    finally:
+        await queue.put(None)
+
+
 def _synthesize_azure(text: str, voice_name: str) -> TTSResult:
     """Synthesize text using official Azure Speech SDK.
 
@@ -512,7 +643,7 @@ def _synthesize_azure(text: str, voice_name: str) -> TTSResult:
 
 
 async def synthesize(text: str, voice_id: str | None = None) -> TTSResult:
-    """Synthesize text to speech using Azure (if configured) or edge-tts.
+    """Synthesize text using CosyVoice, Azure, then Edge TTS.
 
     Args:
         text: Text to synthesize.
@@ -521,16 +652,22 @@ async def synthesize(text: str, voice_id: str | None = None) -> TTSResult:
     Returns:
         TTSResult with MP3 audio bytes and phoneme timestamps.
     """
-    # Try Azure first if configured
+    if not text or not text.strip():
+        return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
+
+    if settings.qwen_api_key:
+        cosyvoice_result = await _synthesize_dashscope(text, voice_id)
+        if cosyvoice_result.audio_bytes:
+            return cosyvoice_result
+        logger.info("CosyVoice returned empty audio, falling back to other providers")
+
+    # Try Azure next if configured
     voice_name = _resolve_voice(voice_id)
     if settings.azure_speech_key and settings.azure_speech_region:
         azure_result = _synthesize_azure(text, voice_name)
         if azure_result.audio_bytes:
             return azure_result
         logger.info("Azure TTS returned empty audio, falling back to edge-tts")
-
-    if not text or not text.strip():
-        return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
 
     try:
         audio_bytes, raw_phonemes = await _synthesize_edge_with_retry(text, voice_name)
@@ -637,62 +774,155 @@ async def synthesize_stream(
         yield {"type": "done", "duration_ms": cached.duration_ms}
         return
 
-    # Fresh synthesis: stream directly from edge-tts for lowest TTFB.
     logger.info("[tts] synthesis_start text_len=%d", len(text))
     import base64
 
+    synth_start = time.time()
+
+    if settings.qwen_api_key and _resolve_cosyvoice_speaker(voice_id):
+        cosyvoice_chunks: list[bytes] = []
+        cosyvoice_error: Exception | None = None
+        queue: asyncio.Queue = asyncio.Queue()
+        producer = asyncio.create_task(
+            _synthesize_dashscope_stream(text, voice_id, queue)
+        )
+
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                if event["type"] == "audio":
+                    data = event["data"]
+                    cosyvoice_chunks.append(data)
+                    for i in range(0, len(data), chunk_size):
+                        chunk = data[i:i + chunk_size]
+                        yield {
+                            "type": "audio",
+                            "data": base64.b64encode(chunk).decode("utf-8"),
+                        }
+                elif event["type"] == "error":
+                    cosyvoice_error = event["error"]
+        finally:
+            if not producer.done():
+                producer.cancel()
+            try:
+                await producer
+            except asyncio.CancelledError:
+                pass
+
+        cosyvoice_audio = b"".join(cosyvoice_chunks)
+        if cosyvoice_audio:
+            duration_ms = _estimate_mp3_duration(cosyvoice_audio)
+            result = TTSResult(
+                audio_bytes=cosyvoice_audio,
+                phoneme_timestamps=_generate_phoneme_timestamps(text, duration_ms),
+                duration_ms=duration_ms,
+            )
+            if cosyvoice_error is None:
+                await _set_cache(text, voice_id, result)
+            else:
+                logger.warning("[tts] CosyVoice stream ended with error: %s", cosyvoice_error)
+                yield {"type": "tts_error", "message": str(cosyvoice_error)}
+            logger.info(
+                "[tts] cosyvoice_stream_end elapsed=%.3fs audio_bytes=%d duration_ms=%d",
+                time.time() - synth_start,
+                len(cosyvoice_audio),
+                duration_ms,
+            )
+            yield {"type": "phonemes", "data": result.phoneme_timestamps}
+            yield {"type": "done", "duration_ms": result.duration_ms}
+            return
+
+        logger.info(
+            "[tts] CosyVoice stream produced no audio, falling back: %s",
+            cosyvoice_error or "empty response",
+        )
+
+    voice = _resolve_voice(voice_id)
+    if settings.azure_speech_key and settings.azure_speech_region:
+        azure_result = await asyncio.to_thread(_synthesize_azure, text, voice)
+        if azure_result.audio_bytes:
+            for i in range(0, len(azure_result.audio_bytes), chunk_size):
+                chunk = azure_result.audio_bytes[i:i + chunk_size]
+                yield {
+                    "type": "audio",
+                    "data": base64.b64encode(chunk).decode("utf-8"),
+                }
+            await _set_cache(text, voice_id, azure_result)
+            yield {"type": "phonemes", "data": azure_result.phoneme_timestamps}
+            yield {"type": "done", "duration_ms": azure_result.duration_ms}
+            return
+        logger.info("[tts] Azure stream fallback returned empty audio")
+
     try:
         import edge_tts  # noqa: F401
-    except ImportError as e:
-        logger.error("[tts] edge-tts not installed: %s", e)
-        for event in _fallback_stream_events(text, e):
+    except ImportError as exc:
+        logger.error("[tts] edge-tts not installed: %s", exc)
+        for event in _fallback_stream_events(text, exc):
             yield event
         return
 
     audio_chunks: list[bytes] = []
     raw_phonemes: list[dict] = []
     first_audio_yielded = False
-    synth_start = time.time()
-    voice = _resolve_voice(voice_id)
-    queue: asyncio.Queue = asyncio.Queue()
-
-    producer = asyncio.create_task(_synthesize_edge_stream(text, voice, chunk_size, queue))
+    queue = asyncio.Queue()
+    producer = asyncio.create_task(
+        _synthesize_edge_stream(text, voice, chunk_size, queue)
+    )
 
     try:
         while True:
-            event = await asyncio.wait_for(queue.get(), timeout=_EDGE_TTS_TIMEOUT_SECONDS)
+            event = await asyncio.wait_for(
+                queue.get(),
+                timeout=_EDGE_TTS_TIMEOUT_SECONDS,
+            )
             if event is None:
                 break
             if event["type"] == "audio":
                 data = event["data"]
                 audio_chunks.append(data)
                 if not first_audio_yielded:
-                    logger.info("[tts] first_audio_chunk elapsed=%.3fs bytes=%d",
-                                time.time() - synth_start, len(data))
+                    logger.info(
+                        "[tts] first_audio_chunk elapsed=%.3fs bytes=%d",
+                        time.time() - synth_start,
+                        len(data),
+                    )
                     first_audio_yielded = True
-                yield {"type": "audio", "data": base64.b64encode(data).decode("utf-8")}
+                yield {
+                    "type": "audio",
+                    "data": base64.b64encode(data).decode("utf-8"),
+                }
             elif event["type"] == "phoneme":
                 raw_phonemes.append(event["data"])
-    except asyncio.TimeoutError as e:
+    except asyncio.TimeoutError as exc:
         producer.cancel()
-        logger.error("[tts] streaming synthesis timed out: %s", e)
-        for event in _fallback_stream_events(text, RuntimeError("edge-tts stream timeout")):
+        logger.error("[tts] streaming synthesis timed out: %s", exc)
+        for event in _fallback_stream_events(
+            text,
+            RuntimeError("edge-tts stream timeout"),
+        ):
             yield event
         return
-    except Exception as e:
+    except Exception as exc:
         producer.cancel()
-        logger.error("[tts] streaming synthesis failed: %s", e)
-        for event in _fallback_stream_events(text, e):
+        logger.error("[tts] streaming synthesis failed: %s", exc)
+        for event in _fallback_stream_events(text, exc):
             yield event
         return
     finally:
         if not producer.done():
             producer.cancel()
+        try:
+            await producer
+        except asyncio.CancelledError:
+            pass
 
     audio_bytes = b"".join(audio_chunks)
     if not audio_bytes:
-        logger.error("[tts] edge-tts stream produced no audio")
-        for event in _fallback_stream_events(text, RuntimeError("edge-tts produced no audio")):
+        error = RuntimeError("edge-tts produced no audio")
+        logger.error("[tts] %s", error)
+        for event in _fallback_stream_events(text, error):
             yield event
         return
 
@@ -703,17 +933,18 @@ async def synthesize_stream(
         phonemes = _generate_phoneme_timestamps(text, duration_ms)
 
     duration_ms = _estimate_mp3_duration(audio_bytes)
-    logger.info("[tts] synthesis_end elapsed=%.3fs audio_bytes=%d phonemes=%d duration_ms=%d",
-                time.time() - synth_start, len(audio_bytes), len(phonemes), duration_ms)
-
     result = TTSResult(
         audio_bytes=audio_bytes,
         phoneme_timestamps=phonemes,
         duration_ms=duration_ms,
     )
-
-    if result.audio_bytes:
-        await _set_cache(text, voice_id, result)
-
+    await _set_cache(text, voice_id, result)
+    logger.info(
+        "[tts] synthesis_end elapsed=%.3fs audio_bytes=%d phonemes=%d duration_ms=%d",
+        time.time() - synth_start,
+        len(audio_bytes),
+        len(phonemes),
+        duration_ms,
+    )
     yield {"type": "phonemes", "data": result.phoneme_timestamps}
     yield {"type": "done", "duration_ms": result.duration_ms}

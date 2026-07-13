@@ -10,9 +10,11 @@ from app.core.tts import (
     _classify_mouth_shape,
     _cache_key,
     _resolve_voice,
+    _resolve_cosyvoice_speaker,
     _EDGE_TTS_RATE,
     _EDGE_TTS_PITCH,
     _REDIS_TTS_TIMEOUT_SECONDS,
+    settings,
 )
 
 
@@ -33,6 +35,15 @@ class TestTTS:
         assert _EDGE_TTS_RATE == "-4%"
         assert _EDGE_TTS_PITCH == "+2Hz"
         assert _REDIS_TTS_TIMEOUT_SECONDS == 0.25
+
+    def test_cosyvoice_uses_v3_model_and_supported_voices(self):
+        assert settings.cosyvoice_model == "cosyvoice-v3-flash"
+        assert _resolve_cosyvoice_speaker("mandarin") == "longxiaochun_v3"
+        assert _resolve_cosyvoice_speaker("female") == "longanhuan"
+        assert _resolve_cosyvoice_speaker("liaoning") == "longlaotie_v3"
+        assert _resolve_cosyvoice_speaker("shaanxi") == "longshange_v3"
+        assert _resolve_cosyvoice_speaker("male") == "longcheng_v3"
+        assert _resolve_cosyvoice_speaker("unknown") == "longxiaochun_v3"
 
     def test_classify_mouth_shape(self):
         """Should classify mouth shapes correctly."""
@@ -88,9 +99,56 @@ class TestTTS:
         assert result.duration_ms == 0
 
     @pytest.mark.asyncio
+    async def test_synthesize_prefers_cosyvoice_when_key_is_configured(self):
+        cosy = TTSResult(audio_bytes=b"cosy", phoneme_timestamps=[], duration_ms=120)
+        with patch.object(settings, "qwen_api_key", "configured"), \
+             patch("app.core.tts._synthesize_dashscope", new_callable=AsyncMock, return_value=cosy) as mock_cosy, \
+             patch("app.core.tts._synthesize_edge_with_retry", new_callable=AsyncMock) as mock_edge:
+            result = await synthesize("你好", "female")
+
+        assert result.audio_bytes == b"cosy"
+        mock_cosy.assert_awaited_once_with("你好", "female")
+        mock_edge.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_synthesize_falls_back_to_edge_when_cosyvoice_fails(self):
+        empty = TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
+        with patch.object(settings, "qwen_api_key", "configured"), \
+             patch("app.core.tts._synthesize_dashscope", new_callable=AsyncMock, return_value=empty), \
+             patch(
+                 "app.core.tts._synthesize_edge_with_retry",
+                 new_callable=AsyncMock,
+                 return_value=(b"edge-audio", []),
+             ) as mock_edge:
+            result = await synthesize("你好", "female")
+
+        assert result.audio_bytes == b"edge-audio"
+        mock_edge.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_synthesize_skips_cosyvoice_without_key(self):
+        with patch.object(settings, "qwen_api_key", ""), \
+             patch("app.core.tts._synthesize_dashscope", new_callable=AsyncMock) as mock_cosy, \
+             patch(
+                 "app.core.tts._synthesize_edge_with_retry",
+                 new_callable=AsyncMock,
+                 return_value=(b"edge-audio", []),
+             ):
+            result = await synthesize("你好", "female")
+
+        assert result.audio_bytes == b"edge-audio"
+        mock_cosy.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_synthesize_fallback(self):
         """Should return fallback when CosyVoice is not available."""
-        result = await synthesize("灵山大佛高88米")
+        with patch.object(settings, "qwen_api_key", ""), \
+             patch(
+                 "app.core.tts._synthesize_edge_with_retry",
+                 new_callable=AsyncMock,
+                 return_value=(b"edge-audio", []),
+             ):
+            result = await synthesize("灵山大佛高88米")
         assert len(result.phoneme_timestamps) > 0
         assert result.duration_ms > 0
         for ts in result.phoneme_timestamps:

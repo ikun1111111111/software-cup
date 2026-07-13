@@ -1,7 +1,8 @@
 """Redis-based sliding window rate limiting for FastAPI."""
+import asyncio
 import logging
 import time
-from typing import Callable
+from typing import Awaitable, Callable
 
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -14,6 +15,71 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 EXEMPT_PATHS = {"/health", "/api/health", "/metrics", "/openapi.json", "/docs", "/redoc"}
+_REDIS_RATE_LIMIT_COOLDOWN_SECONDS = 30.0
+_redis_rate_limit_retry_after = 0.0
+_redis_rate_limit_failure_generation = 0
+_redis_rate_limit_probe_lock: asyncio.Lock | None = None
+
+
+def _reset_redis_rate_limit_circuit() -> None:
+    global _redis_rate_limit_failure_generation
+    global _redis_rate_limit_probe_lock
+    global _redis_rate_limit_retry_after
+
+    _redis_rate_limit_retry_after = 0.0
+    _redis_rate_limit_failure_generation = 0
+    _redis_rate_limit_probe_lock = None
+
+
+def _get_redis_rate_limit_probe_lock() -> asyncio.Lock:
+    global _redis_rate_limit_probe_lock
+
+    if _redis_rate_limit_probe_lock is None:
+        _redis_rate_limit_probe_lock = asyncio.Lock()
+    return _redis_rate_limit_probe_lock
+
+
+async def _check_rate_limit_resilient(
+    check: Callable[[], Awaitable[bool]],
+) -> bool | None:
+    global _redis_rate_limit_failure_generation
+    global _redis_rate_limit_retry_after
+
+    async def run_check(generation: int) -> bool | None:
+        global _redis_rate_limit_failure_generation
+        global _redis_rate_limit_retry_after
+
+        try:
+            allowed = await check()
+        except Exception as e:
+            failed_at = time.monotonic()
+            logger.warning("Rate limiter Redis check failed: %s", e)
+            _redis_rate_limit_failure_generation += 1
+            _redis_rate_limit_retry_after = (
+                failed_at + _REDIS_RATE_LIMIT_COOLDOWN_SECONDS
+            )
+            return None
+
+        if generation == _redis_rate_limit_failure_generation:
+            _redis_rate_limit_retry_after = 0.0
+        return allowed
+
+    generation = _redis_rate_limit_failure_generation
+    now = time.monotonic()
+    retry_after = _redis_rate_limit_retry_after
+    if retry_after <= 0.0:
+        return await run_check(generation)
+    if now < retry_after:
+        return None
+
+    async with _get_redis_rate_limit_probe_lock():
+        retry_after = _redis_rate_limit_retry_after
+        if retry_after <= 0.0:
+            return None
+        if time.monotonic() < retry_after:
+            return None
+
+        return await run_check(_redis_rate_limit_failure_generation)
 
 
 def _is_exempt(path: str) -> bool:
@@ -67,13 +133,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         client_id = _get_client_id(request)
         key = f"{self.key_prefix}:{client_id}"
 
-        try:
-            allowed = await _check_sliding_window(
+        allowed = await _check_rate_limit_resilient(
+            lambda: _check_sliding_window(
                 key, self.requests, self.window, redis_client
             )
-        except Exception as e:
-            # Redis 不可用时放行并记录，避免级联故障
-            logger.warning("Rate limiter Redis check failed: %s", e)
+        )
+        if allowed is None:
             return await call_next(request)
 
         if not allowed:
@@ -135,10 +200,10 @@ def rate_limit_dependency(
             return
         client_id = identifier(request) if identifier else _get_client_id(request)
         key = f"{key_prefix}:{request.url.path}:{client_id}"
-        try:
-            allowed = await _check_sliding_window(key, limit, seconds, redis_client)
-        except Exception as e:
-            logger.warning("Route rate limiter Redis check failed: %s", e)
+        allowed = await _check_rate_limit_resilient(
+            lambda: _check_sliding_window(key, limit, seconds, redis_client)
+        )
+        if allowed is None:
             return
         if not allowed:
             raise HTTPException(

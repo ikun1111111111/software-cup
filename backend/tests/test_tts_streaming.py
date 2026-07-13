@@ -1,4 +1,10 @@
 """Tests for TTS streaming API and streaming synthesis."""
+import asyncio
+import base64
+import sys
+import threading
+from types import ModuleType
+
 import pytest
 from unittest.mock import patch, AsyncMock
 
@@ -68,14 +74,86 @@ class TestTTSStreaming:
                 assert "mouth_shape" in p
 
     @pytest.mark.asyncio
-    async def test_synthesize_stream_no_audio(self):
-        """Should handle streaming TTS failure gracefully."""
-        with patch("app.core.tts._get_cached", new_callable=AsyncMock, return_value=None), \
-             patch("edge_tts.Communicate", side_effect=RuntimeError("TTS down")):
+    async def test_synthesize_stream_yields_cosyvoice_audio_before_completion(
+        self,
+        monkeypatch,
+    ):
+        release_completion = threading.Event()
 
-            chunks = []
-            async for chunk in synthesize_stream("测试"):
-                chunks.append(chunk)
+        class FakeResultCallback:
+            pass
+
+        class FakeAudioFormat:
+            MP3_22050HZ_MONO_256KBPS = "mp3"
+
+        class FakeSpeechSynthesizer:
+            def __init__(self, *, callback=None, **_kwargs):
+                self.callback = callback
+
+            def call(self, _text, **_kwargs):
+                return None
+
+            def streaming_call(self, _text):
+                self.callback.on_data(b"first")
+
+            def streaming_complete(self, _timeout_millis):
+                release_completion.wait(timeout=1)
+                self.callback.on_data(b"second")
+                self.callback.on_complete()
+
+        async def empty_edge_stream(_text, _voice, _chunk_size, queue):
+            await queue.put(None)
+
+        dashscope_module = ModuleType("dashscope")
+        audio_module = ModuleType("dashscope.audio")
+        tts_v2_module = ModuleType("dashscope.audio.tts_v2")
+        tts_v2_module.AudioFormat = FakeAudioFormat
+        tts_v2_module.ResultCallback = FakeResultCallback
+        tts_v2_module.SpeechSynthesizer = FakeSpeechSynthesizer
+        monkeypatch.setitem(sys.modules, "dashscope", dashscope_module)
+        monkeypatch.setitem(sys.modules, "dashscope.audio", audio_module)
+        monkeypatch.setitem(sys.modules, "dashscope.audio.tts_v2", tts_v2_module)
+        monkeypatch.setitem(sys.modules, "edge_tts", ModuleType("edge_tts"))
+
+        with patch("app.core.tts.settings.qwen_api_key", "configured"), \
+             patch("app.core.tts._get_cached", new_callable=AsyncMock, return_value=None), \
+             patch("app.core.tts._synthesize_edge_stream", new=empty_edge_stream), \
+             patch("app.core.tts._set_cache", new_callable=AsyncMock) as mock_set_cache:
+            stream = synthesize_stream("你好", "female", chunk_size=64)
+            try:
+                first_event = await asyncio.wait_for(anext(stream), timeout=0.2)
+            finally:
+                release_completion.set()
+
+            remaining_events = [event async for event in stream]
+
+        assert first_event["type"] == "audio"
+        assert base64.b64decode(first_event["data"]) == b"first"
+        assert [event["type"] for event in remaining_events] == [
+            "audio",
+            "phonemes",
+            "done",
+        ]
+        mock_set_cache.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_synthesize_stream_no_audio(self, monkeypatch):
+        """Should handle streaming TTS failure gracefully."""
+        async def empty_edge_stream(_text, _voice, _chunk_size, queue):
+            await queue.put(None)
+
+        monkeypatch.setitem(sys.modules, "edge_tts", ModuleType("edge_tts"))
+
+        with patch("app.core.tts._get_cached", new_callable=AsyncMock, return_value=None), \
+             patch("app.core.tts.settings.qwen_api_key", ""), \
+             patch("app.core.tts.settings.azure_speech_key", ""), \
+             patch("app.core.tts.settings.azure_speech_region", ""), \
+             patch("app.core.tts._synthesize_edge_stream", new=empty_edge_stream):
+
+            async def collect_events():
+                return [chunk async for chunk in synthesize_stream("测试")]
+
+            chunks = await asyncio.wait_for(collect_events(), timeout=1)
 
             audio_chunks = [c for c in chunks if c["type"] == "audio"]
             assert len(audio_chunks) == 0

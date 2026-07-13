@@ -18,7 +18,7 @@
 | 移动端 | React Native + Expo + Expo Router + @pixiv/three-vrm |
 | 后端 | Python 3.11 + FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis + Celery |
 | 向量检索 | Milvus + BGE-M3 / BGE-Reranker |
-| 语音 | edge-tts（免费）+ Azure Speech SDK（可选）+ 浏览器语音合成 fallback |
+| 语音 | 百炼 CosyVoice v3（首选）+ Azure Speech SDK / edge-tts + 浏览器语音合成 fallback |
 | 容器化 | Docker + Docker Compose |
 
 ## 项目结构
@@ -100,6 +100,8 @@ npx expo start
 
 按提示在 iOS 模拟器、Android 模拟器或 Expo Go 中运行。
 
+> 提示：管理后台前端内也包含一个响应式移动端页面 `/mobile`，本地启动 frontend 后可直接通过浏览器访问 `http://localhost:5173/mobile` 进行预览。
+
 ## 数据导入
 
 将赛题提供的文档导入数据库：
@@ -155,7 +157,13 @@ docker run -d \
 ### 使用 Docker Compose（推荐）
 
 ```bash
-docker-compose up -d
+docker compose up -d
+```
+
+若只想启动核心依赖（数据库、缓存），可指定服务：
+
+```bash
+docker compose up -d postgres redis minio etcd milvus
 ```
 
 ## 环境变量
@@ -168,10 +176,12 @@ docker-compose up -d
 | `REDIS_HOST` / `REDIS_PORT` | Redis 连接 | localhost / 6379 |
 | `MILVUS_HOST` / `MILVUS_PORT` | Milvus 连接 | localhost / 19530 |
 | `DEEPSEEK_API_KEY` | DeepSeek / 兼容 OpenAI 的 LLM Key | "" |
-| `QWEN_API_KEY` | 通义千问 Key | "" |
+| `QWEN_API_KEY` | 百炼 DashScope API Key；启用 `cosyvoice-v3-flash` 高质量语音（必须以 `sk-` 开头） | "" |
 | `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION` | Azure 语音（可选） | "" |
 
 完整配置见 [backend/app/core/config.py](backend/app/core/config.py)。
+
+TTS 会依次尝试百炼 CosyVoice v3、Azure Speech（已配置时）和 edge-tts；后端音源全部不可用时，前端继续降级到浏览器语音。API Key 仅应保存在被 Git 忽略的 `.env` 文件中，不要写入代码、日志或提交记录。
 
 ## 运行测试
 

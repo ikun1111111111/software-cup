@@ -82,32 +82,32 @@ class Settings(BaseSettings):
     rate_limit_window: int = 60  # 窗口秒数
 
     # CosyVoice via DashScope (preferred high-quality TTS)
-    cosyvoice_model: str = "cosyvoice-v1"
+    cosyvoice_model: str = "cosyvoice-v3-flash"
     # Default DashScope voice for each voice_id.
     tts_voices: dict = {
         "mandarin": {
             "speaker_id": "zh-CN-XiaoxiaoNeural",
-            "cosyvoice_speaker": "longxiaochun",
+            "cosyvoice_speaker": "longxiaochun_v3",
             "description": "标准女声",
         },
         "female": {
             "speaker_id": "zh-CN-XiaoyiNeural",
-            "cosyvoice_speaker": "longxiaoxia",
+            "cosyvoice_speaker": "longanhuan",
             "description": "年轻女声",
         },
         "liaoning": {
             "speaker_id": "zh-CN-liaoning-XiaobeiNeural",
-            "cosyvoice_speaker": "longxiaochun",
+            "cosyvoice_speaker": "longlaotie_v3",
             "description": "东北女声",
         },
         "shaanxi": {
             "speaker_id": "zh-CN-shaanxi-XiaoniNeural",
-            "cosyvoice_speaker": "longxiaoxia",
+            "cosyvoice_speaker": "longshange_v3",
             "description": "陕西女声",
         },
         "male": {
             "speaker_id": "zh-CN-YunxiNeural",
-            "cosyvoice_speaker": "longxiaocheng",
+            "cosyvoice_speaker": "longcheng_v3",
             "description": "普通话男声",
         },
     }
