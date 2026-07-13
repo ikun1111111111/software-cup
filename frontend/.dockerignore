@@ -1,0 +1,11 @@
+node_modules
+dist
+build
+.vite
+.cache
+.eslintcache
+*.log
+coverage
+.git
+.gitignore
+*.md

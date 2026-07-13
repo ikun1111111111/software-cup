@@ -6,7 +6,7 @@ import type { PhonemeTimestamp } from '../../api/tts';
 
 const GalgameScene = React.lazy(() => import('../Galgame/GalgameScene'));
 
-export type DigitalHumanPose = 'center' | 'left' | 'right' | 'left-stage' | 'kiosk-stage' | 'route-stage';
+export type DigitalHumanPose = 'center' | 'left' | 'right' | 'left-stage' | 'kiosk-stage' | 'route-stage' | 'mobile-entry';
 
 export interface DigitalHumanContextValue {
   isSpeaking: boolean;
@@ -39,6 +39,7 @@ interface DigitalHumanProviderProps {
   pose?: DigitalHumanPose;
   sceneVariant?: 'modern' | 'minimal' | 'zen';
   hideSceneBackground?: boolean;
+  mobileLayout?: boolean;
 }
 
 const POSE_CONFIG: Record<DigitalHumanPose, { left: string; bottom: string; scale: number; headAngleX?: number }> = {
@@ -47,6 +48,7 @@ const POSE_CONFIG: Record<DigitalHumanPose, { left: string; bottom: string; scal
   'left-stage': { left: '10%', bottom: '6%', scale: 1.0, headAngleX: 10 },
   'kiosk-stage': { left: '34%', bottom: '5%', scale: 1.14, headAngleX: 6 },
   'route-stage': { left: '21%', bottom: '5%', scale: 1.08, headAngleX: 12 },
+  'mobile-entry': { left: '76%', bottom: '55%', scale: 0.82, headAngleX: -4 },
   right: { left: '82%', bottom: '6%', scale: 1.05, headAngleX: -8 },
 };
 
@@ -60,6 +62,7 @@ export const DigitalHumanProvider: React.FC<DigitalHumanProviderProps> = ({
   pose = 'center',
   sceneVariant,
   hideSceneBackground = false,
+  mobileLayout = false,
 }) => {
   const { cssFilter } = useCostume();
   const guide = useGuideSpeech();
@@ -121,6 +124,16 @@ export const DigitalHumanProvider: React.FC<DigitalHumanProviderProps> = ({
         ...config,
         bottom: shortViewport ? '2%' : config.bottom,
         left: narrowViewport ? '28%' : config.left,
+        scale: config.scale * scaleRatio,
+      };
+    }
+
+    if (effectivePose === 'mobile-entry') {
+      const scaleRatio = veryShortViewport ? 0.72 : shortViewport ? 0.78 : 0.82;
+      return {
+        ...config,
+        left: narrowViewport ? '68%' : config.left,
+        bottom: config.bottom,
         scale: config.scale * scaleRatio,
       };
     }
@@ -202,7 +215,7 @@ export const DigitalHumanProvider: React.FC<DigitalHumanProviderProps> = ({
             characterLeft={responsiveConfig.left}
             characterBottom={responsiveConfig.bottom}
             characterScale={responsiveConfig.scale}
-            isMobile={false}
+            isMobile={mobileLayout}
             headAngleX={responsiveConfig.headAngleX}
             hideBackground={hideSceneBackground}
             onReady={handleModelReady}
