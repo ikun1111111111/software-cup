@@ -237,7 +237,7 @@ export class VRMDemoActionPlayer {
     try {
       const clip = await loadDemoActionClip(action);
       if (this.disposed || generation !== this.loadGeneration) return;
-      if (action.startsWith('waiting') && this.requestedAction !== 'none') return;
+      if (action.startsWith('waiting') && this.wasIdleEligible !== true) return;
       const tracks = createRelativeHumanoidTracks(vrm, clip);
       if (tracks.length === 0) throw new Error(`No bindable humanoid tracks found for ${action}`);
       this.activeAction = action;

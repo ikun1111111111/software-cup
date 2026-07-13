@@ -41,6 +41,12 @@ describe('standalone demo action integration', () => {
     expect(playerSource).toMatch(/normalized === 'none' && speaking[\s\S]*?stopActive\(\)/);
   });
 
+  test('does not start an idle GLB that finishes loading after speech begins', () => {
+    expect(playerSource).toContain(
+      "if (action.startsWith('waiting') && this.wasIdleEligible !== true) return;",
+    );
+  });
+
   test('lets a started speech GLB finish when React releases the action', () => {
     expect(playerSource).toContain("this.activeAction?.startsWith('waiting')");
     expect(playerSource).toMatch(/normalized === 'none'[\s\S]*?activeAction[\s\S]*?stopActive/);
