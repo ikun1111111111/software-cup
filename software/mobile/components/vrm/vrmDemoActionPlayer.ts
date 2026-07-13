@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 import type { Action } from './VRMIdleAnim';
+import { sharedVRMIdleActionScheduler } from './vrmIdleActionScheduler';
 
 export type DemoGLBAction =
   | 'wave'
@@ -151,12 +152,19 @@ export class VRMDemoActionPlayer {
   private tracks: DirectTrack[] = [];
   private requestedAction: DemoAction = 'none';
   private requestedVRM: VRM | null = null;
-  private idleDueAt = 0;
+  private wasIdleEligible: boolean | null = null;
   private loadGeneration = 0;
   private disposed = false;
 
-  update(vrm: VRM, dt: number, elapsed: number, requested: Action, speaking: boolean): void {
+  update(vrm: VRM, dt: number, _elapsed: number, requested: Action, speaking: boolean): void {
     const normalized = normalizeDemoAction(requested);
+    const nowMs = Date.now();
+    const idleEligible = normalized === 'none' && !speaking;
+    if (this.wasIdleEligible !== null && idleEligible !== this.wasIdleEligible) {
+      sharedVRMIdleActionScheduler.postpone(nowMs);
+    }
+    this.wasIdleEligible = idleEligible;
+
     if (vrm !== this.requestedVRM) {
       this.stopActive();
       this.requestedVRM = vrm;
@@ -164,7 +172,6 @@ export class VRMDemoActionPlayer {
 
     if (normalized !== this.requestedAction) {
       this.requestedAction = normalized;
-      this.resetIdleTimer(elapsed);
       if (isDemoGLBAction(normalized)) {
         if (this.activeAction !== normalized) {
           this.stopActive();
@@ -177,7 +184,6 @@ export class VRMDemoActionPlayer {
 
     if (normalized === 'none' && speaking && this.activeAction?.startsWith('waiting')) {
       this.stopActive();
-      this.resetIdleTimer(elapsed);
     }
 
     if (this.tracks.length > 0) {
@@ -191,15 +197,17 @@ export class VRMDemoActionPlayer {
       }
       vrm.scene.updateMatrixWorld(true);
       if (this.time >= this.duration) {
+        const completedIdleAction = this.activeAction?.startsWith('waiting') ?? false;
         this.stopActive();
-        this.resetIdleTimer(elapsed);
+        if (completedIdleAction) {
+          sharedVRMIdleActionScheduler.postpone(nowMs);
+        }
       }
       return;
     }
 
-    if (normalized === 'none' && !speaking && elapsed >= this.idleDueAt) {
+    if (idleEligible && sharedVRMIdleActionScheduler.claim(nowMs)) {
       const idleAction = IDLE_ACTIONS[Math.floor(Math.random() * IDLE_ACTIONS.length)];
-      this.resetIdleTimer(elapsed);
       void this.start(idleAction, vrm);
     }
   }
@@ -219,6 +227,7 @@ export class VRMDemoActionPlayer {
   dispose(): void {
     this.disposed = true;
     this.requestedVRM = null;
+    this.wasIdleEligible = null;
     this.loadGeneration += 1;
     this.stopActive();
   }
@@ -228,7 +237,7 @@ export class VRMDemoActionPlayer {
     try {
       const clip = await loadDemoActionClip(action);
       if (this.disposed || generation !== this.loadGeneration) return;
-      if (action.startsWith('waiting') && this.requestedAction !== 'none') return;
+      if (action.startsWith('waiting') && this.wasIdleEligible !== true) return;
       const tracks = createRelativeHumanoidTracks(vrm, clip);
       if (tracks.length === 0) throw new Error(`No bindable humanoid tracks found for ${action}`);
       this.activeAction = action;
@@ -250,9 +259,5 @@ export class VRMDemoActionPlayer {
     this.duration = 0;
     this.time = 0;
     this.tracks = [];
-  }
-
-  private resetIdleTimer(elapsed: number): void {
-    this.idleDueAt = elapsed + 4.5 + Math.random() * 4;
   }
 }
