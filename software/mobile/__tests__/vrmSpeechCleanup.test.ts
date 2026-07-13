@@ -102,6 +102,17 @@ describe('VRM speech cleanup', () => {
     expect(source).toContain('fetchTTS(text, voiceId)');
   });
 
+  test('unlocks web audio on the first user interaction before delayed TTS playback', () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../hooks/useVRMSync.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain("import { primeWebAudioPlayback } from '../utils/webAudioUnlock';");
+    expect(source).toContain("window.addEventListener('pointerdown', unlockWebAudio, { capture: true });");
+    expect(source).toContain("window.addEventListener('keydown', unlockWebAudio, { capture: true });");
+  });
+
   test('shows the exact text belonging to the active audio run', () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, '../hooks/useVRMSync.ts'),
@@ -111,5 +122,25 @@ describe('VRM speech cleanup', () => {
     expect(source).toContain("speechText: ''");
     expect(source).toContain('speechText: text');
     expect(source).toMatch(/isSpeaking: false,[\s\S]*?speechText: '',[\s\S]*?subtitle: ''/);
+  });
+
+  test('shares one promise between TTS prefetch and audible playback', () => {
+    const syncSource = fs.readFileSync(
+      path.resolve(__dirname, '../hooks/useVRMSync.ts'),
+      'utf8',
+    );
+    const driverSource = fs.readFileSync(
+      path.resolve(__dirname, '../hooks/useDigitalHumanDriver.ts'),
+      'utf8',
+    );
+
+    expect(syncSource).toContain("import { TTSPromiseCache } from '../utils/ttsPromiseCache';");
+    expect(syncSource).toContain('const ttsCacheRef = useRef(new TTSPromiseCache<TTSResult>(MAX_TTS_CACHE));');
+    expect(syncSource).toContain('const getTTSResult = useCallback');
+    expect(syncSource).toContain('const prefetchSpeech = useCallback');
+    expect(syncSource).toContain('ttsCacheRef.current.getOrCreate(');
+    expect(syncSource).toMatch(/const ttsRequest = getTTSResult\(text, voiceId\);[\s\S]*?Promise\.race\(\[[\s\S]*?ttsRequest/);
+    expect(syncSource).toContain('ttsCacheRef.current.deleteIfSame(cacheKey, ttsRequest);');
+    expect(driverSource).toContain('prefetchSpeech');
   });
 });

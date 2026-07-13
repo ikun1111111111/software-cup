@@ -3,9 +3,11 @@ import { Platform } from 'react-native';
 import { Audio } from 'expo-av';
 import { VRMManager, type Emotion } from '../components/vrm/VRMManager';
 import type { Action } from '../components/vrm/VRMIdleAnim';
-import { fetchTTS, type Phoneme } from '../api/tts';
+import { fetchTTS, type TTSResult } from '../api/tts';
 import { estimateSpeechDuration } from '../utils/digitalHumanDriver';
 import { getSubtitleCueForCharIndex, mapSpeechBoundariesToText, textToSubtitleCues, type SubtitleCue } from '../utils/textTimeline';
+import { primeWebAudioPlayback } from '../utils/webAudioUnlock';
+import { TTSPromiseCache } from '../utils/ttsPromiseCache';
 
 export type VoiceMode = 'silent' | 'browser' | 'tts';
 
@@ -37,6 +39,7 @@ interface VRMSyncResult extends VRMSyncState {
     actionDuration?: number,
   ) => void;
   stopSpeaking: (options?: StopSpeakingOptions) => void;
+  prefetchSpeech: (text: string) => Promise<void>;
 }
 
 export interface VRMSyncOptions {
@@ -53,6 +56,9 @@ const SUBTITLE_SYNC_DELAY_MS = 0;
 const DEFAULT_TTS_VOICE_ID = 'female';
 const DEFAULT_BROWSER_RATE = 0.94;
 const DEFAULT_BROWSER_PITCH = 1.02;
+const TTS_TIMEOUT_MS = 12000;
+const TTS_WEB_FALLBACK_MS = 12000;
+const MAX_TTS_CACHE = 20;
 
 function selectPreferredChineseVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
   const chineseVoices = voices.filter((voice) => voice.lang.toLowerCase().startsWith('zh'));
@@ -99,7 +105,7 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
   const subtitleCueIndexRef = useRef(0);
   const fallbackStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speechRunIdRef = useRef(0);
-  const ttsCacheRef = useRef<Map<string, { audioUri: string; durationMs: number; phonemes: Phoneme[] }>>(new Map());
+  const ttsCacheRef = useRef(new TTSPromiseCache<TTSResult>(MAX_TTS_CACHE));
   const voiceModeRef = useRef(voiceMode);
   const speakerIdRef = useRef(options.speakerId);
   const voiceConfigRef = useRef(options.voiceConfig);
@@ -109,6 +115,28 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
   useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
   useEffect(() => { speakerIdRef.current = options.speakerId; }, [options.speakerId]);
   useEffect(() => { voiceConfigRef.current = options.voiceConfig; }, [options.voiceConfig]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return undefined;
+
+    let active = true;
+    const removeUnlockListeners = () => {
+      window.removeEventListener('pointerdown', unlockWebAudio, { capture: true });
+      window.removeEventListener('keydown', unlockWebAudio, { capture: true });
+    };
+    const unlockWebAudio = () => {
+      void primeWebAudioPlayback().then((unlocked) => {
+        if (active && unlocked) removeUnlockListeners();
+      });
+    };
+
+    window.addEventListener('pointerdown', unlockWebAudio, { capture: true });
+    window.addEventListener('keydown', unlockWebAudio, { capture: true });
+    return () => {
+      active = false;
+      removeUnlockListeners();
+    };
+  }, []);
 
   const clearMouthTimers = useCallback(() => {
     if (mouthSimRef.current) {
@@ -412,9 +440,25 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     }
   }, [beginVisualSpeechForRun, finishSpeechRun, reserveSpeechRun, scheduleSubtitleBoundarySync, scheduleVisualStop, stopSpeaking, triggerSpeakFallback]);
 
-  const TTS_TIMEOUT_MS = 12000;
-  const TTS_WEB_FALLBACK_MS = 12000;
-  const MAX_TTS_CACHE = 20;
+  const getTTSResult = useCallback((text: string, voiceId: string) => {
+    const cacheKey = `${text}::${voiceId}`;
+    return ttsCacheRef.current.getOrCreate(
+      cacheKey,
+      () => fetchTTS(text, voiceId),
+    );
+  }, []);
+
+  const prefetchSpeech = useCallback(async (text: string) => {
+    const cleanText = text.trim();
+    if (!cleanText || voiceModeRef.current !== 'tts') return;
+
+    const voiceId = voiceConfigRef.current?.ttsVoiceId ?? DEFAULT_TTS_VOICE_ID;
+    try {
+      await getTTSResult(cleanText, voiceId);
+    } catch (error) {
+      console.warn('[useVRMSync] TTS prefetch failed:', error);
+    }
+  }, [getTTSResult]);
 
   // Native/Web：edge-tts 合成 + expo-av 播放
   const playWithPhonemes = useCallback(async (text: string, emotion: Emotion) => {
@@ -423,11 +467,11 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     try {
       const voiceId = voiceConfigRef.current?.ttsVoiceId ?? DEFAULT_TTS_VOICE_ID;
       const cacheKey = `${text}::${voiceId}`;
-      let result = ttsCacheRef.current.get(cacheKey);
-
-      if (!result) {
+      const ttsRequest = getTTSResult(text, voiceId);
+      let result: TTSResult;
+      try {
         result = await Promise.race([
-          fetchTTS(text, voiceId),
+          ttsRequest,
           new Promise<never>((_, reject) => {
             setTimeout(
               () => reject(new Error('TTS timeout')),
@@ -435,11 +479,9 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
             );
           }),
         ]);
-        ttsCacheRef.current.set(cacheKey, result);
-        if (ttsCacheRef.current.size > MAX_TTS_CACHE) {
-          const firstKey = ttsCacheRef.current.keys().next().value;
-          if (firstKey) ttsCacheRef.current.delete(firstKey);
-        }
+      } catch (error) {
+        ttsCacheRef.current.deleteIfSame(cacheKey, ttsRequest);
+        throw error;
       }
 
       if (speechRunIdRef.current !== runId) return;
@@ -556,7 +598,7 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
         triggerSpeakFallback(text, emotion);
       }
     }
-  }, [beginVisualSpeechForRun, clearMouthTimers, finishSpeechRun, playWithBrowserTTS, reserveSpeechRun, scheduleSubtitleBoundarySync, scheduleVisualStop, syncSubtitleToSpeechBoundary, triggerSpeakFallback]);
+  }, [beginVisualSpeechForRun, clearMouthTimers, finishSpeechRun, getTTSResult, playWithBrowserTTS, reserveSpeechRun, scheduleSubtitleBoundarySync, scheduleVisualStop, syncSubtitleToSpeechBoundary, triggerSpeakFallback]);
 
   useEffect(() => {
     const handleSpeak = ({ text, emotion, targetId }: { text: string; emotion: Emotion; targetId?: string }) => {
@@ -625,5 +667,6 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     ...state,
     triggerSpeak,
     stopSpeaking,
+    prefetchSpeech,
   };
 }

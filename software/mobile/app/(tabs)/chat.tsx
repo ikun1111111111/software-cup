@@ -38,6 +38,10 @@ import {
   buildDigitalHumanChatPayload,
   buildDigitalHumanChatStreamUrl,
 } from '@/utils/aiChat';
+import {
+  extractFirstCompleteSentence,
+  splitPrefetchedAnswer,
+} from '@/utils/firstSentencePrefetch';
 
 const QUICK_QUESTIONS = [
   { text: '灵山大佛有多高？', color: '#1A5FB4' },
@@ -190,6 +194,7 @@ export default function ChatPage() {
   const spokenWelcomeKeyRef = useRef<string | null>(null);
   const sentInitialQuestionKeyRef = useRef<string | null>(null);
   const sendLockedRef = useRef(false);
+  const prefetchedFirstSentenceRef = useRef<string | null>(null);
   const scheduledChatTasksRef = useRef<CancelScheduledTask[]>([]);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>(DEFAULT_CHAT_VOICE_MODE);
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>(DEFAULT_VOICE_CONFIG);
@@ -251,6 +256,7 @@ export default function ChatPage() {
     setExpression,
     playAction,
     setPageContext,
+    prefetchSpeech,
   } = useDigitalHumanDriver(voiceMode, { voiceConfig });
 
   const {
@@ -296,6 +302,7 @@ export default function ChatPage() {
     currentQuestionRef.current = '';
     currentQuestionStartedAtRef.current = 0;
     sendLockedRef.current = false;
+    prefetchedFirstSentenceRef.current = null;
     clearMessages();
     setStreaming(false);
     setCurrentSession(createSessionId());
@@ -339,6 +346,23 @@ export default function ChatPage() {
     speakWithDriver(reply, emotion, getReplyAction(reply, emotion), { interrupt: true });
   }, [speakWithDriver]);
 
+  const playReplyWithPrefetch = useCallback((
+    replyText: string,
+    emotion: Emotion | undefined,
+    prefetchedSentence: string | null,
+  ) => {
+    const reply = stripAnswerSource(replyText);
+    const split = splitPrefetchedAnswer(reply, prefetchedSentence);
+    if (!reply) return;
+    if (!split) {
+      playReply(reply, emotion);
+      return;
+    }
+
+    speakWithDriver(split.first, emotion, getReplyAction(reply, emotion), { interrupt: true });
+    speakWithDriver(split.rest, emotion);
+  }, [playReply, speakWithDriver]);
+
   const recordQuestionMemory = useCallback((
     question: string,
     answer: string,
@@ -368,6 +392,7 @@ export default function ChatPage() {
   }, [tourActions, tourState.currentRoute, tourState.currentSpot]);
 
   const applyOfflineAnswer = useCallback((assistantId: string, question: string) => {
+    prefetchedFirstSentenceRef.current = null;
     const fallback = getOfflineFallbackAnswer(question, localAnswerContext);
     const displayAnswer = stripAnswerSource(fallback.displayAnswer);
     updateMessage(assistantId, displayAnswer);
@@ -402,9 +427,19 @@ export default function ChatPage() {
       if (!id) return;
 
       if (msg.event === 'token') {
+        const token = msg.data?.token || '';
         const currentContent = useChatStore.getState().messages.find((m) => m.id === id)?.content || '';
-        useChatStore.getState().updateMessage(id, currentContent + (msg.data?.token || ''));
+        const nextContent = currentContent + token;
+        useChatStore.getState().updateMessage(id, nextContent);
+        if (!prefetchedFirstSentenceRef.current) {
+          const firstSentence = extractFirstCompleteSentence(nextContent);
+          if (firstSentence) {
+            prefetchedFirstSentenceRef.current = firstSentence;
+            void prefetchSpeech(firstSentence);
+          }
+        }
       } else if (msg.event === 'faq_hit' || msg.event === 'cache_hit') {
+        prefetchedFirstSentenceRef.current = null;
         const answer = stripAnswerSource(msg.data?.answer || msg.data?.response || '');
         const question = currentQuestionRef.current;
         const latencyMs = currentQuestionStartedAtRef.current ? Date.now() - currentQuestionStartedAtRef.current : undefined;
@@ -433,7 +468,13 @@ export default function ChatPage() {
           playReply(answer, emotion);
         });
       } else if (msg.event === 'done') {
-        const question = currentQuestionRef.current;
+        const completedRequest = {
+          messageId: id,
+          sessionId: currentSessionId,
+          question: currentQuestionRef.current,
+        };
+        const capturedPrefetchedSentence = prefetchedFirstSentenceRef.current;
+        prefetchedFirstSentenceRef.current = null;
         const latencyMs = currentQuestionStartedAtRef.current ? Date.now() - currentQuestionStartedAtRef.current : undefined;
         const emotion = msg.data?.emotion;
         setStreaming(false);
@@ -447,7 +488,9 @@ export default function ChatPage() {
         releaseSendLock();
         scheduleChatSideEffect(() => {
           void trackMobileEvent('question_asked', {
-            text: question,
+            text: completedRequest.question,
+            message_id: completedRequest.messageId,
+            session_id: completedRequest.sessionId,
             source_page: sourcePage,
             spot_id: spotId,
             spot_name: spotName,
@@ -456,20 +499,22 @@ export default function ChatPage() {
             latency_ms: latencyMs,
             emotion,
           });
-          recordQuestionMemory(question, answer, 'backend_done', {
+          recordQuestionMemory(completedRequest.question, answer, 'backend_done', {
             emotion,
           });
-          playReply(answer, emotion);
+          playReplyWithPrefetch(answer, emotion, capturedPrefetchedSentence);
         });
       } else if (msg.event === 'error') {
+        prefetchedFirstSentenceRef.current = null;
         applyOfflineAnswer(id, currentQuestionRef.current);
       }
-    }, [applyOfflineAnswer, releaseSendLock, scheduleChatSideEffect, setStreaming, updateMessage, updateMessageStatus, playReply, recordQuestionMemory, sourcePage, spotId, spotName, routeId]),
+    }, [applyOfflineAnswer, currentSessionId, playReply, playReplyWithPrefetch, prefetchSpeech, recordQuestionMemory, releaseSendLock, routeId, scheduleChatSideEffect, setStreaming, sourcePage, spotId, spotName, updateMessage, updateMessageStatus]),
     onError: useCallback(() => {
       const id = currentMsgIdRef.current;
       if (id) {
         applyOfflineAnswer(id, currentQuestionRef.current);
       } else {
+        prefetchedFirstSentenceRef.current = null;
         releaseSendLock();
         setStreaming(false);
       }
@@ -504,6 +549,7 @@ export default function ChatPage() {
     if (!text.trim() || isStreaming || sendLockedRef.current) return;
 
     const trimmed = text.trim();
+    prefetchedFirstSentenceRef.current = null;
     sendLockedRef.current = true;
     const activeSessionId = currentSessionId ?? createSessionId();
     if (!currentSessionId) {
@@ -524,6 +570,7 @@ export default function ChatPage() {
 
     const localAnswer = getLocalDemoAnswer(trimmed, localAnswerContext);
     if (localAnswer) {
+      prefetchedFirstSentenceRef.current = null;
       const displayAnswer = stripAnswerSource(localAnswer.displayAnswer);
       addMessage({
         id: `assistant-${Date.now()}`,

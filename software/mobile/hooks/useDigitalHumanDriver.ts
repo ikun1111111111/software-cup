@@ -29,6 +29,7 @@ export interface DigitalHumanDriver {
   actionDurationMs: number;
   headRotation: HeadRotation;
   speak: (text: string, options?: SpeakOptions) => void;
+  prefetchSpeech: (text: string) => Promise<void>;
   stop: (options?: StopSpeakingOptions) => void;
   setExpression: (expression: Emotion) => void;
   playAction: (action: Action, durationMs?: number) => void;
@@ -73,6 +74,7 @@ export function useDigitalHumanDriver(
     subtitle,
     triggerSpeak,
     stopSpeaking,
+    prefetchSpeech,
   } = useVRMSync(voiceMode, { speakerId: speakerIdRef.current, voiceConfig: options.voiceConfig });
   const [timelineExpression, setTimelineExpression] = useState<Emotion>('neutral');
   const [action, setAction] = useState<Action>('none');
@@ -299,6 +301,7 @@ export function useDigitalHumanDriver(
     actionDurationMs,
     headRotation: NEUTRAL_HEAD_ROTATION,
     speak,
+    prefetchSpeech,
     stop,
     setExpression,
     playAction,

@@ -35,4 +35,24 @@ describe('chat press responsiveness guard', () => {
     expect(source).toContain('sentInitialQuestionKeyRef');
     expect(source).toContain('initialQuestionKey');
   });
+
+  test('prefetches one complete first sentence and queues the matching remainder', () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../app/(tabs)/chat.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain('prefetchedFirstSentenceRef');
+    expect(source).toContain('extractFirstCompleteSentence(nextContent)');
+    expect(source).toContain('void prefetchSpeech(firstSentence);');
+    expect(source).toContain('const capturedPrefetchedSentence = prefetchedFirstSentenceRef.current;');
+    expect(source).toContain('splitPrefetchedAnswer(reply, prefetchedSentence)');
+    expect(source).toContain('playReplyWithPrefetch(answer, emotion, capturedPrefetchedSentence)');
+    expect(source).toContain('const completedRequest = {');
+    expect(source).toMatch(/speakWithDriver\(split\.first[\s\S]*?speakWithDriver\(split\.rest/);
+    const playReplyWithPrefetchBody = source.match(
+      /const playReplyWithPrefetch = useCallback\([\s\S]*?\n  \}, \[playReply, speakWithDriver\]\);/,
+    )?.[0] || '';
+    expect(playReplyWithPrefetchBody).not.toContain('prefetchedFirstSentenceRef.current');
+  });
 });
