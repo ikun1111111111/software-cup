@@ -1,6 +1,81 @@
 import type { VRM } from '@pixiv/three-vrm';
 import type { Emotion } from './VRMTypes';
 
+export type SpeechLipShape = 'aa' | 'ih' | 'ou' | 'ee' | 'oh';
+export type SpeechLipWeights = Record<SpeechLipShape, number>;
+
+const SPEECH_LIP_SHAPES: SpeechLipShape[] = ['aa', 'ih', 'ou', 'ee', 'oh'];
+const EMPTY_SPEECH_LIP_WEIGHTS: SpeechLipWeights = {
+  aa: 0,
+  ih: 0,
+  ou: 0,
+  ee: 0,
+  oh: 0,
+};
+
+const SPEECH_LIP_SEQUENCE: Array<{
+  shape: SpeechLipShape | null;
+  duration: number;
+  intensity: number;
+}> = [
+  { shape: 'aa', duration: 0.12, intensity: 1 },
+  { shape: 'ih', duration: 0.09, intensity: 0.7 },
+  { shape: 'ou', duration: 0.12, intensity: 0.82 },
+  { shape: null, duration: 0.045, intensity: 0 },
+  { shape: 'ee', duration: 0.1, intensity: 0.68 },
+  { shape: 'oh', duration: 0.13, intensity: 0.86 },
+  { shape: 'aa', duration: 0.08, intensity: 0.55 },
+  { shape: null, duration: 0.055, intensity: 0 },
+];
+
+const SPEECH_LIP_CYCLE_DURATION = SPEECH_LIP_SEQUENCE.reduce(
+  (total, step) => total + step.duration,
+  0,
+);
+
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+const smoothStep = (value: number) => value * value * (3 - 2 * value);
+
+export function getSpeechLipWeights(
+  mouthOpen: number,
+  elapsed: number,
+  speaking: boolean,
+): SpeechLipWeights {
+  if (!speaking || !Number.isFinite(mouthOpen) || mouthOpen <= 0.01) {
+    return { ...EMPTY_SPEECH_LIP_WEIGHTS };
+  }
+
+  const strength = clamp01(mouthOpen);
+  const safeElapsed = Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
+  let cursor = safeElapsed % SPEECH_LIP_CYCLE_DURATION;
+  let stepIndex = 0;
+
+  while (
+    stepIndex < SPEECH_LIP_SEQUENCE.length - 1
+    && cursor >= SPEECH_LIP_SEQUENCE[stepIndex].duration
+  ) {
+    cursor -= SPEECH_LIP_SEQUENCE[stepIndex].duration;
+    stepIndex += 1;
+  }
+
+  const current = SPEECH_LIP_SEQUENCE[stepIndex];
+  const next = SPEECH_LIP_SEQUENCE[(stepIndex + 1) % SPEECH_LIP_SEQUENCE.length];
+  const progress = smoothStep(clamp01(cursor / current.duration));
+  const weights = { ...EMPTY_SPEECH_LIP_WEIGHTS };
+
+  if (current.shape) {
+    weights[current.shape] += strength * current.intensity * (1 - progress);
+  }
+  if (next.shape) {
+    weights[next.shape] += strength * next.intensity * progress;
+  }
+
+  SPEECH_LIP_SHAPES.forEach((shape) => {
+    weights[shape] = clamp01(weights[shape]);
+  });
+  return weights;
+}
+
 export type ExpressionWeights = Record<
   'neutral' | 'happy' | 'sad' | 'angry' | 'relaxed' | 'surprised' | 'oh',
   number

@@ -1,12 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { SaveOutlined, CheckOutlined, LoadingOutlined, DesktopOutlined, MobileOutlined, CalendarOutlined, SoundOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import {
+  SaveOutlined,
+  CheckOutlined,
+  LoadingOutlined,
+  DesktopOutlined,
+  MobileOutlined,
+  CalendarOutlined,
+  SoundOutlined,
+  PlayCircleOutlined,
+  PauseCircleOutlined,
+} from '@ant-design/icons';
 import { message } from 'antd';
 import AvatarAppearance, { type AppearanceConfig } from '../../components/admin/AvatarAppearance';
 import PaperPanel from '../../components/admin/PaperPanel';
 import PageTransition from '../../components/admin/PageTransition';
 import { VRMPreview } from '../../components/admin/VRMPreview';
 import { getCostume, type CostumeDef } from '../../config/costumeMap';
-import { previewVoice } from '../../api/tts';
+import { VOICE_PREVIEW_OPTIONS } from '../../config/voicePreviewOptions';
+import { useStaticVoicePreview } from '../../hooks/useStaticVoicePreview';
 import {
   getActiveAvatar,
   getAvatars,
@@ -32,19 +43,6 @@ const DEFAULT_CONFIG: LocalConfig = {
   welcomeMessage: '你好！欢迎来到灵山景区，我是你的数字人导游，有什么可以帮你的吗？',
 };
 
-interface VoiceOption {
-  id: string;
-  name: string;
-  gender: string;
-}
-
-// Backend voice ids from /api/tts/voices (filtered to female presets)
-const VOICE_OPTIONS: VoiceOption[] = [
-  { id: 'mandarin', name: '标准女声', gender: '女' },
-  { id: 'female', name: '年轻女声', gender: '女' },
-  { id: 'liaoning', name: '东北女声', gender: '女' },
-];
-
 const mapBackendToLocal = (backend: Awaited<ReturnType<typeof getActiveAvatar>>): LocalConfig => ({
   backendId: backend.id,
   appearance: backend.appearanceJson
@@ -63,6 +61,28 @@ const AvatarPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const isMobile = false;
+
+  const handlePreviewError = useCallback(() => {
+    message.error('试听音频加载失败，请检查静态资源');
+  }, []);
+
+  const { playingVoiceId, togglePreview } = useStaticVoicePreview(handlePreviewError);
+
+  useEffect(() => {
+    const preloaders = VOICE_PREVIEW_OPTIONS.map(({ previewUrl }) => {
+      const audio = new Audio(previewUrl);
+      audio.preload = 'auto';
+      audio.load();
+      return audio;
+    });
+
+    return () => {
+      preloaders.forEach((audio) => {
+        audio.pause();
+        audio.currentTime = 0;
+      });
+    };
+  }, []);
 
   useEffect(() => {
     const loadConfig = async () => {
@@ -100,32 +120,6 @@ const AvatarPage: React.FC = () => {
     setConfig((prev) => ({ ...prev, voiceId }));
     setSaved(false);
   }, []);
-
-  const handleVoicePreview = useCallback(async (voiceId: string) => {
-    const text = config.welcomeMessage;
-    // Try backend TTS first
-    try {
-      const url = await previewVoice(voiceId, text);
-      const audio = new Audio(url);
-      await audio.play();
-      audio.onended = () => URL.revokeObjectURL(url);
-      return;
-    } catch (backendErr: any) {
-      // Backend failed / not configured: fall back to browser speech synthesis
-      if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        const voices = window.speechSynthesis.getVoices();
-        const zhVoice = voices.find((v) => v.lang.startsWith('zh'));
-        if (zhVoice) utterance.voice = zhVoice;
-        utterance.rate = 1;
-        utterance.pitch = 1;
-        window.speechSynthesis.speak(utterance);
-        message.info('后端语音合成不可用，已切换为浏览器本地试听');
-        return;
-      }
-      message.error('试听失败: ' + (backendErr?.message || '未知错误'));
-    }
-  }, [config.welcomeMessage]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -393,7 +387,7 @@ const AvatarPage: React.FC = () => {
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>
                     <span style={{ color: 'var(--text-tertiary)' }}>声音</span>
-                    <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{VOICE_OPTIONS.find((v) => v.id === config.voiceId)?.name || config.voiceId}</span>
+                    <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--text-primary)' }}>{VOICE_PREVIEW_OPTIONS.find((v) => v.id === config.voiceId)?.name || config.voiceId}</span>
                   </div>
                 </div>
               </div>
@@ -424,51 +418,81 @@ const AvatarPage: React.FC = () => {
                     讲解声音
                   </div>
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    {VOICE_OPTIONS.map((voice) => {
+                    {VOICE_PREVIEW_OPTIONS.map((voice) => {
                       const selected = config.voiceId === voice.id;
                       return (
                         <div
                           key={voice.id}
-                          data-testid={`voice-${voice.id}`}
-                          onClick={() => handleVoiceChange(voice.id)}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: 8,
-                            padding: '10px 14px',
+                            gap: 10,
+                            minWidth: 190,
+                            padding: '6px 8px 6px 14px',
                             borderRadius: 'var(--radius-md)',
                             border: selected ? '1.5px solid rgba(200, 75, 49, 0.35)' : '1px solid var(--border-light)',
                             backgroundColor: selected ? 'rgba(200, 75, 49, 0.08)' : 'transparent',
-                            cursor: 'pointer',
                             transition: 'all 200ms',
                           }}
                         >
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: selected ? 600 : 400, color: selected ? '#A83828' : 'var(--text-secondary)' }}>
-                              {voice.name}
-                            </div>
-                            <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{voice.gender}</div>
-                          </div>
                           <button
-                            data-testid={`voice-preview-${voice.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleVoicePreview(voice.id);
-                            }}
+                            type="button"
+                            data-testid={`voice-${voice.id}`}
+                            data-selected={selected ? 'true' : 'false'}
+                            aria-pressed={selected}
+                            onClick={() => handleVoiceChange(voice.id)}
                             style={{
-                              marginLeft: 4,
-                              padding: 4,
+                              flex: 1,
+                              minWidth: 0,
+                              minHeight: 44,
+                              padding: '6px 0',
                               border: 'none',
                               background: 'transparent',
                               cursor: 'pointer',
-                              color: 'var(--mountain-mid)',
+                              textAlign: 'left',
+                            }}
+                          >
+                            <div style={{ fontSize: 13, fontWeight: selected ? 600 : 500, color: selected ? '#A83828' : 'var(--text-secondary)' }}>
+                              {voice.name}
+                            </div>
+                            <div style={{ marginTop: 3, fontSize: 11, lineHeight: 1.45, color: 'var(--text-tertiary)' }}>
+                              {voice.description}
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`voice-preview-${voice.id}`}
+                            onClick={() => {
+                              void togglePreview(voice.id, voice.previewUrl);
+                            }}
+                            aria-label={`${playingVoiceId === voice.id ? '停止' : '试听'}${voice.name}`}
+                            style={{
+                              minWidth: 78,
+                              minHeight: 44,
+                              padding: '8px 10px',
+                              border: 'none',
+                              borderRadius: 22,
+                              background: playingVoiceId === voice.id ? 'rgba(200, 75, 49, 0.1)' : 'transparent',
+                              cursor: 'pointer',
+                              color: playingVoiceId === voice.id ? '#A83828' : 'var(--mountain-mid)',
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
+                              transition: 'all 180ms ease',
                             }}
-                            title="试听"
+                            title={playingVoiceId === voice.id ? '停止试听' : '试听'}
                           >
-                            <PlayCircleOutlined style={{ fontSize: 18 }} />
+                            {playingVoiceId === voice.id ? (
+                              <>
+                                <PauseCircleOutlined style={{ fontSize: 18 }} />
+                                <span style={{ marginLeft: 4, fontSize: 11 }}>播放中</span>
+                              </>
+                            ) : (
+                              <>
+                                <PlayCircleOutlined style={{ fontSize: 18 }} />
+                                <span style={{ marginLeft: 4, fontSize: 11 }}>试听</span>
+                              </>
+                            )}
                           </button>
                         </div>
                       );

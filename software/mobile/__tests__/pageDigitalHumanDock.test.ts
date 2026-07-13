@@ -7,13 +7,13 @@ describe('page digital human dock', () => {
     'utf8',
   );
 
-  test('no longer renders the idle speech bubble', () => {
-    expect(source).not.toContain("idleText = '我是小灵，随时为你讲解'");
+  test('shows the text bubble only when real speech text exists', () => {
+    expect(source).not.toContain('我是小灵，随时为你讲解');
+    expect(source).toContain("digitalHuman.subtitle?.trim() || digitalHuman.speechText?.trim() || ''");
+    expect(source).toContain('{displayText ? (');
+    expect(source).toContain('styles.speechBubble');
+    expect(source).toContain('numberOfLines={3}');
     expect(source).not.toContain('speechBubbleVisible');
-    expect(source).not.toContain('setSpeechBubbleVisible');
-    expect(source).not.toContain('styles.speechBubble');
-    expect(source).not.toContain('accessibilityLabel="朗读小灵提示"');
-    expect(source).not.toContain('numberOfLines={2}');
   });
 
   test('keeps the character canvas below the home action cards', () => {

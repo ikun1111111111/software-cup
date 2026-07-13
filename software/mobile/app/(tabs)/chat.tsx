@@ -57,10 +57,10 @@ const REPLY_ACTION_DURATION_MS = 1600;
 const THINKING_ACTION_DURATION_MS = 1400;
 const TAB_BAR_CLEARANCE = 12;
 const ANSWER_SOURCE_PATTERN = /(?:\r?\n){1,}\s*来源[:：][\s\S]*$/;
-const DEFAULT_VOICE_CONFIG: VoiceConfig = { rate: 1, pitch: 1, ttsVoiceId: 'mandarin' };
-const VOICE_CONFIG_KEY = '@vrm_voice_config';
-const VOICE_MODE_KEY = '@vrm_voice_mode';
-const DEFAULT_CHAT_VOICE_MODE: VoiceMode = Platform.OS === 'web' ? 'browser' : 'tts';
+const DEFAULT_VOICE_CONFIG: VoiceConfig = { rate: 0.94, pitch: 1.02, ttsVoiceId: 'female' };
+const VOICE_CONFIG_KEY = '@vrm_voice_config_v2';
+const VOICE_MODE_KEY = '@vrm_voice_mode_v2';
+const DEFAULT_CHAT_VOICE_MODE: VoiceMode = DEFAULT_DIGITAL_HUMAN_VOICE_MODE;
 
 function stripAnswerSource(answer: string): string {
   return answer.replace(ANSWER_SOURCE_PATTERN, '').trim();

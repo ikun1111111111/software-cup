@@ -117,6 +117,8 @@ cd backend
 .\venv\Scripts\python.exe scripts\import_guide.py
 ```
 
+管理后台的“数据大屏”依赖 `tourist_behaviors` 行为数据表。新建数据库后需先执行旅游行为数据导入；当前脚本采用追加写入，请仅在空表初始化时运行一次，避免重复导入。
+
 ## Docker 部署
 
 ### 构建镜像

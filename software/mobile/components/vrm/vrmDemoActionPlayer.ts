@@ -157,18 +157,27 @@ export class VRMDemoActionPlayer {
 
   update(vrm: VRM, dt: number, elapsed: number, requested: Action, speaking: boolean): void {
     const normalized = normalizeDemoAction(requested);
-    if (normalized !== this.requestedAction || vrm !== this.requestedVRM) {
-      this.requestedAction = normalized;
-      this.requestedVRM = vrm;
+    if (vrm !== this.requestedVRM) {
       this.stopActive();
-      this.resetIdleTimer(elapsed);
-      if (isDemoGLBAction(normalized)) void this.start(normalized, vrm);
+      this.requestedVRM = vrm;
     }
 
-    if (normalized === 'none' && speaking) {
+    if (normalized !== this.requestedAction) {
+      this.requestedAction = normalized;
+      this.resetIdleTimer(elapsed);
+      if (isDemoGLBAction(normalized)) {
+        if (this.activeAction !== normalized) {
+          this.stopActive();
+          void this.start(normalized, vrm);
+        }
+      } else if (normalized !== 'none' || this.activeAction?.startsWith('waiting')) {
+        this.stopActive();
+      }
+    }
+
+    if (normalized === 'none' && speaking && this.activeAction?.startsWith('waiting')) {
       this.stopActive();
       this.resetIdleTimer(elapsed);
-      return;
     }
 
     if (this.tracks.length > 0) {

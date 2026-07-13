@@ -170,9 +170,12 @@ class VRMManagerClass {
   }
 
   /** 用实际音频时长重新同步表情/动作时间轴（tts 模式音频就绪后调用） */
-  resyncTimeline(durationMs: number): void {
+  resyncTimeline(durationMs: number, targetId?: string): void {
     if (!this.state.isSpeaking) return;
-    this.emit('resync', { durationMs });
+    this.emit('resync', {
+      durationMs,
+      targetId: targetId ?? this.activeSpeakerId ?? undefined,
+    });
   }
 
   setPageContext(context: PageContext, data?: Record<string, any>): void {

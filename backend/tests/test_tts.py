@@ -10,6 +10,9 @@ from app.core.tts import (
     _classify_mouth_shape,
     _cache_key,
     _resolve_voice,
+    _EDGE_TTS_RATE,
+    _EDGE_TTS_PITCH,
+    _REDIS_TTS_TIMEOUT_SECONDS,
 )
 
 
@@ -25,6 +28,11 @@ class TestTTS:
         )
         assert result.duration_ms == 100
         assert result.sample_rate == 24000
+
+    def test_guide_voice_prosody_is_softened(self):
+        assert _EDGE_TTS_RATE == "-4%"
+        assert _EDGE_TTS_PITCH == "+2Hz"
+        assert _REDIS_TTS_TIMEOUT_SECONDS == 0.25
 
     def test_classify_mouth_shape(self):
         """Should classify mouth shapes correctly."""

@@ -168,6 +168,14 @@ describe('analyzeSentence', () => {
 // ── textToTimeline ──
 
 describe('textToTimeline', () => {
+  test('uses one primary action for the whole spoken utterance', () => {
+    const greeting = textToTimeline('欢迎来到灵山胜境，我是小灵，今天由我带你游灵山', 5000);
+    const narration = textToTimeline('这里是梵宫，它始建于唐代，建筑非常壮观', 5000);
+
+    expect(greeting.slice(0, -1).map((event) => event.action)).toEqual(['wave', 'wave', 'wave']);
+    expect(narration.slice(0, -1).every((event) => event.action === 'explain')).toBe(true);
+  });
+
   test('空文本返回单个 neutral 事件', () => {
     const tl = textToTimeline('', 5000);
     expect(tl).toEqual([{ timeMs: 0, expression: 'neutral', action: 'none' }]);

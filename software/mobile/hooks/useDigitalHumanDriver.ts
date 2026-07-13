@@ -80,6 +80,8 @@ export function useDigitalHumanDriver(
   const playerRef = useRef<ExpressionPlayer | null>(null);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const actionRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentActionRef = useRef<Action>('none');
+  const currentActionDurationRef = useRef(800);
   const currentSpeakTextRef = useRef<string>('');
   const currentForcedActionRef = useRef<Action | undefined>(undefined);
   const currentForcedActionDurationRef = useRef<number | undefined>(undefined);
@@ -114,22 +116,30 @@ export function useDigitalHumanDriver(
   }, []);
 
   const restartAction = useCallback((nextAction: Action, durationMs: number) => {
-    clearActionRestartTimer();
+    currentActionDurationRef.current = durationMs;
     setActionDurationMs(durationMs);
+    if (nextAction === currentActionRef.current) {
+      return;
+    }
+    clearActionRestartTimer();
     if (nextAction === 'none') {
+      currentActionRef.current = 'none';
       setAction('none');
       return;
     }
+    currentActionRef.current = nextAction;
     setAction('none');
     actionRestartTimerRef.current = setTimeout(() => {
       actionRestartTimerRef.current = null;
-      setActionDurationMs(durationMs);
+      setActionDurationMs(currentActionDurationRef.current);
       setAction(nextAction);
     }, ACTION_RESTART_DELAY_MS);
   }, [clearActionRestartTimer]);
 
   const resetTimelineState = useCallback(() => {
     clearActionRestartTimer();
+    currentActionRef.current = 'none';
+    currentActionDurationRef.current = 800;
     playerRef.current?.stop();
     setTimelineExpression('neutral');
     setAction('none');
@@ -149,21 +159,16 @@ export function useDigitalHumanDriver(
     currentForcedActionRef.current = forcedAction;
     currentForcedActionDurationRef.current = forcedActionDurationMs;
     const timeline = textToTimeline(text, durationMs);
-    if (forcedAction && forcedAction !== 'none' && timeline[0]) {
-      timeline[0] = {
-        ...timeline[0],
-        action: forcedAction,
-        durationMs: forcedActionDurationMs ?? timeline[0].durationMs ?? 1200,
-      };
+    if (forcedAction && forcedAction !== 'none') {
+      for (let index = 0; index < timeline.length - 1; index += 1) {
+        timeline[index] = {
+          ...timeline[index],
+          action: forcedAction,
+          durationMs: forcedActionDurationMs ?? timeline[index].durationMs ?? 1200,
+        };
+      }
     }
-    const first = timeline[0];
-
     clearResetTimer();
-
-    if (first) {
-      setTimelineExpression(getExpressionForAction(first.expression, first.action || 'none'));
-      restartAction(first.action || 'none', first.durationMs ?? 800);
-    }
 
     playerRef.current?.play(timeline, (expression, nextAction, nextDurationMs) => {
       setTimelineExpression(getExpressionForAction(expression, nextAction || 'none'));
@@ -187,7 +192,6 @@ export function useDigitalHumanDriver(
   useEffect(() => {
     const handleManagerSpeak = ({
       text,
-      duration,
       action: managerAction,
       actionDuration,
       targetId,
@@ -199,14 +203,16 @@ export function useDigitalHumanDriver(
       targetId?: string;
     }) => {
       if (targetId && targetId !== speakerIdRef.current) return;
-      startTimeline(text, duration, managerAction, actionDuration);
+      currentSpeakTextRef.current = text;
+      currentForcedActionRef.current = managerAction;
+      currentForcedActionDurationRef.current = actionDuration;
     };
 
     VRMManager.on('speak', handleManagerSpeak);
     return () => {
       VRMManager.off('speak', handleManagerSpeak);
     };
-  }, [startTimeline]);
+  }, []);
 
   useEffect(() => {
     const handleManagerStateChange = (vrmState: { isSpeaking?: boolean }) => {
@@ -223,7 +229,14 @@ export function useDigitalHumanDriver(
 
   // 监听 resync 事件，用实际音频时长重新同步表情/动作时间轴
   useEffect(() => {
-    const handleResync = ({ durationMs }: { durationMs: number }) => {
+    const handleResync = ({
+      durationMs,
+      targetId,
+    }: {
+      durationMs: number;
+      targetId?: string;
+    }) => {
+      if (targetId && targetId !== speakerIdRef.current) return;
       // 用实际时长重启时间轴，与音频播放起点对齐
       const currentText = currentSpeakTextRef.current;
       if (currentText) {

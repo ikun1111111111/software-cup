@@ -32,4 +32,10 @@ describe('standalone demo action integration', () => {
     expect(playerSource).toMatch(/normalized === 'none' && speaking[\s\S]*?stopActive\(\)[\s\S]*?return;/);
     expect(playerSource).toMatch(/normalized === 'none' && !speaking && elapsed >= this\.idleDueAt/);
   });
+
+  test('lets a started speech GLB finish when React releases the action', () => {
+    expect(playerSource).toContain("this.activeAction?.startsWith('waiting')");
+    expect(playerSource).toMatch(/normalized === 'none'[\s\S]*?activeAction[\s\S]*?stopActive/);
+    expect(playerSource).not.toMatch(/normalized === 'none' && speaking\)[\s\S]*?this\.stopActive\(\)/);
+  });
 });

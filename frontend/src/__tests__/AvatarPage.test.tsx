@@ -7,11 +7,6 @@ vi.mock('../components/admin/VRMPreview', () => ({
   VRMPreview: () => <div data-testid="vrm-preview-mock">VRM Preview</div>,
 }));
 
-// Mock TTS preview to avoid real network requests in jsdom
-vi.mock('../api/tts', () => ({
-  previewVoice: vi.fn(() => Promise.resolve('blob:mock-audio-url')),
-}));
-
 // Mock avatar API so save/load complete deterministically in jsdom
 vi.mock('../api/avatar', () => ({
   getActiveAvatar: vi.fn(() => Promise.reject(new Error('no active'))),
@@ -65,20 +60,42 @@ vi.mock('../api/avatar', () => ({
   activateAvatar: vi.fn(() => Promise.resolve({ status: 'ok', avatarId: 1 })),
 }));
 
+let pageAudioInstances: PageAudioMock[] = [];
+
+class PageAudioMock {
+  src: string;
+  play = vi.fn(() => Promise.resolve());
+  pause = vi.fn();
+  load = vi.fn();
+  currentTime = 0;
+  preload = '';
+  onended: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  constructor(src = '') {
+    this.src = src;
+    pageAudioInstances.push(this);
+  }
+}
+
 describe('AvatarPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    pageAudioInstances = [];
+    vi.stubGlobal('Audio', PageAudioMock);
   });
 
   describe('渲染', () => {
     it('应该渲染页面容器', async () => {
       render(<AvatarPage />);
       expect(screen.getByTestId('avatar-page')).toBeDefined();
+      await waitFor(() => expect(screen.getByTestId('save-btn')).not.toBeDisabled());
     });
 
     it('应该显示标题', async () => {
       render(<AvatarPage />);
       expect(screen.getByText('数字人形象配置')).toBeDefined();
+      await waitFor(() => expect(screen.getByTestId('save-btn')).not.toBeDisabled());
     });
 
     it('应该显示保存按钮', async () => {
@@ -101,6 +118,52 @@ describe('AvatarPage', () => {
       render(<AvatarPage />);
       await waitFor(() => expect(screen.getByTestId('voice-section')).toBeDefined());
       expect(screen.getByTestId('voice-mandarin')).toBeDefined();
+    });
+
+    it('shows a distinct description for every voice option', async () => {
+      render(<AvatarPage />);
+
+      expect(await screen.findByText('温柔清晰 · 稳重 · 标准普通话')).toBeDefined();
+      expect(screen.getByText('青春明亮 · 轻快 · 更有活力')).toBeDefined();
+      expect(screen.getByText('亲切爽朗 · 地域感 · 更有记忆点')).toBeDefined();
+    });
+
+    it('preloads all three static previews when the page mounts', async () => {
+      render(<AvatarPage />);
+
+      await waitFor(() => {
+        const preloadedUrls = pageAudioInstances
+          .filter((audio) => audio.load.mock.calls.length > 0)
+          .map((audio) => audio.src);
+        expect(preloadedUrls).toEqual([
+          '/audio/voice-previews/mandarin.mp3',
+          '/audio/voice-previews/female.mp3',
+          '/audio/voice-previews/liaoning.mp3',
+        ]);
+      });
+    });
+
+    it('plays the selected static preview without changing voice selection', async () => {
+      render(<AvatarPage />);
+      const femaleCard = await screen.findByTestId('voice-female');
+      const previewButton = screen.getByTestId('voice-preview-female');
+
+      fireEvent.click(previewButton);
+
+      const playedAudio = await waitFor(() => {
+        const audio = pageAudioInstances.find((instance) => instance.play.mock.calls.length > 0);
+        expect(audio).toBeDefined();
+        return audio;
+      });
+      expect(playedAudio?.src).toContain('/audio/voice-previews/female.mp3');
+      expect(femaleCard.getAttribute('data-selected')).toBe('false');
+    });
+
+    it('shows a playing label while a preview is active', async () => {
+      render(<AvatarPage />);
+      fireEvent.click(await screen.findByTestId('voice-preview-mandarin'));
+
+      expect(await screen.findByText('播放中')).toBeDefined();
     });
 
     it('应该显示实时预览标题', async () => {

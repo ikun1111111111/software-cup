@@ -27,7 +27,7 @@ describe('VRM speech cleanup', () => {
 
     expect(source).toContain("import { estimateSpeechDuration } from '../utils/digitalHumanDriver';");
     expect(source).toMatch(/const playWithBrowserTTS = useCallback\(async[\s\S]*?const estimatedDuration = estimateSpeechDuration\(text\);/s);
-    expect(source).toContain('scheduleVisualStop(estimatedDuration + 1000);');
+    expect(source).toContain('scheduleVisualStop(Math.max(estimatedDuration * 2, estimatedDuration + 5000), runId);');
     expect(source).toContain('window.speechSynthesis.speak(utterance);');
   });
 
@@ -63,17 +63,43 @@ describe('VRM speech cleanup', () => {
     expect(generatedTtsBody).not.toMatch(/const runId = beginVisualSpeech\(text, emotion, estimatedDuration/);
   });
 
-  test('keeps the first subtitle hidden until the first audible boundary', () => {
+  test('shows pending text immediately while keeping motion aligned to audible playback', () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, '../hooks/useVRMSync.ts'),
       'utf8',
     );
 
-    expect(source).toContain('const SUBTITLE_SYNC_DELAY_MS = 180;');
+    expect(source).toContain('const SUBTITLE_SYNC_DELAY_MS = 0;');
     expect(source).toContain('subtitleInitiallyHidden?: boolean;');
-    expect(source).toMatch(/utterance\.onstart = \(\) => \{[\s\S]*?subtitleInitiallyHidden: true/);
-    expect(source).toMatch(/status\.isPlaying[\s\S]*?subtitleInitiallyHidden: true/);
+    expect(source).toContain('showPendingSpeechText(text, estimatedDuration);');
+    expect(source).toMatch(/utterance\.onstart = \(\) => \{[\s\S]*?subtitleInitiallyHidden: false/);
+    expect(source).toMatch(/status\.isPlaying[\s\S]*?subtitleInitiallyHidden: false/);
     expect(source).toContain('const subtitleElapsed = elapsed - SUBTITLE_SYNC_DELAY_MS;');
+  });
+
+  test('does not let stale timers or estimated MP3 duration stop active audio', () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../hooks/useVRMSync.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain('speechRunIdRef.current !== runId');
+    expect(source).toContain('status.durationMillis');
+    expect(source).toContain('scheduleVisualStop(actualDuration + 5000, runId);');
+    expect(source).toContain('finishSpeechRun(runId, text);');
+    expect(source).toContain('const TTS_WEB_FALLBACK_MS = 12000;');
+  });
+
+  test('uses the young female guide voice and a stable browser fallback', () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../hooks/useVRMSync.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain("const DEFAULT_TTS_VOICE_ID = 'female';");
+    expect(source).toContain('const DEFAULT_BROWSER_RATE = 0.94;');
+    expect(source).toContain('selectPreferredChineseVoice');
+    expect(source).toContain('fetchTTS(text, voiceId)');
   });
 
   test('shows the exact text belonging to the active audio run', () => {

@@ -49,7 +49,20 @@ const MOUTH_SHAPE_VALUES: Record<string, number> = {
   half: 0.4,
   open: 1.0,
 };
-const SUBTITLE_SYNC_DELAY_MS = 180;
+const SUBTITLE_SYNC_DELAY_MS = 0;
+const DEFAULT_TTS_VOICE_ID = 'female';
+const DEFAULT_BROWSER_RATE = 0.94;
+const DEFAULT_BROWSER_PITCH = 1.02;
+
+function selectPreferredChineseVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
+  const chineseVoices = voices.filter((voice) => voice.lang.toLowerCase().startsWith('zh'));
+  const candidates = chineseVoices.length > 0 ? chineseVoices : voices;
+  const preferredNames = ['xiaoyi', 'xiaoxiao', '晓伊', '晓晓', 'huihui', '慧慧', 'yaoyao', '瑶瑶'];
+  return candidates.find((voice) => {
+    const identity = `${voice.name} ${voice.voiceURI}`.toLowerCase();
+    return preferredNames.some((name) => identity.includes(name));
+  }) ?? candidates[0];
+}
 
 let audioModeReady = false;
 
@@ -172,6 +185,15 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     VRMManager.stopSpeaking(options);
   }, [disposeActiveSpeech]);
 
+  const finishSpeechRun = useCallback((runId: number, text: string) => {
+    if (speechRunIdRef.current !== runId) return;
+    setState((prev) => ({ ...prev, subtitle: text }));
+    setTimeout(() => {
+      if (speechRunIdRef.current !== runId) return;
+      stopSpeaking();
+    }, 100);
+  }, [stopSpeaking]);
+
   const startMouthSimulation = useCallback(() => {
     clearMouthTimers();
     mouthSimRef.current = setInterval(() => {
@@ -187,6 +209,16 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     subtitleCueIndexRef.current = 0;
     return cues[0]?.text ?? '';
   }, []);
+
+  const showPendingSpeechText = useCallback((text: string, durationMs: number) => {
+    const initialSubtitle = prepareInitialSubtitle(text, durationMs);
+    if (!mountedRef.current) return;
+    setState((prev) => ({
+      ...prev,
+      speechText: text,
+      subtitle: initialSubtitle || text,
+    }));
+  }, [prepareInitialSubtitle]);
 
   const startSubtitleProgression = useCallback((
     text: string,
@@ -293,18 +325,23 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     return runId;
   }, [beginVisualSpeechForRun, reserveSpeechRun]);
 
-  const scheduleVisualStop = useCallback((durationMs: number) => {
+  const scheduleVisualStop = useCallback((durationMs: number, runId: number) => {
     clearAutoStopTimer();
     fallbackStopTimerRef.current = setTimeout(() => {
       fallbackStopTimerRef.current = null;
+      if (speechRunIdRef.current !== runId) return;
       stopSpeaking();
     }, durationMs);
   }, [clearAutoStopTimer, stopSpeaking]);
 
   const triggerSpeakFallback = useCallback((text: string, emotion: Emotion) => {
     const autoDuration = estimateSpeechDuration(text);
-    beginVisualSpeech(text, emotion, autoDuration);
-    scheduleVisualStop(autoDuration);
+    const runId = beginVisualSpeech(text, emotion, autoDuration);
+    setTimeout(() => {
+      if (speechRunIdRef.current !== runId) return;
+      VRMManager.resyncTimeline(autoDuration, speakerIdRef.current);
+    }, 0);
+    scheduleVisualStop(autoDuration, runId);
   }, [beginVisualSpeech, scheduleVisualStop]);
 
   // Web 平台：浏览器 TTS（免费）
@@ -324,12 +361,14 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'zh-CN';
     const cfg = voiceConfigRef.current;
-    utterance.rate = cfg?.rate ?? 1.0;
-    utterance.pitch = cfg?.pitch ?? 1.0;
+    utterance.rate = cfg?.rate ?? DEFAULT_BROWSER_RATE;
+    utterance.pitch = cfg?.pitch ?? DEFAULT_BROWSER_PITCH;
     if (cfg?.browserVoiceUri && typeof window !== 'undefined') {
       const voices = window.speechSynthesis.getVoices();
       const selected = voices.find((v) => v.voiceURI === cfg.browserVoiceUri);
       if (selected) utterance.voice = selected;
+    } else {
+      utterance.voice = selectPreferredChineseVoice(window.speechSynthesis.getVoices()) ?? null;
     }
 
     utterance.onstart = () => {
@@ -338,11 +377,11 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
         emotion,
         estimatedDuration,
         runId,
-        { subtitleProgression: false, subtitleInitiallyHidden: true },
+        { subtitleProgression: false, subtitleInitiallyHidden: false },
       )) return;
       scheduleSubtitleBoundarySync(0);
-      VRMManager.resyncTimeline(estimatedDuration);
-      scheduleVisualStop(estimatedDuration + 1000);
+      VRMManager.resyncTimeline(estimatedDuration, speakerIdRef.current);
+      scheduleVisualStop(Math.max(estimatedDuration * 2, estimatedDuration + 5000), runId);
     };
 
     utterance.onboundary = (event) => {
@@ -355,8 +394,7 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     utterance.onend = () => {
       if (speechRunIdRef.current !== runId) return;
       // 先显示完整文本，再延迟停止，避免字幕提前消失
-      setState((prev) => ({ ...prev, subtitle: text }));
-      setTimeout(() => stopSpeaking(), 100);
+      finishSpeechRun(runId, text);
     };
 
     utterance.onerror = (event) => {
@@ -372,9 +410,10 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
       console.warn('[useVRMSync] Browser TTS failed:', e);
       stopSpeaking();
     }
-  }, [beginVisualSpeechForRun, reserveSpeechRun, scheduleSubtitleBoundarySync, scheduleVisualStop, stopSpeaking, triggerSpeakFallback]);
+  }, [beginVisualSpeechForRun, finishSpeechRun, reserveSpeechRun, scheduleSubtitleBoundarySync, scheduleVisualStop, stopSpeaking, triggerSpeakFallback]);
 
   const TTS_TIMEOUT_MS = 12000;
+  const TTS_WEB_FALLBACK_MS = 12000;
   const MAX_TTS_CACHE = 20;
 
   // Native/Web：edge-tts 合成 + expo-av 播放
@@ -382,15 +421,18 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     const estimatedDuration = estimateSpeechDuration(text);
     const runId = reserveSpeechRun();
     try {
-      const voiceId = voiceConfigRef.current?.ttsVoiceId ?? 'default';
+      const voiceId = voiceConfigRef.current?.ttsVoiceId ?? DEFAULT_TTS_VOICE_ID;
       const cacheKey = `${text}::${voiceId}`;
       let result = ttsCacheRef.current.get(cacheKey);
 
       if (!result) {
         result = await Promise.race([
-          fetchTTS(text, voiceConfigRef.current?.ttsVoiceId),
+          fetchTTS(text, voiceId),
           new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('TTS timeout')), TTS_TIMEOUT_MS);
+            setTimeout(
+              () => reject(new Error('TTS timeout')),
+              Platform.OS === 'web' ? TTS_WEB_FALLBACK_MS : TTS_TIMEOUT_MS,
+            );
           }),
         ]);
         ttsCacheRef.current.set(cacheKey, result);
@@ -424,7 +466,10 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
         throw new Error('Audio not loaded');
       }
 
-      const actualDuration = result.durationMs > 0 ? result.durationMs : estimatedDuration;
+      const decodedDuration = status.durationMillis ?? 0;
+      const actualDuration = decodedDuration > 0
+        ? decodedDuration
+        : (result.durationMs > 0 ? result.durationMs : estimatedDuration);
       let playbackStarted = false;
       let resolvePlaybackStarted: (() => void) | null = null;
       const playbackStartedPromise = new Promise<void>((resolve) => {
@@ -446,7 +491,7 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
             runId,
             {
               subtitleProgression: result.phonemes.length === 0,
-              subtitleInitiallyHidden: true,
+              subtitleInitiallyHidden: false,
             },
           )) return;
           if (result.phonemes.length === 0) {
@@ -456,8 +501,7 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
         }
         if (speechRunIdRef.current === runId && status.isLoaded && status.didJustFinish) {
           // 先显示完整文本，再延迟停止，避免字幕提前消失
-          setState((prev) => ({ ...prev, subtitle: text }));
-          setTimeout(() => stopSpeaking(), 100);
+          finishSpeechRun(runId, text);
         }
       });
 
@@ -471,7 +515,7 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
       }
 
       // 用实际音频时长同步表情/动作时间轴
-      VRMManager.resyncTimeline(actualDuration);
+      VRMManager.resyncTimeline(actualDuration, speakerIdRef.current);
       const subtitleBoundaries = mapSpeechBoundariesToText(text, result.phonemes);
       clearMouthTimers();
       if (result.phonemes.length > 0) {
@@ -502,7 +546,7 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
         }, 100);
       }
 
-      scheduleVisualStop(actualDuration + 1500);
+      scheduleVisualStop(actualDuration + 5000, runId);
     } catch (e) {
       if (speechRunIdRef.current !== runId) return;
       console.warn('[useVRMSync] TTS failed, falling back:', e);
@@ -512,12 +556,14 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
         triggerSpeakFallback(text, emotion);
       }
     }
-  }, [beginVisualSpeechForRun, clearMouthTimers, reserveSpeechRun, scheduleSubtitleBoundarySync, scheduleVisualStop, stopSpeaking, syncSubtitleToSpeechBoundary]);
+  }, [beginVisualSpeechForRun, clearMouthTimers, finishSpeechRun, playWithBrowserTTS, reserveSpeechRun, scheduleSubtitleBoundarySync, scheduleVisualStop, syncSubtitleToSpeechBoundary, triggerSpeakFallback]);
 
   useEffect(() => {
     const handleSpeak = ({ text, emotion, targetId }: { text: string; emotion: Emotion; targetId?: string }) => {
       if (targetId && targetId !== speakerIdRef.current) return;
 
+      const estimatedDuration = estimateSpeechDuration(text);
+      showPendingSpeechText(text, estimatedDuration);
       const mode = voiceModeRef.current;
       if (mode === 'silent') {
         triggerSpeakFallback(text, emotion);
@@ -563,7 +609,7 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
       VRMManager.off('emotionChange', handleEmotionChange);
       VRMManager.off('stateChange', handleStateChange);
     };
-  }, [disposeActiveSpeech, playWithPhonemes, playWithBrowserTTS, triggerSpeakFallback]);
+  }, [disposeActiveSpeech, playWithPhonemes, playWithBrowserTTS, showPendingSpeechText, triggerSpeakFallback]);
 
   const triggerSpeak = useCallback((
     text: string,

@@ -313,13 +313,19 @@ export function textToTimeline(text: string, durationMs: number): TimelineEvent[
   }
 
   const totalChars = sentences.reduce((sum, s) => sum + s.length, 0);
+  const primaryAction = analyzeSentence(text).action;
   const events: TimelineEvent[] = [];
   let accumulatedRatio = 0;
 
   for (const sentence of sentences) {
     const timeMs = Math.round(accumulatedRatio * durationMs);
-    const { expression, action } = analyzeSentence(sentence);
-    events.push({ timeMs, expression, action, durationMs: getDefaultActionDuration(action) });
+    const { expression } = analyzeSentence(sentence);
+    events.push({
+      timeMs,
+      expression,
+      action: primaryAction,
+      durationMs: getDefaultActionDuration(primaryAction),
+    });
     accumulatedRatio += sentence.length / Math.max(totalChars, 1);
   }
 
@@ -345,6 +351,7 @@ export class ExpressionPlayer {
     this.currentIndex = -1;
     this.startTime = Date.now();
     this.timer = setInterval(() => this.tick(), 100);
+    this.tick();
   }
 
   stop(): void {

@@ -27,7 +27,12 @@ describe('digital human driver speech loop guard', () => {
       'utf8',
     );
 
-    expect(source).toContain('if (nextAction === currentActionRef.current)');
+    const restartBody = source.match(/const restartAction = useCallback\([\s\S]*?\n  \}, \[clearActionRestartTimer\]\);/)?.[0] || '';
+
+    expect(restartBody).toContain('if (nextAction === currentActionRef.current)');
     expect(source).toContain('currentActionRef.current = nextAction');
+    expect(restartBody.indexOf('if (nextAction === currentActionRef.current)'))
+      .toBeLessThan(restartBody.indexOf('clearActionRestartTimer();'));
+    expect(restartBody).toContain('setActionDurationMs(currentActionDurationRef.current)');
   });
 });
