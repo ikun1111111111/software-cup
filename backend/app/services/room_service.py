@@ -1,14 +1,105 @@
 """Room service: multi-person collaborative tour with WebSocket broadcast."""
+from __future__ import annotations
+
 import json
 import logging
 import random
 import time
+from collections import defaultdict
+
+from redis.exceptions import RedisError
 
 from app.core.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 
 ROOM_TTL = 7200  # 2 hours
+
+
+class _InMemoryRoomStore:
+    """Process-local fallback used when Redis is unavailable in development."""
+
+    def __init__(self) -> None:
+        self._values: dict[str, str] = {}
+        self._sets: dict[str, set[str]] = defaultdict(set)
+        self._expires_at: dict[str, float] = {}
+
+    def _evict_if_expired(self, key: str) -> None:
+        expires_at = self._expires_at.get(key)
+        if expires_at is not None and expires_at <= time.monotonic():
+            self._values.pop(key, None)
+            self._sets.pop(key, None)
+            self._expires_at.pop(key, None)
+
+    async def get(self, key: str) -> str | None:
+        self._evict_if_expired(key)
+        return self._values.get(key)
+
+    async def set(self, key: str, value: str, ex: int | None = None) -> bool:
+        self._values[key] = value
+        if ex is not None:
+            self._expires_at[key] = time.monotonic() + ex
+        return True
+
+    async def sadd(self, key: str, *values: str) -> int:
+        self._evict_if_expired(key)
+        before = len(self._sets[key])
+        self._sets[key].update(values)
+        return len(self._sets[key]) - before
+
+    async def smembers(self, key: str) -> set[str]:
+        self._evict_if_expired(key)
+        return set(self._sets.get(key, set()))
+
+    async def expire(self, key: str, ttl: int) -> bool:
+        self._evict_if_expired(key)
+        if key not in self._values and key not in self._sets:
+            return False
+        self._expires_at[key] = time.monotonic() + ttl
+        return True
+
+    async def delete(self, *keys: str) -> int:
+        deleted = 0
+        for key in keys:
+            self._evict_if_expired(key)
+            existed = key in self._values or key in self._sets
+            self._values.pop(key, None)
+            self._sets.pop(key, None)
+            self._expires_at.pop(key, None)
+            deleted += int(existed)
+        return deleted
+
+
+_memory_room_store = _InMemoryRoomStore()
+_redis_retry_after = 0.0
+_failed_redis_client = None
+_redis_fallback_logged = False
+
+
+async def _get_room_store():
+    """Return Redis when healthy, otherwise a short-lived in-memory fallback."""
+    global _redis_retry_after, _failed_redis_client, _redis_fallback_logged
+
+    now = time.monotonic()
+    redis = await get_redis()
+    if redis is _failed_redis_client and now < _redis_retry_after:
+        return _memory_room_store
+
+    try:
+        await redis.ping()
+        _failed_redis_client = None
+        _redis_fallback_logged = False
+        return redis
+    except (RedisError, OSError, TimeoutError) as exc:
+        _failed_redis_client = redis
+        _redis_retry_after = now + 5
+        if not _redis_fallback_logged:
+            logger.warning(
+                "Redis unavailable for room storage; using process-local fallback: %s",
+                exc,
+            )
+            _redis_fallback_logged = True
+        return _memory_room_store
 
 
 def _generate_room_code() -> str:
@@ -26,7 +117,7 @@ def _members_key(room_id: str) -> str:
 async def create_room(creator_name: str) -> dict:
     """Create a new collaborative tour room. Returns room data."""
     room_id = _generate_room_code()
-    redis = await get_redis()
+    redis = await _get_room_store()
 
     room_data = {
         "room_id": room_id,
@@ -49,7 +140,7 @@ async def create_room(creator_name: str) -> dict:
 
 async def join_room(room_id: str, member_name: str) -> dict:
     """Join an existing room. Raises ValueError if room doesn't exist."""
-    redis = await get_redis()
+    redis = await _get_room_store()
     room_data = await redis.get(_room_key(room_id))
     if not room_data:
         raise ValueError("房间不存在或已过期")
@@ -73,7 +164,7 @@ async def join_room(room_id: str, member_name: str) -> dict:
 
 async def get_room(room_id: str) -> dict | None:
     """Get room data by ID."""
-    redis = await get_redis()
+    redis = await _get_room_store()
     data = await redis.get(_room_key(room_id))
     if not data:
         return None
@@ -84,7 +175,7 @@ async def get_room(room_id: str) -> dict | None:
 
 async def get_members(room_id: str) -> list[dict]:
     """Get list of room members."""
-    redis = await get_redis()
+    redis = await _get_room_store()
     raw_members = await redis.smembers(_members_key(room_id))
     members = []
     for m in raw_members:
@@ -97,7 +188,7 @@ async def get_members(room_id: str) -> list[dict]:
 
 async def update_itinerary(room_id: str, itinerary: list[dict]) -> dict:
     """Update the shared itinerary for a room."""
-    redis = await get_redis()
+    redis = await _get_room_store()
     room_data = await redis.get(_room_key(room_id))
     if not room_data:
         raise ValueError("房间不存在或已过期")
@@ -110,7 +201,7 @@ async def update_itinerary(room_id: str, itinerary: list[dict]) -> dict:
 
 async def delete_room(room_id: str) -> bool:
     """Delete a room."""
-    redis = await get_redis()
+    redis = await _get_room_store()
     deleted = await redis.delete(_room_key(room_id), _members_key(room_id))
     return deleted > 0
 
@@ -139,7 +230,7 @@ async def add_spot_to_itinerary(
     """
     from datetime import datetime
 
-    redis = await get_redis()
+    redis = await _get_room_store()
     room_data = await redis.get(_room_key(room_id))
     if not room_data:
         raise ValueError("房间不存在或已过期")
@@ -192,6 +283,6 @@ async def add_spot_to_itinerary(
 
 async def refresh_room_ttl(room_id: str) -> None:
     """Refresh room TTL on activity."""
-    redis = await get_redis()
+    redis = await _get_room_store()
     await redis.expire(_room_key(room_id), ROOM_TTL)
     await redis.expire(_members_key(room_id), ROOM_TTL)

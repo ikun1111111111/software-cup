@@ -43,6 +43,7 @@ def mock_redis():
         return deleted
 
     m = MagicMock()
+    m.ping = AsyncMock(return_value=True)
     m.get = AsyncMock(side_effect=_get)
     m.set = AsyncMock(side_effect=_set)
     m.sadd = AsyncMock(side_effect=_sadd)
@@ -87,7 +88,7 @@ class TestAddSpotToItinerary:
                 room["room_id"], "灵山大佛", source="vision", confidence=0.9
             )
             assert len(updated["itinerary"]) == 1
-            assert updated["itinerary"][0]["spot_name"] == "���山大佛"
+            assert updated["itinerary"][0]["spot_name"] == "灵山大佛"
             assert updated["itinerary"][0]["source"] == "vision"
 
     @pytest.mark.asyncio

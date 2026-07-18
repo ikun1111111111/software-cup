@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from httpx import AsyncClient, ASGITransport
+from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.main import app
 
@@ -35,6 +36,7 @@ def mock_room_redis():
         return 1
 
     m = MagicMock()
+    m.ping = AsyncMock(return_value=True)
     m.get = AsyncMock(side_effect=_get)
     m.set = AsyncMock(side_effect=_set)
     m.sadd = AsyncMock(side_effect=_sadd)
@@ -69,6 +71,28 @@ class TestRoomCreateAPI:
             async with AsyncClient(transport=transport, base_url="http://test") as client:
                 resp = await client.post("/api/room/create", json={"creator_name": "  "})
                 assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_create_room_falls_back_when_redis_is_unavailable(self):
+        unavailable_redis = MagicMock()
+        unavailable_redis.ping = AsyncMock(
+            side_effect=RedisConnectionError("redis is unavailable")
+        )
+
+        with patch(
+            "app.services.room_service.get_redis",
+            new=AsyncMock(return_value=unavailable_redis),
+        ):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.post(
+                    "/api/room/create", json={"creator_name": "离线队长"}
+                )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["creator"] == "离线队长"
+        assert data["members"][0]["role"] == "creator"
 
 
 class TestAddSpotAPI:
