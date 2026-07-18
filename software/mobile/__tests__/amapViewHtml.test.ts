@@ -25,4 +25,12 @@ describe('AMap WebView HTML coordinates', () => {
     expect(html).toContain("source || point.source || 'gcj02'");
     expect(html).toContain('map.setFitView(markers,false,[118,48,240,48]);');
   });
+
+  test('can update the active marker without rebuilding the map document', () => {
+    const center = { latitude: 31.4268, longitude: 120.0962 };
+    const html = buildHTML([], center, 15, '');
+
+    expect(html).toContain('function setActiveSpot(spotId)');
+    expect(html).toContain('window.setActiveSpot=setActiveSpot;');
+  });
 });

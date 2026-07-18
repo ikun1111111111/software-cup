@@ -50,6 +50,16 @@ const NativeAmapView = forwardRef<AmapViewRef, AmapViewProps>(function NativeAma
     }
   }, [showUserLocation, userLocation]);
 
+  const syncActiveSpot = useCallback(() => {
+    webRef.current?.injectJavaScript(
+      `window.setActiveSpot(${JSON.stringify(activeSpotId)});`,
+    );
+  }, [activeSpotId]);
+
+  useEffect(() => {
+    syncActiveSpot();
+  }, [syncActiveSpot]);
+
   const handleMessage = useCallback((e: any) => {
     try {
       const data = JSON.parse(e.nativeEvent.data);
@@ -71,9 +81,8 @@ const NativeAmapView = forwardRef<AmapViewRef, AmapViewProps>(function NativeAma
       zoom,
       'window.ReactNativeWebView.postMessage(JSON.stringify({type:"spotTap",spotId:s.id}))',
       routeSpotIds,
-      activeSpotId,
     ),
-    [activeSpotId, center.latitude, center.longitude, routeSpotIds, spots, zoom],
+    [center.latitude, center.longitude, routeSpotIds, spots, zoom],
   );
   const source = useMemo(() => ({ html }), [html]);
 
@@ -89,7 +98,10 @@ const NativeAmapView = forwardRef<AmapViewRef, AmapViewProps>(function NativeAma
         source={source}
         style={{ flex: 1 }}
         onMessage={handleMessage}
-        onLoadEnd={() => onMapReady?.()}
+        onLoadEnd={() => {
+          syncActiveSpot();
+          onMapReady?.();
+        }}
         onError={() => onMapError?.('地图 WebView 加载失败')}
         originWhitelist={['*']}
         javaScriptEnabled

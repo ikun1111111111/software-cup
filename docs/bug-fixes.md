@@ -1,5 +1,25 @@
 # Bug Fixes - 2026-06-04 (更新)
 
+## 17. 移动端地图点击推荐点位后视口跳到错误位置
+
+**日期**：2026-07-16
+
+**现象**：在移动端地图页点击底部“推荐顺路看”的点位卡片后，地图短暂移动，随后又跳到全景或其他无关位置，无法稳定停在所选点位。
+
+**根因**：原生地图使用 WebView 承载高德地图。点位选择会更新 `activeSpotId`，而 `activeSpotId` 被放入地图 HTML 的 `useMemo` 依赖中，导致每次选择都重建并重新加载 WebView。新地图初始化时执行 `setFitView`，覆盖了卡片点击后刚执行的 `setCenter`。
+
+**修复文件**：
+- `software/mobile/components/map/AmapView.native.tsx`
+- `software/mobile/components/map/AmapView.shared.ts`
+- `software/mobile/__tests__/amapViewHtml.test.ts`
+- `software/mobile/__tests__/mapNativeSelection.test.ts`
+
+**方案**：保持地图 HTML 和 WebView 实例稳定，通过 `window.setActiveSpot()` 在现有地图内同步选中点的高亮、尺寸和层级；选中状态变化不再触发地图重载，因此点位卡片触发的居中命令不会被全图自适应覆盖。
+
+**验证**：地图相关 9 个测试套件共 25 个用例通过，TypeScript `tsc --noEmit` 通过。
+
+---
+
 ## 1. PixiJS `checkMaxIfStatementsInShader` 崩溃
 
 **现象**：Live2D 数字人加载时报错 `Invalid value of '0' passed to checkMaxIfStatementsInShader`，页面卡死。

@@ -223,6 +223,18 @@ var map, markers=[], userMarker=null, routeLine=null;
 var SPOTS=${spotsJson};
 var _mapInited=false;
 var _readyPosted=false;
+var pendingActiveSpotId=${JSON.stringify(activeSpotId)};
+
+function getSpotDotSize(s){
+  return s.active?34:(s.inRoute?30:26);
+}
+
+function renderSpotMarker(s){
+  var dotClass='spot-dot'+(s.inRoute?' route':'')+(s.active?' active':'');
+  return '<div class="spot-marker" data-id="'+s.id+'">'
+    +'<div class="'+dotClass+'" style="background:'+s.color+'">'+s.idx+'</div>'
+    +'<div class="spot-label">'+s.name+'</div></div>';
+}
 
 function postToApp(data){
   try{
@@ -272,16 +284,12 @@ function initMap(){
   SPOTS.forEach(function(s){
     if(s.lat == null || s.lng == null) return;
     var point=toScenicAmapPoint({latitude:s.lat,longitude:s.lng});
-    var dotSize=s.active?34:(s.inRoute?30:26);
+    var dotSize=getSpotDotSize(s);
     var dotRadius=dotSize/2;
-    var dotClass='spot-dot'+(s.inRoute?' route':'')+(s.active?' active':'');
-    var content='<div class="spot-marker" data-id="'+s.id+'">'
-      +'<div class="'+dotClass+'" style="background:'+s.color+'">'+s.idx+'</div>'
-      +'<div class="spot-label">'+s.name+'</div></div>';
 
     var marker=new AMap.Marker({
       position:[point.longitude,point.latitude],
-      content:content,
+      content:renderSpotMarker(s),
       offset:new AMap.Pixel(-dotRadius,-dotRadius),
       extData:s,
       zIndex:s.active?90:(s.inRoute?70:50),
@@ -296,7 +304,21 @@ function initMap(){
   if(markers.length>0){
     try{ map.setFitView(markers,false,[118,48,240,48]); }catch(e){}
   }
+  setActiveSpot(pendingActiveSpotId);
 
+}
+
+function setActiveSpot(spotId){
+  pendingActiveSpotId=spotId || null;
+  markers.forEach(function(marker){
+    var s=marker.getExtData ? marker.getExtData() : null;
+    if(!s) return;
+    s.active=s.id===pendingActiveSpotId;
+    var dotSize=getSpotDotSize(s);
+    if(marker.setContent) marker.setContent(renderSpotMarker(s));
+    if(marker.setOffset) marker.setOffset(new AMap.Pixel(-dotSize/2,-dotSize/2));
+    if(marker.setzIndex) marker.setzIndex(s.active?90:(s.inRoute?70:50));
+  });
 }
 
 function setUserLocation(lat,lng){
@@ -345,6 +367,7 @@ function clearRoute(){
 window.initMap=initMap;
 window.setUserLocation=setUserLocation;
 window.setCenter=setCenter;
+window.setActiveSpot=setActiveSpot;
 window.drawRoute=drawRoute;
 window.clearRoute=clearRoute;
 
@@ -353,6 +376,7 @@ window.addEventListener('message',function(e){
     var d=typeof e.data==='string'?JSON.parse(e.data):e.data;
     if(d.cmd==='setCenter') setCenter(d.lat,d.lng,d.zoom,d.source);
     else if(d.cmd==='setUserLocation') setUserLocation(d.lat,d.lng);
+    else if(d.cmd==='setActiveSpot') setActiveSpot(d.spotId);
     else if(d.cmd==='drawRoute') drawRoute(d.points);
     else if(d.cmd==='clearRoute') clearRoute();
   }catch(ex){}
