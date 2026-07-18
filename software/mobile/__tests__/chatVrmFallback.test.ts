@@ -26,14 +26,15 @@ describe('chat VRM fallback', () => {
     expect(source).toContain('useEffect(() => { onReadyChangeRef.current = onReadyChange; }, [onReadyChange]);');
   });
 
-  test('web VRM readiness waits for visible canvas pixels', () => {
+  test('web VRM readiness reveals the canvas after an attached model renders', () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, '../components/vrm/VRMView.tsx'),
       'utf8',
     );
 
-    expect(source).toContain('function hasVisibleWebGLPixels(renderer: THREE.WebGLRenderer): boolean');
-    expect(source).toContain('const hasVisibleFrame = modelLoadedRef.current && hasVisibleWebGLPixels(renderer);');
-    expect(source).toContain('if (hasVisibleFrame) {');
+    expect(source).toContain('const shouldRevealModel = modelLoadedRef.current && isVRMAttachedToScene(scene);');
+    expect(source).toContain('if (shouldRevealModel && !modelReadyRef.current) {');
+    expect(source).not.toContain('hasVisibleWebGLPixels');
+    expect(source).not.toContain('gl.readPixels');
   });
 });

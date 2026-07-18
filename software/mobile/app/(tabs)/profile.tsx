@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react';
 import {
   Alert,
   Image as RNImage,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { Image as ExpoImage } from 'expo-image';
 import { Colors } from '@/constants/colors';
@@ -21,6 +23,7 @@ import { SESSION_ID } from '@/services/dataSync';
 import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
 import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
 import { PageDigitalHumanDock } from '@/components/vrm/PageDigitalHumanDock';
+import { confirmLogout } from '@/utils/logoutConfirmation';
 
 const PROFILE_VISUALS = {
   hero: require('../../assets/images/explore/hero-courtyard.png'),
@@ -166,6 +169,7 @@ function GuestProfile({ onLogin, topInset }: { onLogin: () => void; topInset: nu
 
 export default function ProfilePage() {
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const router = useRouter();
   const { user } = useUserStore();
   const { logout } = useAuth();
@@ -173,6 +177,10 @@ export default function ProfilePage() {
   const profileDigitalHuman = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE, {
     speakerId: 'profile-page',
   });
+  useFocusEffect(useCallback(() => {
+    profileDigitalHuman.activate();
+    return undefined;
+  }, [profileDigitalHuman.activate]));
   const { progress, guideProfile } = tourState;
 
   const completion = progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
@@ -190,6 +198,7 @@ export default function ProfilePage() {
   const profileSignature = getProfileSignature(interests, companionLabel);
 
   useEffect(() => {
+    if (!isFocused) return undefined;
     setDigitalHumanPageContext('profile');
     const timer = setTimeout(() => {
       speakWithDigitalHuman(
@@ -197,20 +206,18 @@ export default function ProfilePage() {
           ? '这里是你的导览档案。我会根据路线进度、偏好和反馈，调整接下来的陪伴方式。'
           : '登录后，我可以帮你保存导览档案、旅行记忆和游客反馈。',
         'neutral',
+        { replaceCurrent: true },
       );
     }, 700);
     return () => clearTimeout(timer);
-  }, [user]);
+  }, [isFocused, user]);
 
   const handleLogout = useCallback(() => {
-    Alert.alert('退出登录', '确定退出当前账号吗？', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '退出',
-        style: 'destructive',
-        onPress: () => logout(),
-      },
-    ]);
+    confirmLogout({
+      platform: Platform.OS,
+      alert: Alert.alert,
+      onConfirm: logout,
+    });
   }, [logout]);
 
   const handleFeedback = useCallback((option: typeof FEEDBACK_OPTIONS[number]) => {

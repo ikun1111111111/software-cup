@@ -128,6 +128,49 @@ describe('VRM speech sync', () => {
     VRMManager.off('resync', listener);
     VRMManager.stopSpeaking({ playQueued: false });
   });
+
+  test('keeps speech scoped to one driver when the active driver unmounts', () => {
+    const playedBy: string[] = [];
+    const makeListener = (speakerId: string) => (
+      { targetId }: { targetId?: string },
+    ) => {
+      if (targetId && targetId !== speakerId) return;
+      playedBy.push(speakerId);
+    };
+    const listenerA = makeListener('driver-a');
+    const listenerB = makeListener('driver-b');
+
+    VRMManager.on('speak', listenerA);
+    VRMManager.on('speak', listenerB);
+    VRMManager.registerSpeaker('driver-a');
+    VRMManager.registerSpeaker('driver-b');
+    VRMManager.unregisterSpeaker('driver-b');
+
+    VRMManager.speak('driver fallback test', 'neutral', 1200);
+
+    expect(playedBy).toEqual(['driver-a']);
+
+    VRMManager.off('speak', listenerA);
+    VRMManager.off('speak', listenerB);
+    VRMManager.unregisterSpeaker('driver-a');
+    VRMManager.stopSpeaking({ playQueued: false });
+  });
+
+  test('rejects late speech targeted at an inactive page driver', () => {
+    const listener = jest.fn();
+    VRMManager.on('speak', listener);
+    VRMManager.registerSpeaker('driver-a');
+    VRMManager.registerSpeaker('driver-b');
+
+    VRMManager.speak('stale page speech', 'neutral', 1200, undefined, undefined, 'driver-a');
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(VRMManager.getState().isSpeaking).toBe(false);
+
+    VRMManager.off('speak', listener);
+    VRMManager.unregisterSpeaker('driver-b');
+    VRMManager.unregisterSpeaker('driver-a');
+  });
 });
 
 describe('VRM TTS generation window', () => {

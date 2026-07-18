@@ -90,6 +90,32 @@ describe('VRM speech cleanup', () => {
     expect(source).toContain('const TTS_WEB_FALLBACK_MS = 12000;');
   });
 
+  test('invalidates pending TTS work when route navigation stops manager speech', () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../hooks/useVRMSync.ts'),
+      'utf8',
+    );
+    const stateChangeBody = source.match(
+      /const handleStateChange = \(vrmState: any\) => \{[\s\S]*?\n    \};/,
+    )?.[0] || '';
+
+    expect(stateChangeBody).toContain('disposeActiveSpeech({ resetRun: true });');
+  });
+
+  test('does not let an inactive page driver play a late targeted speech event', () => {
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../hooks/useVRMSync.ts'),
+      'utf8',
+    );
+    const speakHandlerBody = source.match(
+      /const handleSpeak = \(\{ text, emotion, targetId \}[\s\S]*?\n    \};/,
+    )?.[0] || '';
+
+    expect(speakHandlerBody).toContain(
+      'VRMManager.getActiveSpeakerId() !== speakerIdRef.current',
+    );
+  });
+
   test('uses the young female guide voice and a stable browser fallback', () => {
     const source = fs.readFileSync(
       path.resolve(__dirname, '../hooks/useVRMSync.ts'),
@@ -124,7 +150,7 @@ describe('VRM speech cleanup', () => {
     expect(source).toMatch(/isSpeaking: false,[\s\S]*?speechText: '',[\s\S]*?subtitle: ''/);
   });
 
-  test('shares one promise between TTS prefetch and audible playback', () => {
+  test('reuses a ready prefetch and streams when it is not ready', () => {
     const syncSource = fs.readFileSync(
       path.resolve(__dirname, '../hooks/useVRMSync.ts'),
       'utf8',
@@ -139,8 +165,9 @@ describe('VRM speech cleanup', () => {
     expect(syncSource).toContain('const getTTSResult = useCallback');
     expect(syncSource).toContain('const prefetchSpeech = useCallback');
     expect(syncSource).toContain('ttsCacheRef.current.getOrCreate(');
-    expect(syncSource).toMatch(/const ttsRequest = getTTSResult\(text, voiceId\);[\s\S]*?Promise\.race\(\[[\s\S]*?ttsRequest/);
-    expect(syncSource).toContain('ttsCacheRef.current.deleteIfSame(cacheKey, ttsRequest);');
+    expect(syncSource).toContain('ttsCacheRef.current.peek(cacheKey)');
+    expect(syncSource).toMatch(/prefetchedRequest[\s\S]*?Promise\.race\(\[[\s\S]*?TTS_PREFETCH_GRACE_MS/);
+    expect(syncSource).toContain('prepareTTSStream(text, voiceId)');
     expect(driverSource).toContain('prefetchSpeech');
   });
 });

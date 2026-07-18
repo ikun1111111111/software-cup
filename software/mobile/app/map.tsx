@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import Reanimated, { FadeInUp } from 'react-native-reanimated';
+import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -144,6 +145,7 @@ function MapGuideAvatar({
 export default function MapGuidePage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const { height: viewportHeight } = useWindowDimensions();
   const mapRef = useRef<AmapViewRef>(null);
   const spokenMapPromptRef = useRef<string | null>(null);
@@ -365,6 +367,7 @@ export default function MapGuidePage() {
   }, [setMapActionResult]);
 
   useEffect(() => {
+    if (!isFocused) return undefined;
     VRMManager.setPageContext('map');
     const promptKey = tourState.preferences.mode === 'tour' && tourTargetSpot
       ? `tour:${tourTargetSpot.id}`
@@ -374,16 +377,16 @@ export default function MapGuidePage() {
     spokenMapPromptRef.current = promptKey;
     const timer = setTimeout(() => {
       if (tourState.preferences.mode === 'tour' && tourTargetSpot) {
-        VRMManager.speak(
+        VRMManager.replaceSpeech(
           `我们现在前往${tourTargetSpot.name}，我会一路提示路线和讲解重点。`,
           'neutral',
         );
       } else {
-        VRMManager.speak('我是小灵。你可以点地图上的景点，我来讲给你听。', 'neutral');
+        VRMManager.replaceSpeech('我是小灵。你可以点地图上的景点，我来讲给你听。', 'neutral');
       }
     }, 900);
     return () => clearTimeout(timer);
-  }, [tourState.preferences.mode, tourTargetSpot?.id]);
+  }, [isFocused, tourState.preferences.mode, tourTargetSpot?.id]);
 
   useEffect(() => {
     if (IS_WEB) {

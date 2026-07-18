@@ -9,6 +9,7 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { setDigitalHumanPageContext, speakWithDigitalHuman } from '@/services/digitalHuman';
 import { SectionHeader } from '@/components/scenic/SectionHeader';
@@ -195,12 +196,17 @@ export default function MemoryPage() {
   const router = useRouter();
   const params = useLocalSearchParams<{ returnTo?: string; returnLabel?: string }>();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const scrollY = useSharedValue(0);
   const [tourState, tourActions] = useTour();
   const { spots } = useMapSpots();
   const memoryDigitalHuman = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE, {
     speakerId: 'memory-page',
   });
+  useFocusEffect(useCallback(() => {
+    memoryDigitalHuman.activate();
+    return undefined;
+  }, [memoryDigitalHuman.activate]));
   const returnTo = typeof params.returnTo === 'string' ? params.returnTo : undefined;
   const returnLabel = typeof params.returnLabel === 'string' ? params.returnLabel : '返回';
   const showContextBack = Boolean(returnTo);
@@ -306,17 +312,19 @@ export default function MemoryPage() {
   // ─── 打卡数据到达 → 自动弹出新建记忆 ───
   const checkinConsumedRef = useRef(false);
   useEffect(() => {
+    if (!isFocused) return undefined;
     if (checkinConsumedRef.current) return;
     if (!tourState.pendingCheckin) return;
     checkinConsumedRef.current = true;
     const t = setTimeout(() => {
       setShowCreateModal(true);
-      speakWithDigitalHuman(`打卡了${tourState.pendingCheckin!.spotName}，来写一段记忆吧`, 'happy');
+      speakWithDigitalHuman(`打卡了${tourState.pendingCheckin!.spotName}，来写一段记忆吧`, 'happy', { replaceCurrent: true });
     }, 600);
     return () => clearTimeout(t);
-  }, [tourState.pendingCheckin]);
+  }, [isFocused, tourState.pendingCheckin]);
 
   useEffect(() => {
+    if (!isFocused) return undefined;
     setDigitalHumanPageContext('memory');
     void flushMobileEvents();
     const timer = setTimeout(() => {
@@ -325,18 +333,20 @@ export default function MemoryPage() {
         speakWithDigitalHuman(
           `本次导览已完成${tourState.progress.completed}/${tourState.progress.total}个景点，${count > 0 ? `还记录了${count}条记忆` : '记得记录你的感受哦'}`,
           'happy',
+          { replaceCurrent: true },
         );
       } else if (count > 0) {
         speakWithDigitalHuman(
           `您已记录了${count}条旅行记忆`,
           'neutral',
+          { replaceCurrent: true },
         );
       } else {
-        speakWithDigitalHuman('开始记录您的灵山之旅吧', 'neutral');
+        speakWithDigitalHuman('开始记录您的灵山之旅吧', 'neutral', { replaceCurrent: true });
       }
     }, 1000);
     return () => clearTimeout(timer);
-  }, [memories.length, tourState.currentRoute, tourState.progress.completed, tourState.progress.total]);
+  }, [isFocused, memories.length, tourState.currentRoute, tourState.progress.completed, tourState.progress.total]);
 
   const handleGenerate = useCallback(async () => {
     setGenerating(true);

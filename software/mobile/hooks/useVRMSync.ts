@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import { Audio } from 'expo-av';
 import { VRMManager, type Emotion } from '../components/vrm/VRMManager';
 import type { Action } from '../components/vrm/VRMIdleAnim';
-import { fetchTTS, type TTSResult } from '../api/tts';
+import { fetchTTS, prepareTTSStream, type TTSResult } from '../api/tts';
 import { estimateSpeechDuration } from '../utils/digitalHumanDriver';
 import { getSubtitleCueForCharIndex, mapSpeechBoundariesToText, textToSubtitleCues, type SubtitleCue } from '../utils/textTimeline';
 import { primeWebAudioPlayback } from '../utils/webAudioUnlock';
@@ -58,6 +58,7 @@ const DEFAULT_BROWSER_RATE = 0.94;
 const DEFAULT_BROWSER_PITCH = 1.02;
 const TTS_TIMEOUT_MS = 12000;
 const TTS_WEB_FALLBACK_MS = 12000;
+const TTS_PREFETCH_GRACE_MS = 150;
 const MAX_TTS_CACHE = 20;
 
 function selectPreferredChineseVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
@@ -243,8 +244,10 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     if (!mountedRef.current) return;
     setState((prev) => ({
       ...prev,
+      isSpeaking: true,
       speechText: text,
       subtitle: initialSubtitle || text,
+      mouthOpen: 0,
     }));
   }, [prepareInitialSubtitle]);
 
@@ -467,22 +470,34 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
     try {
       const voiceId = voiceConfigRef.current?.ttsVoiceId ?? DEFAULT_TTS_VOICE_ID;
       const cacheKey = `${text}::${voiceId}`;
-      const ttsRequest = getTTSResult(text, voiceId);
-      let result: TTSResult;
-      try {
-        result = await Promise.race([
-          ttsRequest,
-          new Promise<never>((_, reject) => {
-            setTimeout(
-              () => reject(new Error('TTS timeout')),
-              Platform.OS === 'web' ? TTS_WEB_FALLBACK_MS : TTS_TIMEOUT_MS,
-            );
-          }),
-        ]);
-      } catch (error) {
-        ttsCacheRef.current.deleteIfSame(cacheKey, ttsRequest);
-        throw error;
-      }
+      const prefetchedRequest = ttsCacheRef.current.peek(cacheKey);
+      const sourceRequest = (async (): Promise<TTSResult> => {
+        if (prefetchedRequest) {
+          const prefetchedResult = await Promise.race([
+            prefetchedRequest.catch(() => null),
+            new Promise<null>((resolve) => {
+              setTimeout(() => resolve(null), TTS_PREFETCH_GRACE_MS);
+            }),
+          ]);
+          if (prefetchedResult) return prefetchedResult;
+        }
+
+        const streamSource = await prepareTTSStream(text, voiceId);
+        return {
+          ...streamSource,
+          phonemes: [],
+          durationMs: estimatedDuration,
+        };
+      })();
+      const result = await Promise.race([
+        sourceRequest,
+        new Promise<never>((_, reject) => {
+          setTimeout(
+            () => reject(new Error('TTS timeout')),
+            Platform.OS === 'web' ? TTS_WEB_FALLBACK_MS : TTS_TIMEOUT_MS,
+          );
+        }),
+      ]);
 
       if (speechRunIdRef.current !== runId) return;
       await ensureSpeechAudioMode();
@@ -591,18 +606,22 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
       scheduleVisualStop(actualDuration + 5000, runId);
     } catch (e) {
       if (speechRunIdRef.current !== runId) return;
-      console.warn('[useVRMSync] TTS failed, falling back:', e);
+      console.warn('[useVRMSync] Alibaba Cloud TTS failed; using local fallback:', e);
       if (Platform.OS === 'web' && typeof window !== 'undefined' && window.speechSynthesis) {
         playWithBrowserTTS(text, emotion);
       } else {
         triggerSpeakFallback(text, emotion);
       }
     }
-  }, [beginVisualSpeechForRun, clearMouthTimers, finishSpeechRun, getTTSResult, playWithBrowserTTS, reserveSpeechRun, scheduleSubtitleBoundarySync, scheduleVisualStop, syncSubtitleToSpeechBoundary, triggerSpeakFallback]);
+  }, [beginVisualSpeechForRun, clearMouthTimers, finishSpeechRun, playWithBrowserTTS, reserveSpeechRun, scheduleSubtitleBoundarySync, scheduleVisualStop, syncSubtitleToSpeechBoundary, triggerSpeakFallback]);
 
   useEffect(() => {
     const handleSpeak = ({ text, emotion, targetId }: { text: string; emotion: Emotion; targetId?: string }) => {
-      if (targetId && targetId !== speakerIdRef.current) return;
+      if (
+        !targetId
+        || targetId !== speakerIdRef.current
+        || VRMManager.getActiveSpeakerId() !== speakerIdRef.current
+      ) return;
 
       const estimatedDuration = estimateSpeechDuration(text);
       showPendingSpeechText(text, estimatedDuration);
@@ -610,15 +629,12 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
       if (mode === 'silent') {
         triggerSpeakFallback(text, emotion);
       } else if (mode === 'browser') {
-        playWithBrowserTTS(text, emotion);
+        // Legacy persisted browser mode is forced through Alibaba Cloud TTS.
+        playWithPhonemes(text, emotion);
       } else if (mode === 'tts') {
         playWithPhonemes(text, emotion);
       } else {
-        if (Platform.OS === 'web') {
-          playWithBrowserTTS(text, emotion);
-        } else {
-          playWithPhonemes(text, emotion);
-        }
+        playWithPhonemes(text, emotion);
       }
     };
 
@@ -631,7 +647,7 @@ export function useVRMSync(voiceMode: VoiceMode = 'silent', options: VRMSyncOpti
       if (!mountedRef.current) return;
       if (!vrmState.isSpeaking) {
         activeSpeechRef.current = false;
-        disposeActiveSpeech();
+        disposeActiveSpeech({ resetRun: true });
         setState((prev) => ({
           ...prev,
           isSpeaking: false,

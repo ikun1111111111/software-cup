@@ -4,7 +4,7 @@ import {
   KeyboardAvoidingView, Platform, ImageBackground,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import Animated, { FadeInUp, useSharedValue, useAnimatedStyle, withRepeat, withTiming } from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useChatStore, type Message } from '@/stores/chatStore';
@@ -187,6 +187,7 @@ export default function ChatPage() {
     routeId?: string;
   }>();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const flatListRef = useRef<FlatList>(null);
   const currentMsgIdRef = useRef('');
   const currentQuestionRef = useRef('');
@@ -208,8 +209,11 @@ export default function ChatPage() {
       .then(([modeRaw, configRaw]) => {
         if (modeRaw) {
           const m = modeRaw as VoiceMode;
-          if (m === 'silent' || m === 'browser' || m === 'tts') {
-            setVoiceMode(m);
+          if (m === 'silent') {
+            setVoiceMode('silent');
+          } else {
+            // Migrate legacy browser mode to Alibaba Cloud backend TTS.
+            setVoiceMode('tts');
           }
         }
         if (configRaw) {
@@ -257,6 +261,7 @@ export default function ChatPage() {
     playAction,
     setPageContext,
     prefetchSpeech,
+    activate,
   } = useDigitalHumanDriver(voiceMode, { voiceConfig });
 
   const {
@@ -310,9 +315,10 @@ export default function ChatPage() {
 
   useFocusEffect(
     useCallback(() => {
+      activate();
       if (shouldStartFresh || !returnTo) resetConversation();
       return undefined;
-    }, [resetConversation, returnTo, shouldStartFresh]),
+    }, [activate, resetConversation, returnTo, shouldStartFresh]),
   );
 
   const primeQuestionResponse = useCallback(() => {
@@ -522,6 +528,7 @@ export default function ChatPage() {
   });
 
   useEffect(() => {
+    if (!isFocused) return undefined;
     setPageContext('chat');
     void flushMobileEvents();
     const welcomeKey = [
@@ -533,10 +540,11 @@ export default function ChatPage() {
     if (spokenWelcomeKeyRef.current === welcomeKey) return;
     spokenWelcomeKeyRef.current = welcomeKey;
     const timer = setTimeout(() => {
-      speakWithDriver(getTourWelcomeText(tourState), 'neutral');
+      speakWithDriver(getTourWelcomeText(tourState), 'neutral', undefined, { interrupt: true });
     }, 600);
     return () => clearTimeout(timer);
   }, [
+    isFocused,
     returnTo,
     setPageContext,
     speakWithDriver,

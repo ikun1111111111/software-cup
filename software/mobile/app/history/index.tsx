@@ -4,6 +4,7 @@ import {
   LayoutAnimation, Platform, UIManager,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import Animated, { FadeInUp, FadeIn, FadeOut } from 'react-native-reanimated';
@@ -178,6 +179,7 @@ const FALLBACK_ERAS = Array.from(new Set(FALLBACK_EVENTS.map((event) => event.er
 export default function HistoryPage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const { avoidance } = useVRM();
   const historyDigitalHuman = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE, {
     speakerId: 'history-page',
@@ -213,12 +215,13 @@ export default function HistoryPage() {
   }, []);
 
   useEffect(() => {
+    if (!isFocused) return undefined;
     VRMManager.setPageContext('history');
     const timer = setTimeout(() => {
-      VRMManager.speak('让我们一起穿越千年时光，感受灵山的历史变迁', 'neutral');
+      VRMManager.replaceSpeech('让我们一起穿越千年时光，感受灵山的历史变迁', 'neutral');
     }, 1000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [isFocused]);
 
   // ─── 那年今日轮播 ───
   useEffect(() => {

@@ -13,6 +13,14 @@ describe('TTSPromiseCache', () => {
     expect(loader).toHaveBeenCalledTimes(1);
   });
 
+  test('exposes an existing prefetch without starting a new request', async () => {
+    const cache = new TTSPromiseCache<number>(2);
+    const request = cache.getOrCreate('hello', () => Promise.resolve(42));
+
+    expect(cache.peek('hello')).toBe(request);
+    expect(cache.peek('missing')).toBeUndefined();
+  });
+
   test('removes rejected requests so a later playback can retry', async () => {
     const cache = new TTSPromiseCache<number>(2);
     const loader = jest.fn()

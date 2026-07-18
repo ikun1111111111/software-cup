@@ -3,7 +3,7 @@ import asyncio
 import base64
 import sys
 import threading
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 from unittest.mock import patch, AsyncMock
@@ -80,44 +80,41 @@ class TestTTSStreaming:
     ):
         release_completion = threading.Event()
 
-        class FakeResultCallback:
-            pass
+        class FakeHttpSpeechSynthesizer:
+            @classmethod
+            def call(cls, **kwargs):
+                assert kwargs["stream"] is True
+                assert kwargs["audio_format"] == "mp3"
 
-        class FakeAudioFormat:
-            MP3_22050HZ_MONO_256KBPS = "mp3"
+                def chunks():
+                    yield SimpleNamespace(audio_url=None, audio_data=b"first")
+                    release_completion.wait(timeout=1)
+                    yield SimpleNamespace(audio_url=None, audio_data=b"second")
+                    yield SimpleNamespace(
+                        audio_url="https://example.test/full.mp3",
+                        audio_data=b"duplicate-full-audio",
+                    )
 
-        class FakeSpeechSynthesizer:
-            def __init__(self, *, callback=None, **_kwargs):
-                self.callback = callback
-
-            def call(self, _text, **_kwargs):
-                return None
-
-            def streaming_call(self, _text):
-                self.callback.on_data(b"first")
-
-            def streaming_complete(self, _timeout_millis):
-                release_completion.wait(timeout=1)
-                self.callback.on_data(b"second")
-                self.callback.on_complete()
-
-        async def empty_edge_stream(_text, _voice, _chunk_size, queue):
-            await queue.put(None)
+                return chunks()
 
         dashscope_module = ModuleType("dashscope")
         audio_module = ModuleType("dashscope.audio")
-        tts_v2_module = ModuleType("dashscope.audio.tts_v2")
-        tts_v2_module.AudioFormat = FakeAudioFormat
-        tts_v2_module.ResultCallback = FakeResultCallback
-        tts_v2_module.SpeechSynthesizer = FakeSpeechSynthesizer
+        http_tts_module = ModuleType("dashscope.audio.http_tts")
+        http_speech_module = ModuleType(
+            "dashscope.audio.http_tts.http_speech_synthesizer"
+        )
+        http_speech_module.HttpSpeechSynthesizer = FakeHttpSpeechSynthesizer
         monkeypatch.setitem(sys.modules, "dashscope", dashscope_module)
         monkeypatch.setitem(sys.modules, "dashscope.audio", audio_module)
-        monkeypatch.setitem(sys.modules, "dashscope.audio.tts_v2", tts_v2_module)
-        monkeypatch.setitem(sys.modules, "edge_tts", ModuleType("edge_tts"))
+        monkeypatch.setitem(sys.modules, "dashscope.audio.http_tts", http_tts_module)
+        monkeypatch.setitem(
+            sys.modules,
+            "dashscope.audio.http_tts.http_speech_synthesizer",
+            http_speech_module,
+        )
 
         with patch("app.core.tts.settings.qwen_api_key", "configured"), \
              patch("app.core.tts._get_cached", new_callable=AsyncMock, return_value=None), \
-             patch("app.core.tts._synthesize_edge_stream", new=empty_edge_stream), \
              patch("app.core.tts._set_cache", new_callable=AsyncMock) as mock_set_cache:
             stream = synthesize_stream("你好", "female", chunk_size=64)
             try:
@@ -135,6 +132,63 @@ class TestTTSStreaming:
             "done",
         ]
         mock_set_cache.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_synthesize_stream_drops_final_aggregate_audio_without_url(
+        self,
+        monkeypatch,
+    ):
+        class FakeHttpSpeechSynthesizer:
+            @classmethod
+            def call(cls, **kwargs):
+                assert kwargs["stream"] is True
+
+                def chunks():
+                    yield SimpleNamespace(audio_url=None, audio_data=b"first-")
+                    yield SimpleNamespace(audio_url=None, audio_data=b"second")
+                    # DashScope's HTTP SDK emits the full joined audio again
+                    # for the final stop event, even when no audio URL exists.
+                    yield SimpleNamespace(
+                        audio_url=None,
+                        audio_data=b"first-second",
+                    )
+
+                return chunks()
+
+        dashscope_module = ModuleType("dashscope")
+        audio_module = ModuleType("dashscope.audio")
+        http_tts_module = ModuleType("dashscope.audio.http_tts")
+        http_speech_module = ModuleType(
+            "dashscope.audio.http_tts.http_speech_synthesizer"
+        )
+        http_speech_module.HttpSpeechSynthesizer = FakeHttpSpeechSynthesizer
+        monkeypatch.setitem(sys.modules, "dashscope", dashscope_module)
+        monkeypatch.setitem(sys.modules, "dashscope.audio", audio_module)
+        monkeypatch.setitem(sys.modules, "dashscope.audio.http_tts", http_tts_module)
+        monkeypatch.setitem(
+            sys.modules,
+            "dashscope.audio.http_tts.http_speech_synthesizer",
+            http_speech_module,
+        )
+
+        with patch("app.core.tts.settings.qwen_api_key", "configured"), \
+             patch("app.core.tts._get_cached", new_callable=AsyncMock, return_value=None), \
+             patch("app.core.tts._set_cache", new_callable=AsyncMock):
+            events = [
+                event
+                async for event in synthesize_stream(
+                    "只播放一次",
+                    "female",
+                    chunk_size=64,
+                )
+            ]
+
+        audio = b"".join(
+            base64.b64decode(event["data"])
+            for event in events
+            if event["type"] == "audio"
+        )
+        assert audio == b"first-second"
 
     @pytest.mark.asyncio
     async def test_synthesize_stream_no_audio(self, monkeypatch):
@@ -158,5 +212,5 @@ class TestTTSStreaming:
             audio_chunks = [c for c in chunks if c["type"] == "audio"]
             assert len(audio_chunks) == 0
             assert any(c["type"] == "tts_error" for c in chunks)
-            assert any(c["type"] == "phonemes" for c in chunks)
+            assert not any(c["type"] == "phonemes" for c in chunks)
             assert any(c["type"] == "done" for c in chunks)

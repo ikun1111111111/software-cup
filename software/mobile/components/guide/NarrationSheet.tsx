@@ -390,6 +390,7 @@ export const NarrationSheet: React.FC<Props> = ({
             <View style={styles.digitalHumanGroundShadow} />
             <VRMView
               mode="float"
+              focusMode="component"
               expression={expression}
               mouthOpen={mouthOpen}
               speaking={isPlaying && isSpeaking}

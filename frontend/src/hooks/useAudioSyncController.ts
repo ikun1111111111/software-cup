@@ -78,7 +78,6 @@ export function useAudioSyncController(
   const abortRef = useRef<(() => void) | null>(null);
   const activeRef = useRef(false);
   const finalAnswerRef = useRef('');
-  const streamAudioReceivedRef = useRef(false);
 
   const stop = useCallback(() => {
     activeRef.current = false;
@@ -96,7 +95,6 @@ export function useAudioSyncController(
       stop();
       activeRef.current = true;
       finalAnswerRef.current = '';
-      streamAudioReceivedRef.current = false;
       setTopic(null);
       setCard(null);
       setError(null);
@@ -140,18 +138,14 @@ export function useAudioSyncController(
               case 'tts_audio': {
                 const data = msg.data?.data;
                 if (typeof data === 'string' && data) {
-                  streamAudioReceivedRef.current = true;
                   guide.appendAudioChunk(data);
                 }
                 break;
               }
               case 'tts_error': {
-                const errMsg = msg.data?.error || '语音合成暂不可用，已切换浏览器语音';
+                const errMsg = msg.data?.error || '阿里云语音合成暂不可用，请查看文字回答';
                 console.warn('[chat_stream] tts_error', errMsg);
                 options.onTtsError?.(errMsg);
-                if (!streamAudioReceivedRef.current && finalAnswerRef.current.trim()) {
-                  void guide.speak(finalAnswerRef.current);
-                }
                 break;
               }
               case 'tts_phonemes': {

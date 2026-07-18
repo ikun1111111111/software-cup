@@ -1,6 +1,7 @@
 import { Stack, usePathname, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { enableFreeze } from 'react-native-screens';
 import { InteractionManager, Platform } from 'react-native';
 import * as Font from 'expo-font';
 import { SplashScreen } from 'expo-router';
@@ -16,6 +17,8 @@ import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 
 const ProactiveStrategyEngine = lazy(() => import('@/components/guide/ProactiveStrategyEngine'));
 const ROOT_DEFERRED_ENGINE_DELAY_MS = 2500;
+
+enableFreeze(true);
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();

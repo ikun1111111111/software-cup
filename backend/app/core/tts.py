@@ -1,7 +1,7 @@
-"""TTS (Text-to-Speech) with Redis caching.
+"""Alibaba Cloud DashScope CosyVoice TTS with Redis caching.
 
-Supports Azure Speech Services (official, requires key) and edge-tts (free).
-Provides text-to-audio synthesis with phoneme timestamps for lip-sync.
+This module intentionally has a single audio provider.  Falling back to a
+second provider makes the browser play different voices for the same answer.
 """
 import asyncio
 import logging
@@ -16,7 +16,6 @@ from app.core.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
-logger.warning("[tts] qwen_api_key configured: %s", bool(settings.qwen_api_key))
 
 _MEMORY_TTS_CACHE: dict[str, "TTSResult"] = {}
 _MEMORY_TTS_CACHE_LIMIT = 128
@@ -284,7 +283,8 @@ def _resolve_voice(voice_id: str | None) -> str:
 
 def _cache_key(text: str, voice_id: str | None) -> str:
     """Generate Redis cache key for TTS."""
-    key_data = f"{voice_id or 'default'}:{text}"
+    # Version the namespace so legacy edge/Azure audio can never be replayed.
+    key_data = f"dashscope-cosyvoice-v2:{voice_id or 'mandarin'}:{text}"
     return f"tts:{hashlib.md5(key_data.encode('utf-8')).hexdigest()}"
 
 
@@ -474,23 +474,37 @@ async def _synthesize_dashscope(text: str, voice_id: str | None) -> TTSResult:
     """Synthesize text using DashScope CosyVoice v3.
 
     Returns an empty result when the provider is unavailable so callers can
-    continue through the Azure and Edge TTS fallbacks.
+    report that cloud audio is temporarily unavailable.
     """
     speaker = _resolve_cosyvoice_speaker(voice_id)
     if not settings.qwen_api_key or not speaker:
         return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
 
     def _call() -> bytes:
-        import dashscope
-        from dashscope.audio.tts_v2 import AudioFormat, SpeechSynthesizer
-
-        dashscope.api_key = settings.qwen_api_key
-        synthesizer = SpeechSynthesizer(
-            model=settings.cosyvoice_model,
-            voice=speaker,
-            format=AudioFormat.MP3_22050HZ_MONO_256KBPS,
+        import httpx
+        from dashscope.audio.http_tts.http_speech_synthesizer import (
+            HttpSpeechSynthesizer,
         )
-        return synthesizer.call(text, timeout_millis=30_000) or b""
+
+        result = HttpSpeechSynthesizer.call(
+            model=settings.cosyvoice_model,
+            text=text,
+            voice=speaker,
+            audio_format="mp3",
+            sample_rate=24000,
+            stream=False,
+            api_key=settings.qwen_api_key,
+        )
+        audio_data = getattr(result, "audio_data", None)
+        if audio_data:
+            return bytes(audio_data)
+
+        audio_url = getattr(result, "audio_url", None)
+        if not audio_url:
+            return b""
+        response = httpx.get(audio_url, timeout=30.0, follow_redirects=True)
+        response.raise_for_status()
+        return response.content
 
     started_at = time.time()
     try:
@@ -537,7 +551,7 @@ async def _synthesize_dashscope_stream(
     voice_id: str | None,
     queue: asyncio.Queue,
 ) -> None:
-    """Stream CosyVoice audio callbacks into an asyncio queue."""
+    """Stream CosyVoice HTTP audio chunks into an asyncio queue."""
     speaker = _resolve_cosyvoice_speaker(voice_id)
     if not settings.qwen_api_key or not speaker:
         await queue.put(None)
@@ -553,44 +567,37 @@ async def _synthesize_dashscope_stream(
             pass
 
     def _call() -> None:
-        import dashscope
-        from dashscope.audio.tts_v2 import (
-            AudioFormat,
-            ResultCallback,
-            SpeechSynthesizer,
+        from dashscope.audio.http_tts.http_speech_synthesizer import (
+            HttpSpeechSynthesizer,
         )
 
-        dashscope.api_key = settings.qwen_api_key
-
-        class Callback(ResultCallback):
-            def on_open(self) -> None:
-                pass
-
-            def on_event(self, _message: str) -> None:
-                pass
-
-            def on_complete(self) -> None:
-                pass
-
-            def on_data(self, data: bytes) -> None:
-                if data:
-                    enqueue({"type": "audio", "data": data})
-
-            def on_error(self, message: str) -> None:
-                error_message = str(message).replace(settings.qwen_api_key, "***")
-                enqueue({"type": "error", "error": RuntimeError(error_message)})
-
-            def on_close(self) -> None:
-                pass
-
-        synthesizer = SpeechSynthesizer(
+        stream_result = HttpSpeechSynthesizer.call(
             model=settings.cosyvoice_model,
+            text=text,
             voice=speaker,
-            format=AudioFormat.MP3_22050HZ_MONO_256KBPS,
-            callback=Callback(),
+            audio_format="mp3",
+            sample_rate=24000,
+            stream=True,
+            api_key=settings.qwen_api_key,
         )
-        synthesizer.streaming_call(text)
-        synthesizer.streaming_complete(30_000)
+        emitted_audio = bytearray()
+        for chunk in stream_result:
+            # The SDK's final stop item repeats all earlier audio_data joined
+            # together. audio_url is optional, so detect the aggregate bytes
+            # as well instead of relying on the URL alone.
+            if getattr(chunk, "audio_url", None):
+                continue
+            audio_data = getattr(chunk, "audio_data", None)
+            if audio_data:
+                audio_bytes = bytes(audio_data)
+                if (
+                    emitted_audio
+                    and len(audio_bytes) == len(emitted_audio)
+                    and audio_bytes == bytes(emitted_audio)
+                ):
+                    continue
+                emitted_audio.extend(audio_bytes)
+                enqueue({"type": "audio", "data": audio_bytes})
 
     try:
         await asyncio.to_thread(_call)
@@ -643,7 +650,7 @@ def _synthesize_azure(text: str, voice_name: str) -> TTSResult:
 
 
 async def synthesize(text: str, voice_id: str | None = None) -> TTSResult:
-    """Synthesize text using CosyVoice, Azure, then Edge TTS.
+    """Synthesize text using Alibaba Cloud DashScope CosyVoice only.
 
     Args:
         text: Text to synthesize.
@@ -655,59 +662,10 @@ async def synthesize(text: str, voice_id: str | None = None) -> TTSResult:
     if not text or not text.strip():
         return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
 
-    if settings.qwen_api_key:
-        cosyvoice_result = await _synthesize_dashscope(text, voice_id)
-        if cosyvoice_result.audio_bytes:
-            return cosyvoice_result
-        logger.info("CosyVoice returned empty audio, falling back to other providers")
-
-    # Try Azure next if configured
-    voice_name = _resolve_voice(voice_id)
-    if settings.azure_speech_key and settings.azure_speech_region:
-        azure_result = _synthesize_azure(text, voice_name)
-        if azure_result.audio_bytes:
-            return azure_result
-        logger.info("Azure TTS returned empty audio, falling back to edge-tts")
-
-    try:
-        audio_bytes, raw_phonemes = await _synthesize_edge_with_retry(text, voice_name)
-
-        # Use real word boundaries if available, otherwise generate approximate ones
-        if raw_phonemes:
-            phonemes = _normalize_phonemes(raw_phonemes)
-        else:
-            duration_ms = _estimate_mp3_duration(audio_bytes)
-            phonemes = _generate_phoneme_timestamps(text, duration_ms)
-
-        duration_ms = _estimate_mp3_duration(audio_bytes)
-
-        logger.info("TTS synthesized: %d bytes, %dms, %d phonemes",
-                     len(audio_bytes), duration_ms, len(phonemes))
-
-        return TTSResult(
-            audio_bytes=audio_bytes,
-            phoneme_timestamps=phonemes,
-            duration_ms=duration_ms,
-        )
-
-    except ImportError:
-        logger.error("edge-tts not installed. Run: pip install edge-tts")
-        duration_ms = len(text) * 250
-        phonemes = _generate_phoneme_timestamps(text, duration_ms)
-        return TTSResult(
-            audio_bytes=b"",
-            phoneme_timestamps=phonemes,
-            duration_ms=duration_ms,
-        )
-    except Exception as e:
-        logger.error("TTS synthesis failed: %s", e)
-        duration_ms = len(text) * 250
-        phonemes = _generate_phoneme_timestamps(text, duration_ms)
-        return TTSResult(
-            audio_bytes=b"",
-            phoneme_timestamps=phonemes,
-            duration_ms=duration_ms,
-        )
+    if not settings.qwen_api_key:
+        logger.error("Alibaba Cloud QWEN_API_KEY is not configured")
+        return TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
+    return await _synthesize_dashscope(text, voice_id)
 
 
 async def synthesize_cached(text: str, voice_id: str | None = None) -> TTSResult:
@@ -834,34 +792,21 @@ async def synthesize_stream(
             yield {"type": "done", "duration_ms": result.duration_ms}
             return
 
-        logger.info(
-            "[tts] CosyVoice stream produced no audio, falling back: %s",
+        logger.error(
+            "[tts] CosyVoice stream produced no audio: %s",
             cosyvoice_error or "empty response",
         )
 
-    voice = _resolve_voice(voice_id)
-    if settings.azure_speech_key and settings.azure_speech_region:
-        azure_result = await asyncio.to_thread(_synthesize_azure, text, voice)
-        if azure_result.audio_bytes:
-            for i in range(0, len(azure_result.audio_bytes), chunk_size):
-                chunk = azure_result.audio_bytes[i:i + chunk_size]
-                yield {
-                    "type": "audio",
-                    "data": base64.b64encode(chunk).decode("utf-8"),
-                }
-            await _set_cache(text, voice_id, azure_result)
-            yield {"type": "phonemes", "data": azure_result.phoneme_timestamps}
-            yield {"type": "done", "duration_ms": azure_result.duration_ms}
-            return
-        logger.info("[tts] Azure stream fallback returned empty audio")
-
-    try:
-        import edge_tts  # noqa: F401
-    except ImportError as exc:
-        logger.error("[tts] edge-tts not installed: %s", exc)
-        for event in _fallback_stream_events(text, exc):
-            yield event
+    if not settings.qwen_api_key:
+        yield {"type": "tts_error", "error": "Alibaba Cloud QWEN_API_KEY is not configured"}
+        yield {"type": "done", "duration_ms": 0, "audio_unavailable": True}
         return
+
+    # No Azure/edge-tts fallback: a failed Alibaba request must not produce a
+    # second voice in the browser.
+    yield {"type": "tts_error", "error": "Alibaba Cloud CosyVoice synthesis failed"}
+    yield {"type": "done", "duration_ms": 0, "audio_unavailable": True}
+    return
 
     audio_chunks: list[bytes] = []
     raw_phonemes: list[dict] = []

@@ -12,6 +12,10 @@ import { normalizeDemoAction, VRMDemoActionPlayer } from './vrmDemoActionPlayer'
 import { getCostume } from '@/constants/costumeMap';
 import type { VRMStageFraming, VRMStageMode } from './VRMStageTypes';
 import { normalizeVRMRoutePath } from './vrmRouteVisibility';
+import {
+  resolveVRMViewActivity,
+  type VRMViewFocusMode,
+} from './vrmViewActivity';
 
 // Web 端使用标准 WebGL canvas，因为 expo-gl 的 GLView 在 Web 端不工作
 const IS_WEB = Platform.OS === 'web';
@@ -24,41 +28,6 @@ function getRendererPixelRatio(rawPixelRatio: number, mode: VRMStageMode): numbe
   const maxPixelRatio = mode === 'float' ? MAX_FLOAT_PIXEL_RATIO : MAX_FULL_PIXEL_RATIO;
   const pixelRatio = rawPixelRatio || 1;
   return Math.max(minPixelRatio, Math.min(pixelRatio, maxPixelRatio));
-}
-
-function hasVisibleWebGLPixels(renderer: THREE.WebGLRenderer): boolean {
-  try {
-    const gl = renderer.getContext();
-    const width = gl.drawingBufferWidth;
-    const height = gl.drawingBufferHeight;
-    if (width <= 0 || height <= 0) return false;
-
-    const pixel = new Uint8Array(4);
-    const samples = [
-      [0.5, 0.5],
-      [0.5, 0.36],
-      [0.5, 0.64],
-      [0.36, 0.5],
-      [0.64, 0.5],
-      [0.42, 0.42],
-      [0.58, 0.42],
-      [0.42, 0.68],
-      [0.58, 0.68],
-    ];
-
-    for (const [xRatio, yRatio] of samples) {
-      const x = Math.max(0, Math.min(width - 1, Math.floor(width * xRatio)));
-      const y = Math.max(0, Math.min(height - 1, Math.floor(height * yRatio)));
-      gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
-      if (pixel[3] > 8 && (pixel[0] > 8 || pixel[1] > 8 || pixel[2] > 8)) {
-        return true;
-      }
-    }
-  } catch {
-    return false;
-  }
-
-  return false;
 }
 
 function isVRMAttachedToScene(scene: THREE.Scene): boolean {
@@ -176,6 +145,7 @@ export interface VRMViewHandles {
 
 interface VRMViewProps {
   mode: VRMStageMode;
+  focusMode?: VRMViewFocusMode;
   expression?: Emotion;
   mouthOpen?: number;
   lookAt?: { x: number; y: number };
@@ -211,6 +181,7 @@ type ManualReloadPayload = {
  */
 function VRMViewWeb({
   mode = 'float',
+  focusMode = 'route',
   expression = 'neutral',
   mouthOpen = 0,
   lookAt = { x: 0, y: 0 },
@@ -227,12 +198,18 @@ function VRMViewWeb({
   const [modelReady, setModelReady] = useState(false);
   const pathname = usePathname();
   const screenFocused = useIsFocused();
+  const viewActive = resolveVRMViewActivity({
+    focusMode,
+    mounted: true,
+    screenFocused,
+  });
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rafRef = useRef<number | null>(null);
+  const renderFrameRef = useRef<((time: number) => void) | null>(null);
   const clockRef = useRef(new THREE.Clock());
   const expressionRef = useRef(expression);
   const mouthOpenRef = useRef(mouthOpen);
@@ -244,7 +221,8 @@ function VRMViewWeb({
   const actionStartRef = useRef(0);
   const prevActionRef = useRef<Action>('none');
   const headRotationRef = useRef(headRotation);
-  const isFocusedRef = useRef(screenFocused);
+  const isActiveRef = useRef(viewActive);
+  isActiveRef.current = viewActive;
   const lastFrameRef = useRef(0);
   const sizeRef = useRef({ width: 0, height: 0 });
   const routePathRef = useRef(normalizeVRMRoutePath(pathname));
@@ -264,6 +242,19 @@ function VRMViewWeb({
     modelReadyRef.current = ready;
     setModelReady(ready);
     onReadyChangeRef.current?.(ready);
+  }, []);
+
+  const pauseRenderLoop = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, []);
+
+  const resumeRenderLoop = useCallback(() => {
+    if (!isActiveRef.current || rafRef.current !== null || !renderFrameRef.current) return;
+    clockRef.current.getDelta();
+    rafRef.current = requestAnimationFrame(renderFrameRef.current);
   }, []);
 
   useEffect(() => { expressionRef.current = expression; }, [expression]);
@@ -372,7 +363,7 @@ function VRMViewWeb({
     }
 
     try {
-      const attached = await loadAndAttachVRM(scene, camera, mode, costumeIdRef.current, framing, false, () => isFocusedRef.current);
+      const attached = await loadAndAttachVRM(scene, camera, mode, costumeIdRef.current, framing, false, () => isActiveRef.current);
       if (attached) {
         modelLoadedRef.current = true;
         renderErrorWarnedRef.current = false;
@@ -386,8 +377,8 @@ function VRMViewWeb({
           const liveScene = sceneRef.current;
           const liveCamera = cameraRef.current;
           if (!liveScene || !liveCamera) return;
-          if (!isFocusedRef.current) return;
-          loadAndAttachVRM(liveScene, liveCamera, mode, costumeIdRef.current, framing, false, () => isFocusedRef.current)
+          if (!isActiveRef.current) return;
+          loadAndAttachVRM(liveScene, liveCamera, mode, costumeIdRef.current, framing, false, () => isActiveRef.current)
             .then((attached) => {
               if (!attached) return;
               modelLoadedRef.current = attached;
@@ -411,8 +402,8 @@ function VRMViewWeb({
     }
 
     const animate = (time: number) => {
-      if (!isFocusedRef.current) {
-        rafRef.current = requestAnimationFrame(animate);
+      rafRef.current = null;
+      if (!isActiveRef.current) {
         return;
       }
 
@@ -460,15 +451,11 @@ function VRMViewWeb({
 
       try {
         renderer.render(scene, camera);
-        if (modelReadyRef.current && isVRMAttachedToScene(scene)) {
-          // readPixels forces a GPU sync, so only use it until the first visible frame.
-        } else {
-          const hasVisibleFrame = modelLoadedRef.current && hasVisibleWebGLPixels(renderer);
-          if (hasVisibleFrame) {
-            setRenderReady(true);
-          } else if (modelReadyRef.current) {
-            setRenderReady(false);
-          }
+        const shouldRevealModel = modelLoadedRef.current && isVRMAttachedToScene(scene);
+        if (shouldRevealModel && !modelReadyRef.current) {
+          setRenderReady(true);
+        } else if (!shouldRevealModel && modelReadyRef.current) {
+          setRenderReady(false);
         }
       } catch (e) {
         if (!renderErrorWarnedRef.current) {
@@ -481,9 +468,10 @@ function VRMViewWeb({
       rafRef.current = requestAnimationFrame(animate);
     };
 
+    renderFrameRef.current = animate;
     clockRef.current.start();
-    rafRef.current = requestAnimationFrame(animate);
-  }, [mode, setRenderReady]);
+    resumeRenderLoop();
+  }, [mode, resumeRenderLoop, setRenderReady]);
 
   // 测量容器尺寸后初始化 WebGL
   const onLayout = useCallback((e: LayoutChangeEvent) => {
@@ -498,7 +486,7 @@ function VRMViewWeb({
     const scene = sceneRef.current;
     const camera = cameraRef.current;
     if (!scene || !camera) return;
-    if (!isFocusedRef.current) return;
+    if (!isActiveRef.current) return;
 
     const modelFile = getModelFileForCostume(costumeIdRef.current);
     if (payload?.modelFile && payload.modelFile !== modelFile) return;
@@ -510,7 +498,7 @@ function VRMViewWeb({
     clearSceneModels(scene);
 
     try {
-      const attached = await loadAndAttachVRM(scene, camera, mode, costumeIdRef.current, framing, forceReload, () => isFocusedRef.current);
+      const attached = await loadAndAttachVRM(scene, camera, mode, costumeIdRef.current, framing, forceReload, () => isActiveRef.current);
       if (!attached) return;
       modelLoadedRef.current = attached;
     } catch (error) {
@@ -536,28 +524,28 @@ function VRMViewWeb({
   }, [reloadCurrentModel]);
 
   useEffect(() => {
-    isFocusedRef.current = screenFocused;
+    if (!viewActive) {
+      pauseRenderLoop();
+      setRenderReady(false);
+      return;
+    }
+    resumeRenderLoop();
     if (
-      screenFocused
-      && initializedRef.current
+      initializedRef.current
       && sceneRef.current
       && cameraRef.current
       && (!modelLoadedRef.current || !isVRMAttachedToScene(sceneRef.current))
     ) {
       void reloadCurrentModel(undefined, false);
     }
-    return () => {
-      isFocusedRef.current = false;
-    };
-  }, [reloadCurrentModel, screenFocused]);
+  }, [pauseRenderLoop, reloadCurrentModel, resumeRenderLoop, setRenderReady, viewActive]);
 
   // 清理
   useEffect(() => {
     return () => {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
+      isActiveRef.current = false;
+      pauseRenderLoop();
+      renderFrameRef.current = null;
       if (rendererRef.current) {
         rendererRef.current.dispose();
         rendererRef.current.forceContextLoss();
@@ -566,7 +554,7 @@ function VRMViewWeb({
         containerRef.current.innerHTML = '';
       }
     };
-  }, []);
+  }, [pauseRenderLoop]);
 
   return (
     <View
@@ -600,6 +588,7 @@ function VRMViewWeb({
  */
 function VRMViewNative({
   mode = 'float',
+  focusMode = 'route',
   expression = 'neutral',
   mouthOpen = 0,
   lookAt = { x: 0, y: 0 },
@@ -616,12 +605,18 @@ function VRMViewNative({
   const [modelReady, setModelReady] = useState(false);
   const pathname = usePathname();
   const screenFocused = useIsFocused();
+  const viewActive = resolveVRMViewActivity({
+    focusMode,
+    mounted: true,
+    screenFocused,
+  });
   const [size, setSize] = useState({ width: 0, height: 0 });
   const sizeRef = useRef({ width: 0, height: 0 });
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rafRef = useRef<number | null>(null);
+  const renderFrameRef = useRef<((time: number) => void) | null>(null);
   const clockRef = useRef(new THREE.Clock());
   const expressionRef = useRef(expression);
   const mouthOpenRef = useRef(mouthOpen);
@@ -633,7 +628,8 @@ function VRMViewNative({
   const actionStartRef = useRef(0);
   const prevActionRef = useRef<Action>('none');
   const headRotationRef = useRef(headRotation);
-  const isFocusedRef = useRef(screenFocused);
+  const isActiveRef = useRef(viewActive);
+  isActiveRef.current = viewActive;
   const lastFrameRef = useRef(0);
   const modelLoadedRef = useRef(false);
   const routePathRef = useRef(normalizeVRMRoutePath(pathname));
@@ -648,6 +644,19 @@ function VRMViewNative({
   const setNativeRenderReady = useCallback((ready: boolean) => {
     setModelReady(ready);
     onReadyChangeRef.current?.(ready);
+  }, []);
+
+  const pauseRenderLoop = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, []);
+
+  const resumeRenderLoop = useCallback(() => {
+    if (!isActiveRef.current || rafRef.current !== null || !renderFrameRef.current) return;
+    clockRef.current.getDelta();
+    rafRef.current = requestAnimationFrame(renderFrameRef.current);
   }, []);
 
   useEffect(() => { expressionRef.current = expression; }, [expression]);
@@ -745,7 +754,7 @@ function VRMViewNative({
     }
 
     try {
-      const attached = await loadAndAttachVRM(scene, camera, mode, costumeIdRef.current, framing, false, () => isFocusedRef.current);
+      const attached = await loadAndAttachVRM(scene, camera, mode, costumeIdRef.current, framing, false, () => isActiveRef.current);
       if (attached) {
         modelLoadedRef.current = true;
         setNativeRenderReady(true);
@@ -759,8 +768,8 @@ function VRMViewNative({
           const liveScene = sceneRef.current;
           const liveCamera = cameraRef.current;
           if (!liveScene || !liveCamera) return;
-          if (!isFocusedRef.current) return;
-          loadAndAttachVRM(liveScene, liveCamera, mode, costumeIdRef.current, framing, false, () => isFocusedRef.current)
+          if (!isActiveRef.current) return;
+          loadAndAttachVRM(liveScene, liveCamera, mode, costumeIdRef.current, framing, false, () => isActiveRef.current)
             .then((attached) => {
               if (!attached) return;
               modelLoadedRef.current = attached;
@@ -784,8 +793,8 @@ function VRMViewNative({
     }
 
     const animate = (time: number) => {
-      if (!isFocusedRef.current) {
-        rafRef.current = requestAnimationFrame(animate);
+      rafRef.current = null;
+      if (!isActiveRef.current) {
         return;
       }
 
@@ -841,15 +850,16 @@ function VRMViewNative({
       rafRef.current = requestAnimationFrame(animate);
     };
 
+    renderFrameRef.current = animate;
     clockRef.current.start();
-    rafRef.current = requestAnimationFrame(animate);
-  }, [framing, mode, setNativeRenderReady]);
+    resumeRenderLoop();
+  }, [framing, mode, resumeRenderLoop, setNativeRenderReady]);
 
   const reloadCurrentModel = useCallback(async (payload?: ManualReloadPayload, forceReload = true) => {
     const scene = sceneRef.current;
     const camera = cameraRef.current;
     if (!scene || !camera) return;
-    if (!isFocusedRef.current) return;
+    if (!isActiveRef.current) return;
 
     const modelFile = getModelFileForCostume(costumeIdRef.current);
     if (payload?.modelFile && payload.modelFile !== modelFile) return;
@@ -859,7 +869,7 @@ function VRMViewNative({
     clearSceneModels(scene);
 
     try {
-      const attached = await loadAndAttachVRM(scene, camera, mode, costumeIdRef.current, framing, forceReload, () => isFocusedRef.current);
+      const attached = await loadAndAttachVRM(scene, camera, mode, costumeIdRef.current, framing, forceReload, () => isActiveRef.current);
       if (!attached) return;
       modelLoadedRef.current = attached;
       setNativeRenderReady(true);
@@ -886,27 +896,26 @@ function VRMViewNative({
   }, [reloadCurrentModel]);
 
   useEffect(() => {
-    isFocusedRef.current = screenFocused;
+    if (!viewActive) {
+      pauseRenderLoop();
+      return;
+    }
+    resumeRenderLoop();
     if (
-      screenFocused
-      && initializedRef.current
+      initializedRef.current
       && sceneRef.current
       && cameraRef.current
       && (!modelLoadedRef.current || !isVRMAttachedToScene(sceneRef.current))
     ) {
       void reloadCurrentModel(undefined, false);
     }
-    return () => {
-      isFocusedRef.current = false;
-    };
-  }, [reloadCurrentModel, screenFocused]);
+  }, [pauseRenderLoop, reloadCurrentModel, resumeRenderLoop, viewActive]);
 
   useEffect(() => {
     return () => {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
+      isActiveRef.current = false;
+      pauseRenderLoop();
+      renderFrameRef.current = null;
       const renderer = rendererRef.current;
       if (renderer) {
         renderer.dispose();
@@ -916,7 +925,7 @@ function VRMViewNative({
         if (ext) ext.loseContext();
       }
     };
-  }, []);
+  }, [pauseRenderLoop]);
 
   if (size.width === 0 || size.height === 0) {
     return (

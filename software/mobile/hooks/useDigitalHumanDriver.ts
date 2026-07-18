@@ -90,12 +90,10 @@ export function useDigitalHumanDriver(
 
   useEffect(() => {
     const id = speakerIdRef.current;
-    VRMManager.setActiveSpeakerId(id);
+    VRMManager.registerSpeaker(id);
     return () => {
-      // 只有当前活动 speaker 是自己时才清空，避免后 mount 的组件误清前者的状态
-      if (VRMManager.getActiveSpeakerId?.() === id) {
-        VRMManager.setActiveSpeakerId(null);
-      }
+      // 当前 driver 离开时恢复最近仍挂载的 speaker。
+      VRMManager.unregisterSpeaker(id);
     };
   }, []);
 

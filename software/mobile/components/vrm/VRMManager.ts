@@ -60,6 +60,7 @@ class VRMManagerClass {
   private listeners: Map<string, Set<Listener>> = new Map();
   private pendingSpeech: SpeechRequest | null = null;
   private activeSpeakerId: string | null = null;
+  private speakerOrder: string[] = [];
 
   // VRM 3D model management
   private vrm: VRM | null = null;
@@ -87,6 +88,14 @@ class VRMManagerClass {
     return { ...this.state };
   }
 
+  private resolveSpeakerId(targetId?: string): string | undefined {
+    const activeSpeakerId = this.activeSpeakerId
+      ?? this.speakerOrder[this.speakerOrder.length - 1]
+      ?? undefined;
+    if (targetId && activeSpeakerId && targetId !== activeSpeakerId) return undefined;
+    return targetId ?? activeSpeakerId;
+  }
+
   speak(
     text: string,
     emotion: Emotion = 'neutral',
@@ -95,13 +104,15 @@ class VRMManagerClass {
     actionDuration?: number,
     targetId?: string,
   ): void {
+    const resolvedTargetId = this.resolveSpeakerId(targetId);
+    if (targetId && !resolvedTargetId) return;
     const request: SpeechRequest = {
       text,
       emotion,
       duration: duration || estimateSpeechDuration(text),
       action,
       actionDuration,
-      targetId: targetId ?? this.activeSpeakerId ?? undefined,
+      targetId: resolvedTargetId,
     };
 
     if (this.state.isSpeaking) {
@@ -120,13 +131,15 @@ class VRMManagerClass {
     actionDuration?: number,
     targetId?: string,
   ): void {
+    const resolvedTargetId = this.resolveSpeakerId(targetId);
+    if (targetId && !resolvedTargetId) return;
     const request: SpeechRequest = {
       text,
       emotion,
       duration: duration || estimateSpeechDuration(text),
       action,
       actionDuration,
-      targetId: targetId ?? this.activeSpeakerId ?? undefined,
+      targetId: resolvedTargetId,
     };
 
     this.stopSpeaking({ playQueued: false });
@@ -137,7 +150,24 @@ class VRMManagerClass {
     return this.activeSpeakerId;
   }
 
+  registerSpeaker(speakerId: string): void {
+    if (!speakerId) return;
+    this.setActiveSpeakerId(speakerId);
+  }
+
+  unregisterSpeaker(speakerId: string): void {
+    this.speakerOrder = this.speakerOrder.filter((id) => id !== speakerId);
+    if (this.activeSpeakerId !== speakerId) return;
+
+    this.activeSpeakerId = this.speakerOrder[this.speakerOrder.length - 1] ?? null;
+    this.stopSpeaking({ playQueued: false });
+  }
+
   setActiveSpeakerId(speakerId: string | null): void {
+    if (speakerId) {
+      this.speakerOrder = this.speakerOrder.filter((id) => id !== speakerId);
+      this.speakerOrder.push(speakerId);
+    }
     if (this.activeSpeakerId === speakerId) return;
     this.activeSpeakerId = speakerId;
     // 切换/离开活动 speaker 时立即清掉当前语音，防止跳转页面后语音继续播放
@@ -172,9 +202,11 @@ class VRMManagerClass {
   /** 用实际音频时长重新同步表情/动作时间轴（tts 模式音频就绪后调用） */
   resyncTimeline(durationMs: number, targetId?: string): void {
     if (!this.state.isSpeaking) return;
+    const resolvedTargetId = this.resolveSpeakerId(targetId);
+    if (targetId && !resolvedTargetId) return;
     this.emit('resync', {
       durationMs,
-      targetId: targetId ?? this.activeSpeakerId ?? undefined,
+      targetId: resolvedTargetId,
     });
   }
 
@@ -372,37 +404,47 @@ class VRMManagerClass {
     const cachePath = this.cacheDir + modelFile;
     const cacheInfo = await FileSystem.getInfoAsync(cachePath);
 
-    let fileUri: string;
     if (cacheInfo.exists) {
-      // 命中本地缓存
-      fileUri = cachePath;
-    } else {
-      // 从 assets 下载并写入缓存
-      let asset;
       try {
-        const vrmModule = this.getVRMModule(modelFile);
-        asset = Asset.fromModule(vrmModule);
-        await asset.downloadAsync();
-      } catch (error) {
-        console.warn('VRM model not found, using fallback. Error:', error);
-        throw new Error('VRM model file not found. Please add avatar.vrm to assets/models/');
-      }
-
-      fileUri = asset.localUri || asset.uri;
-      if (!fileUri) {
-        throw new Error('VRM asset localUri is null');
-      }
-
-      try {
-        await FileSystem.copyAsync({ from: fileUri, to: cachePath });
-        fileUri = cachePath;
-      } catch (copyErr) {
-        // 缓存失败仍可继续加载（直接用 asset 的 uri）
-        console.warn('[VRMManager] cache copy failed, using asset uri:', copyErr);
+        return await this.parseVRM(cachePath);
+      } catch (cacheError) {
+        // Interrupted copies can leave a file that exists but can never be parsed.
+        // Remove it so retries and manual reloads can recover without reinstalling.
+        console.warn('[VRMManager] cached VRM is invalid, refreshing bundled asset:', cacheError);
+        await FileSystem.deleteAsync(cachePath, { idempotent: true });
       }
     }
 
-    return this.parseVRM(fileUri);
+    return this.loadBundledVRM(modelFile, cachePath);
+  }
+
+  private async loadBundledVRM(modelFile: string, cachePath: string): Promise<VRM> {
+    let asset: Asset;
+    try {
+      const vrmModule = this.getVRMModule(modelFile);
+      asset = Asset.fromModule(vrmModule);
+      await asset.downloadAsync();
+    } catch (error) {
+      console.warn('VRM model not found, using fallback. Error:', error);
+      throw new Error('VRM model file not found. Please add avatar.vrm to assets/models/');
+    }
+
+    const fileUri = asset.localUri || asset.uri;
+    if (!fileUri) {
+      throw new Error('VRM asset localUri is null');
+    }
+
+    // Parse the known-good bundled URI first. A failed cache copy must never
+    // prevent the current session from displaying the digital human.
+    const vrm = await this.parseVRM(fileUri);
+
+    try {
+      await FileSystem.copyAsync({ from: fileUri, to: cachePath });
+    } catch (copyErr) {
+      console.warn('[VRMManager] cache copy failed, continuing with asset uri:', copyErr);
+    }
+
+    return vrm;
   }
 
   /**
@@ -568,6 +610,8 @@ class VRMManagerClass {
 
   reset(): void {
     this.pendingSpeech = null;
+    this.activeSpeakerId = null;
+    this.speakerOrder = [];
     this.stopSpeaking({ playQueued: false });
     this.state.currentEmotion = 'neutral';
     this.state.contextData = {};

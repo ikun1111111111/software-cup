@@ -362,6 +362,7 @@ export const VRMFloating = forwardRef<VRMFloatingRef, Props>(
               <View style={StyleSheet.absoluteFill}>
                 <VRMView
                   mode="float"
+                  focusMode="component"
                   expression={expression}
                   mouthOpen={mouthOpen}
                   speaking={isSpeaking}

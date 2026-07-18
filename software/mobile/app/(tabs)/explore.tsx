@@ -4,24 +4,22 @@ import InlineModal from '@/components/ui/InlineModal';
 import { Image } from 'expo-image';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { VRMManager } from '@/components/vrm/VRMManager';
-import { VRMView } from '@/components/vrm/VRMView';
 import { useTour } from '@/context/TourContext';
 import { listSpots, type Spot } from '@/api/spots';
 import { listRoutes, type TourRoute } from '@/api/routes';
 import { identifySpot, type VisionResult } from '@/api/vision';
 import { createRoom, joinRoom, type Room, type RoomActiveRoute } from '@/api/room';
 import { useDigitalHumanDriver } from '@/hooks/useDigitalHumanDriver';
-import { preloadDigitalHuman } from '@/services/digitalHuman';
 import { DEFAULT_DIGITAL_HUMAN_VOICE_MODE } from '@/utils/digitalHumanProduct';
 import { useRoomSync } from '@/hooks/useRoomSync';
 import { Colors } from '@/constants/colors';
 import { Radius } from '@/constants/spacing';
 import { SPOT_IMAGES } from '@/constants/scenic';
 import { enrichSpotsWithLocations } from '@/constants/spot-locations';
-import { getCostume } from '@/constants/costumeMap';
 import { GUIDE_DATA_SOURCE_SUMMARY, getSoloRouteRecommendation } from '@/data/lingshanGuideData';
 import { getMockApiRoutes, getMockApiSpots } from '@/mocks/guide';
 
@@ -34,6 +32,12 @@ const ROUTE_CARD_W = 260;
 const STORY_CARD_W = 252;
 
 const HERO_SPOT_PRIORITY = ['ling-shan-da-fo', 'fan-gong', 'jiu-long-guan-yu'];
+
+const LazyExploreVRMView = React.lazy(() =>
+  import('@/components/vrm/VRMView').then((module) => ({
+    default: module.VRMView,
+  })),
+);
 
 const EXPLORE_VISUALS = {
   hero: require('../../assets/images/explore/hero-courtyard.png'),
@@ -624,13 +628,12 @@ function ExploreHero({
   nextSpotName?: string;
 }) {
   const guide = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE);
-  const [vrmKey] = useState(0);
+  const [shouldMountVRM, setShouldMountVRM] = useState(false);
 
-  useEffect(() => {
-    preloadDigitalHuman(getCostume('festival-spring')?.modelFile || 'avatar.vrm').catch((err) => {
-      console.warn('[ExploreHero] preload VRM failed:', err);
-    });
-  }, []);
+  useFocusEffect(useCallback(() => {
+    guide.activate();
+    return undefined;
+  }, [guide.activate]));
 
   const heroSpot = HERO_SPOT_PRIORITY
     .map((id) => spots.find((spot) => spot.id === id))
@@ -661,27 +664,41 @@ function ExploreHero({
         <View style={styles.guideVrmCard}>
           <View style={styles.guideAura} />
           <View style={styles.guideVrmViewport}>
-            <VRMView
-              key={vrmKey}
-              mode="full"
-              expression={guide.expression}
-              mouthOpen={guide.mouthOpen}
-              speaking={guide.isSpeaking}
-              action={guide.action}
-              actionDuration={guide.actionDurationMs}
-              headRotation={guide.headRotation}
-              costumeId="festival-spring"
-            />
-            {/*
-            <Pressable
-              style={({ pressed }) => [styles.vrmReloadBtn, pressed && styles.pressedSoft]}
-              onPress={() => setVrmKey((k) => k + 1)}
-              accessibilityRole="button"
-              accessibilityLabel="重新加载数字人"
-            >
-              <Text style={styles.vrmReloadText}>↻</Text>
-            </Pressable>
-            */}
+            {shouldMountVRM ? (
+              <React.Suspense
+                fallback={(
+                  <View style={styles.vrmLoadingFallback}>
+                    <ActivityIndicator size="small" color="#fff" />
+                    <Text style={styles.vrmLoadingText}>小灵正在显形...</Text>
+                  </View>
+                )}
+              >
+                <LazyExploreVRMView
+                  mode="full"
+                  expression={guide.expression}
+                  mouthOpen={guide.mouthOpen}
+                  speaking={guide.isSpeaking}
+                  action={guide.action}
+                  actionDuration={guide.actionDurationMs}
+                  headRotation={guide.headRotation}
+                  costumeId="festival-spring"
+                />
+              </React.Suspense>
+            ) : (
+              <Pressable
+                style={({ pressed }) => [styles.vrmLoadTrigger, pressed && styles.pressedSoft]}
+                onPress={() => setShouldMountVRM(true)}
+                accessibilityRole="button"
+                accessibilityLabel="加载小灵3D形象"
+                accessibilityHint="3D形象较大，将在点击后加载"
+              >
+                <View style={styles.vrmPlaceholderSeal}>
+                  <Text style={styles.vrmPlaceholderGlyph}>灵</Text>
+                </View>
+                <Text style={styles.vrmPlaceholderName}>小灵已待命</Text>
+                <Text style={styles.vrmPlaceholderHint}>轻触唤醒 3D 形象</Text>
+              </Pressable>
+            )}
           </View>
           <View style={styles.guideNamePlate}>
             <Text style={styles.guideNameText}>小灵 · 数字导览员</Text>
@@ -854,6 +871,7 @@ function GuideSupportPanel({
 export default function ExplorePage() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const [tourState, tourActions] = useTour();
   const photoRef = useRef<ExplorePhotoHandle>(null);
   const scanRef = useRef<ExploreScanHandle>(null);
@@ -890,25 +908,23 @@ export default function ExplorePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const hasGreetedRef = useRef(false);
-
   useEffect(() => {
+    if (!isFocused) return undefined;
     VRMManager.setPageContext('explore');
-    if (hasGreetedRef.current) return;
-    hasGreetedRef.current = true;
 
     const t = setTimeout(() => {
       if (tourState.currentRoute) {
-        VRMManager.speak(`${tourState.currentRoute.name}，导览进行中。让我为您导航到下一个景点`, 'happy');
+        VRMManager.replaceSpeech(`${tourState.currentRoute.name}，导览进行中。让我为您导航到下一个景点`, 'happy');
       } else {
-        VRMManager.speak('让我带您游览灵山胜境吧', 'neutral');
+        VRMManager.replaceSpeech('让我带您游览灵山胜境吧', 'neutral');
       }
     }, 1200);
     return () => clearTimeout(t);
-  }, [tourState.currentRoute]);
+  }, [isFocused, tourState.currentRoute]);
 
   // ─── 自动打开相机/扫码（打卡意图） ───
   useEffect(() => {
+    if (!isFocused) return undefined;
     if (checkinConsumedRef.current) return;
     if (!tourState.checkinIntent || loading) return;
     checkinConsumedRef.current = true;
@@ -925,7 +941,7 @@ export default function ExplorePage() {
       tourActions.clearCheckinIntent();
     }, 800);
     return () => clearTimeout(t);
-  }, [tourState.checkinIntent, loading, tourActions.clearCheckinIntent]);
+  }, [isFocused, tourState.checkinIntent, loading, tourActions.clearCheckinIntent]);
 
   // ─── 返回导览 ───
   const handleReturnToTour = useCallback(() => {
@@ -1224,24 +1240,54 @@ const styles = StyleSheet.create({
     height: 236,
     position: 'relative',
   },
-  vrmReloadBtn: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    zIndex: 10,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+  vrmLoadTrigger: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 22,
+  },
+  vrmPlaceholderSeal: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(17,54,45,0.78)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.24)',
+    borderColor: 'rgba(255,255,255,0.34)',
+    shadowColor: '#D9B45B',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    elevation: 4,
+  },
+  vrmPlaceholderGlyph: {
+    color: '#F6E8BD',
+    fontSize: 42,
+    fontWeight: '300',
+  },
+  vrmPlaceholderName: {
+    marginTop: 14,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  vrmPlaceholderHint: {
+    marginTop: 5,
+    color: 'rgba(255,255,255,0.62)',
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  vrmLoadingFallback: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  vrmReloadText: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: '700',
+  vrmLoadingText: {
+    marginTop: 10,
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 11,
   },
   guideNamePlate: {
     position: 'absolute',

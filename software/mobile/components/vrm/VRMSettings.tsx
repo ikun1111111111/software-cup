@@ -28,8 +28,7 @@ interface TTSVoiceEntry {
 
 const VOICE_MODES: { id: VoiceMode; label: string; desc: string }[] = [
   { id: 'silent', label: 'Demo', desc: 'No audio, animation only' },
-  { id: 'browser', label: 'Browser voice', desc: 'Use system TTS' },
-  { id: 'tts', label: 'Backend TTS', desc: 'Requires backend service' },
+  { id: 'tts', label: 'Alibaba Cloud voice', desc: 'CosyVoice via backend API key' },
 ];
 
 const DEMO_TEXTS = [

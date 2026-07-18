@@ -1,12 +1,12 @@
 import { Tabs } from 'expo-router';
-import { Text, View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import React from 'react';
 import Animated, {
   useSharedValue, useAnimatedStyle, withSpring, withTiming,
-  withRepeat, withSequence, withDelay, Easing,
+  withSequence,
 } from 'react-native-reanimated';
 import { Colors } from '@/constants/colors';
 
@@ -25,7 +25,6 @@ const TAB_IMAGES: Record<string, any> = {
 const TabIcon = React.memo(function TabIcon({ label, focused }: { label: string; focused: boolean }) {
   const prevFocused = useSharedValue(focused);
   const bounce = useSharedValue(focused ? 1.15 : 1);
-  const breath = useSharedValue(1);
   const dotScale = useSharedValue(focused ? 1 : 0);
 
   React.useEffect(() => {
@@ -37,31 +36,17 @@ const TabIcon = React.memo(function TabIcon({ label, focused }: { label: string;
         withSpring(1.15, { damping: 12, stiffness: 200 }),
       );
       dotScale.value = withSpring(1, { damping: 14, stiffness: 180 });
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      }
     } else {
       bounce.value = withTiming(1, { duration: 200 });
       dotScale.value = withTiming(0, { duration: 200 });
     }
   }, [focused, bounce, dotScale, prevFocused]);
 
-  React.useEffect(() => {
-    if (!focused && Platform.OS !== 'web') {
-      breath.value = withRepeat(
-        withSequence(
-          withTiming(0.92, { duration: 1800, easing: Easing.inOut(Easing.ease) }),
-          withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.ease) }),
-        ),
-        -1,
-      );
-    } else {
-      breath.value = withTiming(1, { duration: 200 });
-    }
-  }, [focused, breath]);
-
   const emojiStyle = useAnimatedStyle(() => ({
-    transform: [
-      { scale: focused ? bounce.value : breath.value },
-    ],
+    transform: [{ scale: bounce.value }],
     opacity: focused ? 1 : 0.5,
   }));
 
@@ -97,8 +82,12 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      detachInactiveScreens
       screenOptions={{
         headerShown: false,
+        animation: 'none',
+        freezeOnBlur: true,
+        lazy: true,
         tabBarActiveTintColor: Colors.accent,
         tabBarInactiveTintColor: Colors.gray400,
         tabBarStyle: [styles.tabBar, { paddingBottom: insets.bottom + 8 }],

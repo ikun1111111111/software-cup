@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator } from
 import InlineModal from '@/components/ui/InlineModal';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { VRMManager } from '@/components/vrm/VRMManager';
 import { useVRM } from '@/components/vrm/VRMProvider';
@@ -25,6 +26,7 @@ export default function RouteDetailPage() {
   const { id } = params;
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const { avoidance } = useVRM();
   const routeDetailDigitalHuman = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE, {
     speakerId: 'route-detail-page',
@@ -130,13 +132,14 @@ export default function RouteDetailPage() {
 
   // 进入路线详情，数字人介绍路线亮点
   useEffect(() => {
+    if (!isFocused) return undefined;
     if (route) {
       VRMManager.setPageContext('route-detail', { routeName: route.name });
 
       if (tourState.preferences.mode === 'tour' && tourState.currentRoute?.id === route.id) {
         // 导览模式：介绍路线亮点和进度
         const t = setTimeout(() => {
-          VRMManager.speak(
+          VRMManager.replaceSpeech(
             `${route.name}，全程约${route.duration}，包含${(route.spot_order || []).length}个景点。${route.description}`,
             'happy'
           );
@@ -145,7 +148,7 @@ export default function RouteDetailPage() {
       } else {
         // 自由模式：简单介绍
         const t = setTimeout(() => {
-          VRMManager.speak(
+          VRMManager.replaceSpeech(
             `${route.name}，${route.description}。你可以点沿途景点，让小灵先讲重点。`,
             'neutral'
           );
@@ -153,7 +156,7 @@ export default function RouteDetailPage() {
         return () => clearTimeout(t);
       }
     }
-  }, [route, tourState.preferences.mode, tourState.currentRoute]);
+  }, [isFocused, route, tourState.preferences.mode, tourState.currentRoute]);
 
   const handleSpotPress = useCallback((spotId: string) => {
     const spot = spotDetails[spotId];

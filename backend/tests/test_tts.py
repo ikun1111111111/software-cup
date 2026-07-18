@@ -1,5 +1,8 @@
 """Tests for TTS (Text-to-Speech) with caching."""
+import hashlib
 import pytest
+import sys
+from types import ModuleType, SimpleNamespace
 from unittest.mock import patch, AsyncMock, MagicMock
 
 from app.core.tts import (
@@ -11,6 +14,7 @@ from app.core.tts import (
     _cache_key,
     _resolve_voice,
     _resolve_cosyvoice_speaker,
+    _synthesize_dashscope,
     _EDGE_TTS_RATE,
     _EDGE_TTS_PITCH,
     _REDIS_TTS_TIMEOUT_SECONDS,
@@ -44,6 +48,45 @@ class TestTTS:
         assert _resolve_cosyvoice_speaker("shaanxi") == "longshange_v3"
         assert _resolve_cosyvoice_speaker("male") == "longcheng_v3"
         assert _resolve_cosyvoice_speaker("unknown") == "longxiaochun_v3"
+
+    @pytest.mark.asyncio
+    async def test_cosyvoice_http_sdk_downloads_non_stream_audio_url(self, monkeypatch):
+        class FakeHttpSpeechSynthesizer:
+            @classmethod
+            def call(cls, **kwargs):
+                assert kwargs["model"] == "cosyvoice-v3-flash"
+                assert kwargs["voice"] == "longxiaochun_v3"
+                assert kwargs["audio_format"] == "mp3"
+                assert kwargs["stream"] is False
+                return SimpleNamespace(audio_url="https://example.test/voice.mp3")
+
+        dashscope_module = ModuleType("dashscope")
+        audio_module = ModuleType("dashscope.audio")
+        http_tts_module = ModuleType("dashscope.audio.http_tts")
+        http_speech_module = ModuleType(
+            "dashscope.audio.http_tts.http_speech_synthesizer"
+        )
+        http_speech_module.HttpSpeechSynthesizer = FakeHttpSpeechSynthesizer
+        monkeypatch.setitem(sys.modules, "dashscope", dashscope_module)
+        monkeypatch.setitem(sys.modules, "dashscope.audio", audio_module)
+        monkeypatch.setitem(sys.modules, "dashscope.audio.http_tts", http_tts_module)
+        monkeypatch.setitem(
+            sys.modules,
+            "dashscope.audio.http_tts.http_speech_synthesizer",
+            http_speech_module,
+        )
+        response = MagicMock(content=b"mp3-audio")
+        response.raise_for_status.return_value = None
+        with patch.object(settings, "qwen_api_key", "configured"), \
+             patch("httpx.get", return_value=response) as mock_get:
+            result = await _synthesize_dashscope("你好", "mandarin")
+
+        assert result.audio_bytes == b"mp3-audio"
+        mock_get.assert_called_once_with(
+            "https://example.test/voice.mp3",
+            timeout=30.0,
+            follow_redirects=True,
+        )
 
     def test_classify_mouth_shape(self):
         """Should classify mouth shapes correctly."""
@@ -91,6 +134,15 @@ class TestTTS:
         assert k1 != k3
         assert k1.startswith("tts:")
 
+    def test_cache_key_invalidates_audio_created_before_stream_deduplication(self):
+        text = "play once"
+        voice_id = "female"
+        expected = hashlib.md5(
+            f"dashscope-cosyvoice-v2:{voice_id}:{text}".encode("utf-8")
+        ).hexdigest()
+
+        assert _cache_key(text, voice_id) == f"tts:{expected}"
+
     @pytest.mark.asyncio
     async def test_synthesize_empty(self):
         """Empty text should return empty result."""
@@ -111,7 +163,7 @@ class TestTTS:
         mock_edge.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_synthesize_falls_back_to_edge_when_cosyvoice_fails(self):
+    async def test_synthesize_does_not_fall_back_when_cosyvoice_fails(self):
         empty = TTSResult(audio_bytes=b"", phoneme_timestamps=[], duration_ms=0)
         with patch.object(settings, "qwen_api_key", "configured"), \
              patch("app.core.tts._synthesize_dashscope", new_callable=AsyncMock, return_value=empty), \
@@ -122,11 +174,11 @@ class TestTTS:
              ) as mock_edge:
             result = await synthesize("你好", "female")
 
-        assert result.audio_bytes == b"edge-audio"
-        mock_edge.assert_awaited_once()
+        assert result.audio_bytes == b""
+        mock_edge.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_synthesize_skips_cosyvoice_without_key(self):
+    async def test_synthesize_requires_alibaba_key(self):
         with patch.object(settings, "qwen_api_key", ""), \
              patch("app.core.tts._synthesize_dashscope", new_callable=AsyncMock) as mock_cosy, \
              patch(
@@ -136,12 +188,12 @@ class TestTTS:
              ):
             result = await synthesize("你好", "female")
 
-        assert result.audio_bytes == b"edge-audio"
+        assert result.audio_bytes == b""
         mock_cosy.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_synthesize_fallback(self):
-        """Should return fallback when CosyVoice is not available."""
+    async def test_synthesize_has_no_other_voice_fallback(self):
+        """Should remain silent when Alibaba Cloud is not available."""
         with patch.object(settings, "qwen_api_key", ""), \
              patch(
                  "app.core.tts._synthesize_edge_with_retry",
@@ -149,13 +201,9 @@ class TestTTS:
                  return_value=(b"edge-audio", []),
              ):
             result = await synthesize("灵山大佛高88米")
-        assert len(result.phoneme_timestamps) > 0
-        assert result.duration_ms > 0
-        for ts in result.phoneme_timestamps:
-            assert "char" in ts
-            assert "start_ms" in ts
-            assert "end_ms" in ts
-            assert "mouth_shape" in ts
+        assert result.audio_bytes == b""
+        assert result.phoneme_timestamps == []
+        assert result.duration_ms == 0
 
     @pytest.mark.asyncio
     async def test_synthesize_cached(self):

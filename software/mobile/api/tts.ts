@@ -19,6 +19,11 @@ export interface TTSResult {
   audioFormat: 'mp3' | 'wav';
 }
 
+export interface TTSStreamSource {
+  audioUri: string;
+  audioFormat: 'mp3';
+}
+
 function base64ToBlobUrl(base64: string, mime = 'audio/mpeg'): string {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -64,5 +69,30 @@ export async function fetchTTS(
     phonemes: data.phonemes || [],
     durationMs: data.duration_ms || 0,
     audioFormat,
+  };
+}
+
+export async function prepareTTSStream(
+  text: string,
+  voiceId?: string,
+): Promise<TTSStreamSource> {
+  const response = await fetch(`${API_BASE_URL}/tts/stream-ticket`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice_id: voiceId }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`TTS stream request failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (!data.ticket) {
+    throw new Error('TTS stream ticket not available');
+  }
+
+  return {
+    audioUri: `${API_BASE_URL}/tts/audio/${encodeURIComponent(data.ticket)}`,
+    audioFormat: 'mp3',
   };
 }

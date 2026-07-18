@@ -3,10 +3,15 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(".env", ".env.local"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     app_name: str = "Smart Tourism Digital Human"
     debug: bool = True
+    backend_port: int = 8000
 
     # Auth
     jwt_secret_key: str = "smart-tourism-dev-secret"

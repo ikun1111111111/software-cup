@@ -44,6 +44,9 @@ import type { HeadRotation } from '@/utils/digitalHumanDriver';
 const PAGE_SIZE = 6;
 const FEATURED_LIMIT = 5;
 const HERO_SPOT_PRIORITY = ['ling-shan-da-fo', 'fan-gong', 'jiu-long-guan-yu'];
+const ATTRACTIONS_HERO_FRAMING = {
+  offsetY: -0.44,
+};
 
 const ConsoleColors = {
   obsidian: '#171411',
@@ -432,6 +435,7 @@ function DigitalHumanHero({
               headRotation={headRotation}
               costumeId={costumeId}
               borderRadius={0}
+              framing={ATTRACTIONS_HERO_FRAMING}
               trackMotion
               style={StyleSheet.absoluteFill}
             />

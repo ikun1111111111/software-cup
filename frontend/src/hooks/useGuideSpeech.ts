@@ -15,7 +15,6 @@ interface UseGuideSpeechReturn {
   phonemes: PhonemeTimestamp[] | null;
   emotion: Emotion;
   speak: (text: string, options?: SpeakOptions) => Promise<void>;
-  speakBrowserFallback: (text: string, options?: SpeakOptions) => void;
   stop: () => void;
   setEmotion: (emotion: Emotion) => void;
   /** Start a new combined chat+TTS stream session. */
@@ -50,7 +49,6 @@ export function useGuideSpeech(): UseGuideSpeechReturn {
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef(false);
-  const browserUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const pendingCompleteRef = useRef<(() => void) | null>(null);
   const speechRunRef = useRef(0);
 
@@ -87,68 +85,8 @@ export function useGuideSpeech(): UseGuideSpeechReturn {
     abortRef.current = true;
     pendingCompleteRef.current = null;
     clearTimer();
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-    browserUtteranceRef.current = null;
     cleanupSpeechState();
   }, [cleanupSpeechState, clearTimer]);
-
-  const speakBrowserFallback = useCallback((text: string, options?: SpeakOptions) => {
-    if (!text.trim()) {
-      options?.onComplete?.();
-      return;
-    }
-
-    stop();
-    const runId = speechRunRef.current + 1;
-    speechRunRef.current = runId;
-    abortRef.current = false;
-
-    const detected = options?.emotion || detectEmotion(text);
-    const estimatedDuration = estimateSpeechDurationMs(text);
-    setEmotionState(detected);
-    setAudioChunks([]);
-    setPhonemesState(null);
-    setIsSpeaking(true);
-
-    const finish = (kind: 'complete' | 'error' = 'complete') => {
-      if (abortRef.current || speechRunRef.current !== runId) return;
-      clearTimer();
-      pendingCompleteRef.current = null;
-      cleanupSpeechState();
-      browserUtteranceRef.current = null;
-      if (kind === 'error') {
-        options?.onError?.();
-      } else {
-        timerRef.current = setTimeout(() => {
-          timerRef.current = null;
-          if (!abortRef.current) options?.onComplete?.();
-        }, SEGMENT_COMPLETE_PAUSE_MS);
-      }
-    };
-
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      browserUtteranceRef.current = utterance;
-      utterance.lang = 'zh-CN';
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      utterance.onend = () => {
-        if (browserUtteranceRef.current === utterance && speechRunRef.current === runId) finish('complete');
-      };
-      utterance.onerror = () => {
-        if (browserUtteranceRef.current === utterance && speechRunRef.current === runId) finish('error');
-      };
-
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
-    }
-
-    timerRef.current = setTimeout(() => {
-      finish('complete');
-    }, estimatedDuration + 800);
-  }, [cleanupSpeechState, clearTimer, stop]);
 
   const speak = useCallback(async (text: string, options?: SpeakOptions) => {
     if (!text.trim()) {
@@ -201,8 +139,9 @@ export function useGuideSpeech(): UseGuideSpeechReturn {
       });
 
       if (result.audioChunks.length === 0) {
-        console.warn('[guideSpeech] no server TTS audio, using browser speech fallback');
-        speakBrowserFallback(text, options);
+        console.warn('[guideSpeech] Alibaba Cloud returned no audio');
+        cleanupSpeechState();
+        options?.onError?.();
         return;
       }
 
@@ -215,10 +154,11 @@ export function useGuideSpeech(): UseGuideSpeechReturn {
       }, duration);
     } catch (error) {
       if (abortRef.current || speechRunRef.current !== runId) return;
-      console.warn('[guideSpeech] server TTS failed, using browser speech fallback', error);
-      speakBrowserFallback(text, options);
+      console.warn('[guideSpeech] Alibaba Cloud TTS failed', error);
+      cleanupSpeechState();
+      options?.onError?.();
     }
-  }, [scheduleComplete, speakBrowserFallback, stop]);
+  }, [cleanupSpeechState, scheduleComplete, stop]);
 
   const setEmotion = useCallback((next: Emotion) => {
     setEmotionState(next);
@@ -258,7 +198,6 @@ export function useGuideSpeech(): UseGuideSpeechReturn {
     phonemes,
     emotion,
     speak,
-    speakBrowserFallback,
     stop,
     setEmotion,
     startStream,

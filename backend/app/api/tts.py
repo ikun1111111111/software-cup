@@ -1,6 +1,8 @@
 """TTS API endpoints for streaming audio and cache queries."""
+import base64
 import json
 import logging
+import secrets
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,6 +19,10 @@ from app.models.avatar import AvatarConfig
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/tts", tags=["tts"])
 
+_STREAM_TICKET_TTL_SECONDS = 120
+_STREAM_TICKET_LIMIT = 128
+_stream_tickets: dict[str, tuple[float, str, str | None]] = {}
+
 
 class TTSRequest(BaseModel):
     text: str
@@ -26,6 +32,42 @@ class TTSRequest(BaseModel):
 class TTSCacheRequest(BaseModel):
     text: str
     voice_id: str | None = None
+
+
+def _issue_stream_ticket(text: str, voice_id: str | None) -> str:
+    now = time.monotonic()
+    expired = [
+        ticket
+        for ticket, (expires_at, _text, _voice_id) in _stream_tickets.items()
+        if expires_at <= now
+    ]
+    for ticket in expired:
+        _stream_tickets.pop(ticket, None)
+
+    while len(_stream_tickets) >= _STREAM_TICKET_LIMIT:
+        oldest = next(iter(_stream_tickets), None)
+        if oldest is None:
+            break
+        _stream_tickets.pop(oldest, None)
+
+    ticket = secrets.token_urlsafe(18)
+    _stream_tickets[ticket] = (
+        now + _STREAM_TICKET_TTL_SECONDS,
+        text,
+        voice_id,
+    )
+    return ticket
+
+
+def _get_stream_ticket(ticket: str) -> tuple[str, str | None] | None:
+    entry = _stream_tickets.get(ticket)
+    if entry is None:
+        return None
+    expires_at, text, voice_id = entry
+    if expires_at <= time.monotonic():
+        _stream_tickets.pop(ticket, None)
+        return None
+    return text, voice_id
 
 
 async def _get_active_voice_id(db: AsyncSession | None = None) -> str | None:
@@ -98,6 +140,42 @@ async def tts_stream(request: TTSRequest, db: AsyncSession = Depends(get_db)):
     return response
 
 
+@router.post("/stream-ticket")
+async def create_tts_stream_ticket(
+    request: TTSRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a short-lived URL that an audio player can load directly."""
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+
+    voice_id = request.voice_id or await _get_active_voice_id(db)
+    return {"ticket": _issue_stream_ticket(request.text, voice_id)}
+
+
+@router.get("/audio/{ticket}")
+async def tts_audio(ticket: str):
+    """Stream raw MP3 bytes for expo-av and browser audio elements."""
+    entry = _get_stream_ticket(ticket)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="TTS stream ticket not found")
+    text, voice_id = entry
+
+    async def audio_generator():
+        async for chunk in synthesize_stream(text, voice_id=voice_id):
+            if chunk["type"] == "audio":
+                yield base64.b64decode(chunk["data"])
+
+    return StreamingResponse(
+        audio_generator(),
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @router.post("/cache")
 async def tts_cache(request: TTSCacheRequest, db: AsyncSession = Depends(get_db)):
     """Check if TTS audio is cached for the given text.
@@ -113,7 +191,6 @@ async def tts_cache(request: TTSCacheRequest, db: AsyncSession = Depends(get_db)
     result = await synthesize_cached(request.text, voice_id=voice_id)
 
     if result and result.audio_bytes:
-        import base64
         return {
             "cached": True,
             "audio_base64": base64.b64encode(result.audio_bytes).decode("utf-8"),

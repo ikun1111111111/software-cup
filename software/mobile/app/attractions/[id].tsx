@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import InlineModal from '@/components/ui/InlineModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getSpotById, recordVisit, type SpotDetail } from '@/api/spots';
 import { spotCacheService } from '@/services/spotCache';
@@ -28,7 +29,6 @@ import TourProgressIndicator from '@/components/guide/TourProgressIndicator';
 import { useVRM } from '@/components/vrm/VRMProvider';
 import { useTour } from '@/context/TourContext';
 import { useTourGeolocation } from '@/hooks/useTourGeolocation';
-import { useTourGuide } from '@/hooks/useTourGuide';
 import type { TourCheckinResult } from '@/hooks/useTourOrchestrator';
 import type { MomentResult } from '@/components/memory/MomentModal';
 import { createMemory } from '@/api/memory';
@@ -68,6 +68,7 @@ export default function AttractionDetailPage() {
   const { id } = params;
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const { avoidance } = useVRM();
   const attractionDigitalHuman = useDigitalHumanDriver(DEFAULT_DIGITAL_HUMAN_VOICE_MODE, {
     speakerId: 'attraction-detail-page',
@@ -212,6 +213,7 @@ export default function AttractionDetailPage() {
 
   // 到达景点时，数字人主动介绍
   useEffect(() => {
+    if (!isFocused) return undefined;
     if (spot) {
       setDigitalHumanPageContext('attraction-detail', { spotName: spot.name });
 
@@ -221,24 +223,18 @@ export default function AttractionDetailPage() {
           const soloIntro = tourState.soloTour.enabled
             ? `到${spot.name}啦。我是小灵，你先自己看一眼；想听重点时点我就好。${spot.overview}`
             : `到${spot.name}啦，我是小灵。${spot.overview}。要听我详细讲解吗？`;
-          speakWithDigitalHuman(soloIntro, 'happy');
+          speakWithDigitalHuman(soloIntro, 'happy', { replaceCurrent: true });
         }, 800);
         return () => clearTimeout(timer);
       } else if (!isProactiveGuide) {
         // 自由模式：仅简单欢迎
         const timer = setTimeout(() => {
-          speakWithDigitalHuman(`我是小灵，这里是${spot.name}。${spot.overview}。有什么想追问的吗？`, 'relaxed');
+          speakWithDigitalHuman(`我是小灵，这里是${spot.name}。${spot.overview}。有什么想追问的吗？`, 'relaxed', { replaceCurrent: true });
         }, 800);
         return () => clearTimeout(timer);
       }
     }
-  }, [spot, isProactiveGuide, tourState.soloTour.enabled]);
-
-  // 数字人GPS距离引导
-  useTourGuide(distanceInfo, {
-    vrmSpeak: speakWithDigitalHuman,
-    enabled: isProactiveGuide && !!targetSpot && !autoNavigating,
-  });
+  }, [isFocused, spot, isProactiveGuide, tourState.soloTour.enabled]);
 
   // Animated styles - MUST be before early returns
   const heroStyle = useAnimatedStyle(() => ({
@@ -922,7 +918,9 @@ export default function AttractionDetailPage() {
         </Suspense>
       )}
 
-      <PageDigitalHumanDock digitalHuman={attractionDigitalHuman} />
+      {!showNarration && (
+        <PageDigitalHumanDock digitalHuman={attractionDigitalHuman} />
+      )}
     </View>
   );
 }

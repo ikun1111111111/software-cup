@@ -173,6 +173,7 @@ export function VRMStageProvider({ children }: { children: ReactNode }) {
             <Suspense fallback={null}>
               <LazyVRMView
                 mode={renderTarget.mode}
+                focusMode="component"
                 expression={renderTarget.expression}
                 mouthOpen={renderTarget.mouthOpen}
                 speaking={renderTarget.speaking}

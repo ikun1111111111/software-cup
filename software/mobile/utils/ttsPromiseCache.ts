@@ -3,6 +3,10 @@ export class TTSPromiseCache<T> {
 
   constructor(private readonly limit: number = 20) {}
 
+  peek(key: string): Promise<T> | undefined {
+    return this.entries.get(key);
+  }
+
   deleteIfSame(key: string, request: Promise<T>): boolean {
     if (this.entries.get(key) !== request) return false;
     return this.entries.delete(key);

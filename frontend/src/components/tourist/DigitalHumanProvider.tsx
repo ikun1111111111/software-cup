@@ -14,7 +14,6 @@ export interface DigitalHumanContextValue {
   isModelReady: boolean;
   modelError: string | null;
   speak: (text: string, opts?: { emotion?: Emotion; onComplete?: () => void; onError?: () => void }) => Promise<void>;
-  speakBrowserFallback: (text: string, opts?: { emotion?: Emotion; onComplete?: () => void; onError?: () => void }) => void;
   stop: () => void;
   setEmotion: (emotion: Emotion) => void;
   startStream: () => void;
@@ -154,7 +153,6 @@ export const DigitalHumanProvider: React.FC<DigitalHumanProviderProps> = ({
       isModelReady,
       modelError,
       speak: guide.speak,
-      speakBrowserFallback: guide.speakBrowserFallback,
       stop: guide.stop,
       setEmotion: guide.setEmotion,
       startStream: guide.startStream,
@@ -169,7 +167,6 @@ export const DigitalHumanProvider: React.FC<DigitalHumanProviderProps> = ({
       isModelReady,
       modelError,
       guide.speak,
-      guide.speakBrowserFallback,
       guide.stop,
       guide.setEmotion,
       guide.startStream,
